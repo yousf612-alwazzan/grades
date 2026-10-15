@@ -41,6 +41,16 @@ async function nativeWrite(name, blob) {
   }
 }
 
+// يستدعي دالة مشاركة في الجسر الأصلي GradesNative (أندرويد فقط)؛ غير ذلك 'unsupported'.
+function sharingCall(method, text) {
+  const bridge = globalThis.GradesNative;
+  if (!isNative || !isAndroid || !bridge || typeof bridge[method] !== 'function') return 'unsupported';
+  try {
+    const r = text === undefined ? bridge[method]() : bridge[method](String(text ?? '').slice(0, 120));
+    return typeof r === 'string' ? r : 'failed';
+  } catch { return 'failed'; }
+}
+
 let backHandler = null;
 let lastFileInput = null;
 
@@ -144,6 +154,14 @@ export const platform = {
     try { document.title = name; window.print(); } finally { setTimeout(() => { document.title = old; }, 1000); }
     return 'web';
   },
+
+  // العرض على الكمبيوتر في الخلفية (أندرويد فقط): خدمة أمامية بإشعار «العرض على الكمبيوتر يعمل» تُبقي الاتصال حيًّا
+  // حين يخرج المعلم من التطبيق. النص (≤ ١٢٠ محرفًا) يظهر تحت العنوان، مثل «الصف العاشر / ٣ — اضغط للعودة».
+  // زر «إيقاف المشاركة» في الإشعار يستدعي window.__gfuStopSharing() إن عرّفتها الصفحة.
+  // الويب/آيفون: لا شيء ('unsupported').
+  sharingStart(text) { return sharingCall('startSharing', text); },   // 'started'|'failed'|'unsupported'
+  sharingUpdate(text) { return sharingCall('updateSharing', text); }, // 'updated'|'inactive'|'unsupported'
+  sharingStop() { return sharingCall('stopSharing'); },               // 'stopped'|'unsupported'
 
   exitApp() {
     if (isNative && P('App')) P('App').exitApp();

@@ -9,11 +9,89 @@ import {
   studentComplete, weekRemaining, weekComplete, finalsRemaining, firstIncompleteWeek, progress,
   studentCardText, cleanNames, arCompare, remapData, nameKey,
   isAbsent, setAbsent, absenceCount, getNotes, addNote, deleteNote,
+  isStar, setStar, starCount, weekIssues,
 } from './grades-core.js';
-import * as store from './store.js';
+import * as localStore from './store.js';
 import { buildTransfer, transferFileName, parseTransfer, applyTransfer, moveStudents } from './transfer.js';
 import { platform } from './platform.js';
 import { ar, esc, icon, toast, openSheet, closeTopSheet, hasSheet, confirmDialog, keypad, students, cells, names as namesWord } from './ui.js';
+
+// ===================== وضع الإدارة من الكمبيوتر =====================
+// REMOTE: هذا التطبيق يعمل داخل صفحة العرض على الكمبيوتر، وبياناته في جوال المعلم (لا شيء يُحفظ هنا).
+const REMOTE = new URLSearchParams(location.search).has('remote') && window.parent !== window;
+
+function remoteStore(base) {
+  const post = (msg) => window.parent.postMessage({ gfu: 'op', msg }, location.origin);
+  let gotState;
+  const firstState = new Promise((res) => { gotState = res; });
+  window.addEventListener('message', (e) => {
+    if (e.origin !== location.origin || e.source !== window.parent) return;
+    const d = e.data;
+    if (!d || d.gfu !== 'phone' || !d.msg) return;
+    const m = d.msg;
+    if (m.type === 'state') { if (!S.booted) gotState(m); else applyPhoneState(m); return; }
+    applyPhoneUpdate(m);
+  });
+  window.parent.postMessage({ gfu: 'ready' }, location.origin);
+  return {
+    ...base,
+    async loadAll() {
+      const m = await firstState;
+      const grades = {};
+      for (const [id, g] of Object.entries(m.grades || {})) grades[id] = base.sanitizeClassData(g);
+      return { classes: Array.isArray(m.classes) ? m.classes : [], settings: { ...CONFIG.defaultSettings, ...(m.settings || {}), tourDone: true }, grades, meta: { persist: 'granted', lastBackupAt: m.lastBackupAt || null, schema: 3 } };
+    },
+    async saveClasses(c) { post({ type: 'put-classes', classes: c }); },
+    async saveGrades(id, d) { post({ type: 'put-grades', id, data: d }); },
+    async deleteGrades(id) { post({ type: 'del-grades', id }); },
+    async saveSettings(st) { post({ type: 'put-settings', settings: { teacher: st.teacher, subject: st.subject, year: st.year } }); },
+    async setMeta() {}, async getMeta() { return null; },
+    async replaceAll() { throw new Error('الاسترجاع يتم من الجوال فقط'); },
+    async requestPersist() { return 'granted'; },
+  };
+}
+
+// على الجوال: كل حفظ يُرسل للكمبيوتر أيضًا إذا كانت الإدارة من الكمبيوتر مفعّلة
+function syncingStore(base) {
+  return {
+    ...base,
+    async saveClasses(c) { await base.saveClasses(c); manageSend({ type: 'put-classes', classes: c }); },
+    async saveGrades(id, d) { await base.saveGrades(id, d); manageSend({ type: 'put-grades', id, data: d }); },
+    async deleteGrades(id) { await base.deleteGrades(id); manageSend({ type: 'del-grades', id }); },
+    async saveSettings(st) { await base.saveSettings(st); manageSend({ type: 'put-settings', settings: { teacher: st.teacher, subject: st.subject, year: st.year } }); },
+  };
+}
+const store = REMOTE ? remoteStore(localStore) : syncingStore(localStore);
+
+// الكمبيوتر يستقبل تعديلات الجوال (حين يرصد المعلم من جواله أثناء الإدارة)
+function applyPhoneUpdate(m) {
+  if (m.type === 'put-classes' && Array.isArray(m.classes)) S.classes = m.classes;
+  else if (m.type === 'put-grades' && m.id) S.grades[m.id] = localStore.sanitizeClassData(m.data);
+  else if (m.type === 'del-grades' && m.id) delete S.grades[m.id];
+  else if (m.type === 'put-settings' && m.settings) Object.assign(S.settings, pickTeacher(m.settings));
+  else if (m.type === 'represent') { if (S.ui.presenting) presentClass(S.ui.presenting); return; }
+  softRender();
+  if (S.ui.presenting && m.type === 'put-grades' && m.id === S.ui.presenting) presentClass(m.id);
+}
+function applyPhoneState(m) {
+  S.classes = Array.isArray(m.classes) ? m.classes : [];
+  S.grades = {};
+  for (const [id, g] of Object.entries(m.grades || {})) S.grades[id] = localStore.sanitizeClassData(g);
+  Object.assign(S.settings, pickTeacher(m.settings || {}));
+  softRender();
+}
+function pickTeacher(st) {
+  const o = {};
+  for (const k of ['teacher', 'subject', 'year']) if (typeof st[k] === 'string') o[k] = st[k].slice(0, 120);
+  return o;
+}
+// إعادة رسم لا تقطع الكتابة
+function softRender() {
+  const a = document.activeElement;
+  if (a && a.matches && a.matches('input, textarea, select') && main().contains(a)) { S.pendingRender = true; return; }
+  render();
+}
+document.addEventListener('focusout', () => { if (S.pendingRender) { S.pendingRender = false; setTimeout(() => { if (!document.activeElement || !document.activeElement.matches('input, textarea, select')) render(); }, 50); } });
 
 const CRIT = CONFIG.criteria;
 const FINS = CONFIG.finals;
@@ -152,7 +230,7 @@ function render({ scrollTop = false } = {}) {
   main().className = 'main' + (isRoot ? '' : ' no-tabbar');
   document.body.classList.toggle('no-tabbar', !isRoot);
   document.getElementById('tabbar').classList.toggle('hide', !isRoot);
-  main().innerHTML = `<div class="screen-enter">${fn(r.p)}</div>`;
+  main().innerHTML = shareBarHTML() + (REMOTE ? `<div class="remote-bar">${icon('phone')} <span><b>وضع الإدارة من الكمبيوتر</b> — كل التعديلات تُحفظ في جوالك</span></div>` : '') + `<div class="screen-enter">${fn(r.p)}</div>`;
   renderNav();
   main().querySelectorAll('[data-save-state]').forEach(paintSave);
   if (scrollTop) window.scrollTo(0, 0);
@@ -161,9 +239,21 @@ function render({ scrollTop = false } = {}) {
 }
 const afterRender = {};
 
+function shareBarHTML() {
+  if (REMOTE || route().name === 'live' || !['connected', 'resuming', 'lost'].includes(L.phase)) return '';
+  const txt = L.phase === 'connected' ? (L.mode === 'manage' ? 'الإدارة من الكمبيوتر تعمل' : 'العرض على الكمبيوتر يعمل') : L.phase === 'resuming' ? 'جارٍ إعادة الاتصال بالكمبيوتر…' : 'انقطع الاتصال بالكمبيوتر';
+  return `<div class="share-bar ${L.phase}" data-share-bar><span class="dot"></span><button type="button" class="share-txt" data-act="nav" data-to="live">${txt}</button><button type="button" class="share-stop" data-act="live-stop-quick">إيقاف المشاركة</button></div>`;
+}
+function renderShareBar() {
+  const bar = document.querySelector('[data-share-bar]');
+  const html = shareBarHTML();
+  if (bar) { if (html) bar.outerHTML = html; else bar.remove(); }
+  else if (html) main().insertAdjacentHTML('afterbegin', html);
+}
+
 function renderNav() {
   const cur = ROOTS.includes(route().name) ? route().name : (S.stack[0] || {}).name;
-  const items = [['home', 'users', 'الشعب'], ['reports', 'sheet', 'التقارير'], ['live', 'monitor', 'العرض'], ['tools', 'bolt', 'الأدوات'], ['settings', 'gear', 'الإعدادات']];
+  const items = [['home', 'users', 'الشعب'], ['reports', 'sheet', 'التقارير'], ['live', 'monitor', REMOTE ? 'عرض للطلاب' : 'العرض'], ['tools', 'bolt', 'الأدوات'], ['settings', 'gear', 'الإعدادات']];
   const btns = items.map(([n, ic, label]) => `<button type="button" class="tab" data-act="nav" data-to="${n}" ${cur === n ? 'aria-current="page"' : ''}><span class="tab-ico">${icon(ic)}</span><span>${label}</span></button>`).join('');
   document.getElementById('tabbar').innerHTML = btns;
   document.getElementById('rail').innerHTML = `<div class="brand"><img src="icons/icon-192.png" alt=""><span>${esc(CONFIG.appName)}</span></div>${btns}<div class="rail-foot">الإصدار ${ar(CONFIG.version)}<br>بياناتك على هذا الجهاز فقط</div>`;
@@ -206,7 +296,7 @@ const ART_USERS = `<svg class="art" viewBox="0 0 200 150" aria-hidden="true">
 function Home() {
   const st = S.settings;
   const alerts = [];
-  if (platform.isIOS && !platform.isStandalone) {
+  if (!REMOTE && platform.isIOS && !platform.isStandalone) {
     alerts.push(`<div class="alert warn">${icon('warn')}<div class="grow"><strong>ثبّت التطبيق على الشاشة الرئيسية</strong><p>في وضع المتصفح قد يمسح آيفون البيانات. أضِفه للشاشة الرئيسية لحماية أفضل.</p><button type="button" class="btn sm soft" data-act="go" data-to="guide">اعرض الطريقة</button></div></div>`);
   }
   if (!st.teacher || !st.subject) {
@@ -215,7 +305,7 @@ function Home() {
   const last = S.meta.lastBackupAt ? new Date(S.meta.lastBackupAt) : null;
   const days = last ? (Date.now() - last.getTime()) / 86400000 : Infinity;
   const pending = !!S.meta.changedSinceBackup && hasAnyGrades();
-  if (hasAnyGrades() && days > CONFIG.backupReminderDays) {
+  if (REMOTE) { /* النسخ الاحتياطي من الجوال */ } else if (hasAnyGrades() && days > CONFIG.backupReminderDays) {
     alerts.push(`<div class="alert warn" data-testid="backup-reminder">${icon('shield')}<div class="grow"><strong>احفظ نسخة احتياطية</strong><p>${last ? `آخر نسخة قبل ${ar(Math.floor(days))} يومًا.` : 'لم تحفظ أي نسخة بعد.'} احفظها في «الملفات» أو أرسلها لنفسك.</p><button type="button" class="btn sm primary" data-act="backup">احفظ نسخة الآن</button></div></div>`);
   } else if (pending) {
     alerts.push(`<div class="alert info" data-testid="backup-nudge">${icon('shield')}<div class="grow"><strong>عندك درجات جديدة بدون نسخة احتياطية</strong><p>ضغطة واحدة تحفظها في iCloud Drive أو ترسلها لنفسك، فلا تضيع لو ضاع الجوال.</p><button type="button" class="btn sm primary" data-act="backup">${icon('download')} احفظ نسخة الآن</button></div></div>`);
@@ -270,16 +360,16 @@ function Tools() {
       ${has ? item('transfer-pick', 'move', 'نقل طلاب', 'طالب أو أكثر لمعلم آخر أو لشعبة أخرى عندك') : ''}
       ${item('go', 'inbox', 'استقبال شعبة أو طلاب', 'من ملف أرسله معلم آخر', 'data-to="transferIn"')}
     </div>
-    <div class="section-title">النسخ الاحتياطي</div>
+    ${REMOTE ? `<p class="hint">${icon('shield')} النسخ الاحتياطي والاسترجاع وحذف البيانات تتم من الجوال (البيانات محفوظة فيه).</p>` : `<div class="section-title">النسخ الاحتياطي</div>
     <div class="list">
       <div class="list-item"><span class="grow"><strong>آخر نسخة احتياطية</strong><small class="num">${S.meta.lastBackupAt ? ar(new Date(S.meta.lastBackupAt).toLocaleDateString('en-GB')) : 'لم تُحفظ بعد'}</small></span>${S.meta.persist === 'granted' ? `<span class="status-pill ok">${icon('shield')} التخزين محمي</span>` : ''}</div>
       ${item('backup', 'download', 'حفظ نسخة احتياطية', 'كل الشعب والدرجات في ملف — على الجوال وفي iCloud')}
       ${item('restore', 'upload', 'استرجاع نسخة', 'من ملف نسخة احتياطية سابق (يستبدل البيانات الحالية)')}
-    </div>
-    <div class="section-title">منطقة الخطر</div>
+    </div>`}
+    ${REMOTE ? '' : `<div class="section-title">منطقة الخطر</div>
     <div class="list">
       <button type="button" class="list-item" data-act="wipe">${icon('trash')}<span class="grow"><strong style="color:var(--error)">حذف كل البيانات</strong><small>كل الشعب والدرجات من هذا الجهاز — احفظ نسخة أولًا</small></span></button>
-    </div>
+    </div>`}
   </div>`;
 }
 
@@ -503,10 +593,15 @@ function stuRow(c, d, w, i) {
   const done = studentComplete(d, w, i);
   const t = weekTotal(d, w, i);
   const notes = getNotes(d, i).length;
+  const issues = weekIssues(d, w, i).length;
+  const star = isStar(d, w, i);
   return `<div class="srow ${done ? 'complete' : ''} ${absent ? 'absent' : ''}" data-stu="${i}">
     <span class="srow-num num">${ar(i + 1)}</span>
-    <button type="button" class="srow-name" data-act="open-student" data-idx="${i}">${esc(c.names[i])}${notes ? `<span class="note-dot" title="ملاحظات">${icon('edit')}${ar(notes)}</span>` : ''}</button>
-    <button type="button" class="abs-btn ${absent ? 'on' : ''}" data-act="absent" data-idx="${i}" aria-pressed="${absent}">${absent ? 'غائب ✓' : 'غياب'}</button>
+    <button type="button" class="srow-name" data-act="open-student" data-idx="${i}">${issues ? `<span class="issue-mark" title="مشكلة مسجّلة هذا الأسبوع">❗</span>` : ''}${esc(c.names[i])}${notes ? `<span class="note-dot" title="ملاحظات">${icon('edit')}${ar(notes)}</span>` : ''}</button>
+    <span class="row-flags">
+      <button type="button" class="star-btn ${star ? 'on' : ''}" data-act="star" data-idx="${i}" aria-pressed="${star}" aria-label="نجمة تميّز هذا الأسبوع">${star ? '★' : '☆'}</button>
+      <button type="button" class="abs-btn ${absent ? 'on' : ''}" data-act="absent" data-idx="${i}" aria-pressed="${absent}">${absent ? 'غائب ✓' : 'غياب'}</button>
+    </span>
     <span class="srow-total num ${t === CONFIG.itemMax * ITEMS ? 'full' : ''}" data-total>${t == null ? '' : fmt(t)}</span>
     <div class="boxes" data-inputs>${absent ? absentPill() : rowBoxes(w, i, getItems(d, w, i), c.names[i])}</div>
     <span class="srow-act" data-rowact>${absent ? '' : rowAct(done, i)}</span>
@@ -629,10 +724,11 @@ function weekGrid(c, d, w, idxs) {
       <td class="total num" data-total>${t == null ? '—' : fmt(t)}</td>
       <td><button type="button" class="btn-full" data-act="full" data-idx="${i}">${icon('check')} كامل</button></td>
       <td><button type="button" class="abs-btn ${isAbsent(d, w, i) ? 'on' : ''}" data-act="absent" data-idx="${i}" aria-pressed="${isAbsent(d, w, i)}">${isAbsent(d, w, i) ? 'غائب ✓' : 'غياب'}</button></td>
+      <td><button type="button" class="star-btn ${isStar(d, w, i) ? 'on' : ''}" data-act="star" data-idx="${i}" aria-pressed="${isStar(d, w, i)}" aria-label="نجمة تميّز">${isStar(d, w, i) ? '★' : '☆'}</button>${weekIssues(d, w, i).length ? '<span class="issue-mark" title="مشكلة هذا الأسبوع">❗</span>' : ''}</td>
     </tr>`;
   }).join('');
   return `<div class="grid-wrap"><table class="grid">
-    <thead><tr><th>م</th><th class="name">اسم الطالب</th>${CRIT.map((cr) => `<th>${esc(cr.label)}<br><small>/ ${ar(CONFIG.itemMax)}</small></th>`).join('')}<th>المجموع<br><small>/ ${ar(CONFIG.itemMax * ITEMS)}</small></th><th></th><th>الحضور</th></tr></thead>
+    <thead><tr><th>م</th><th class="name">اسم الطالب</th>${CRIT.map((cr) => `<th>${esc(cr.label)}<br><small>/ ${ar(CONFIG.itemMax)}</small></th>`).join('')}<th>المجموع<br><small>/ ${ar(CONFIG.itemMax * ITEMS)}</small></th><th></th><th>الحضور</th><th>تميّز</th></tr></thead>
     <tbody>${rows}</tbody></table></div>
     <p class="hint">${icon('info')} اكتب الدرجة ثم Enter للانتقال. الأسهم ↑↓ تنقلك بين الطلاب في نفس العمود.</p>`;
 }
@@ -812,7 +908,7 @@ function changeItem(c, w, i, k, v) {
 // =====================================================================
 // الشاشة ٣ — بطاقة الطالب
 // =====================================================================
-function studentCardBody(c, i, { compact: small = false } = {}) {
+function studentCardBody(c, i, { compact: small = false, week = null } = {}) {
   const d = dataOf(c.id);
   const compact = small || window.innerWidth < 480; // بدون عمود التاريخ على الشاشات الضيقة
   const sm = studentSummary(d, i);
@@ -835,11 +931,12 @@ function studentCardBody(c, i, { compact: small = false } = {}) {
       <div>التقويم البنائي</div><div class="num">${fmt(sm.formative)} / ${ar(40)}</div>
       ${FINS.map((f, k) => `<div>${esc(f.label)}</div><div class="num">${fmt(sm.fin[k])} / ${ar(f.max)}</div>`).join('')}
     </div></div>
-    <div class="card flat"><div class="kv"><div>أسابيع الغياب</div><div class="num">${ar(absenceCount(d, i))}</div></div></div>
+    <div class="card flat"><div class="kv"><div>أسابيع الغياب</div><div class="num">${ar(absenceCount(d, i))}</div><div>نجوم التميّز</div><div class="num">${starCount(d, i) ? '⭐ ' + ar(starCount(d, i)) : ar(0)}</div></div></div>
     <div class="card flat stack" data-notes>
       <h3>${icon('edit')} ملاحظات المعلم</h3>
-      ${getNotes(d, i).length ? `<ul class="notes">${getNotes(d, i).slice().reverse().map((nt) => `<li><div class="grow"><small class="muted num">${ar(new Date(nt.t).toLocaleDateString('en-GB'))}</small><p>${esc(nt.text)}</p></div><button type="button" class="icon-btn" data-act="note-del" data-id="${c.id}" data-idx="${i}" data-t="${esc(nt.t)}" aria-label="حذف الملاحظة">${icon('trash')}</button></li>`).join('')}</ul>` : '<p class="hint">لا توجد ملاحظات. الملاحظات تبقى عندك فقط ولا تظهر في بطاقة المشاركة.</p>'}
+      ${getNotes(d, i).length ? `<ul class="notes">${getNotes(d, i).slice().reverse().map((nt) => `<li class="${nt.issue ? 'issue' : ''}"><div class="grow"><small class="muted num">${nt.issue ? '❗ ' : ''}${nt.w ? `الأسبوع ${ar(nt.w)} — ` : ''}${ar(new Date(nt.t).toLocaleDateString('en-GB'))}</small><p>${esc(nt.text)}</p></div><button type="button" class="icon-btn" data-act="note-del" data-id="${c.id}" data-idx="${i}" data-t="${esc(nt.t)}" aria-label="حذف الملاحظة">${icon('trash')}</button></li>`).join('')}</ul>` : '<p class="hint">لا توجد ملاحظات. الملاحظات تبقى عندك فقط ولا تظهر في بطاقة المشاركة.</p>'}
       <textarea class="textarea" style="min-height:80px" data-note-input="${i}" maxlength="500" placeholder="اكتب ملاحظة عن الطالب (سلوك، مستوى، تواصل مع ولي الأمر…)"></textarea>
+      ${week ? `<label class="toggle-line issue-toggle"><input type="checkbox" class="switch" data-note-issue="${i}" data-week="${week}"> ❗ مشكلة في الأسبوع ${ar(week)} (تظهر علامة عند اسمه)</label>` : ''}
       <button type="button" class="btn soft" data-act="note-add" data-id="${c.id}" data-idx="${i}">${icon('plus')} إضافة ملاحظة</button>
     </div>
     <button type="button" class="btn primary block" data-act="share-student" data-id="${c.id}" data-idx="${i}">${icon('share')} مشاركة البطاقة</button>
@@ -855,7 +952,7 @@ function StudentScreen(p) {
   const nav = `<button type="button" class="icon-btn" data-act="stu-nav" data-dir="-1" ${p.idx === 0 ? 'disabled' : ''} aria-label="الطالب السابق">${icon('prev')}</button>
     <button type="button" class="icon-btn" data-act="stu-nav" data-dir="1" ${p.idx === n - 1 ? 'disabled' : ''} aria-label="الطالب التالي">${icon('next')}</button>`;
   return `${appbar({ title: 'بطاقة الطالب', sub: `${ar(p.idx + 1)} من ${ar(n)}`, actions: nav })}
-    <div class="wrap">${studentCardBody(c, p.idx)}</div>`;
+    <div class="wrap">${studentCardBody(c, p.idx, { week: p.week || null })}</div>`;
 }
 
 // =====================================================================
@@ -1278,8 +1375,8 @@ function Settings() {
   const inst = platform.isNative ? 'مثبّت كتطبيق أندرويد' : platform.isStandalone ? 'مثبّت على الشاشة الرئيسية' : 'يعمل داخل المتصفح';
   return `${appbar({ title: 'الإعدادات', backBtn: false, save: true })}
   <div class="wrap stack">
-    <div class="section-title">التحديثات</div>
-    <div class="card stack" data-testid="update-card">${updateCardHTML()}</div>
+    ${REMOTE ? '' : `<div class="section-title">التحديثات</div>
+    <div class="card stack" data-testid="update-card">${updateCardHTML()}</div>`}
 
     <div class="section-title">بياناتي</div>
     <div class="card stack">
@@ -1314,7 +1411,7 @@ function Settings() {
       <div class="list-item">${icon('code')}<span class="grow"><strong>تخصيص الواجهة</strong><small>يمكن لأي معلم تعديل التطبيق بما يناسبه عبر Claude Code: افتح مجلد المشروع واطلب التعديل بالعربية. التفاصيل في ملف CLAUDE.md.</small></span></div>
     </div>
 
-    <details class="card advanced">
+    ${REMOTE ? '' : `<details class="card advanced">
       <summary>${icon('gear')} خيارات متقدمة (للفني فقط)</summary>
       <p class="hint">لا يحتاجها المعلم عادةً: رابط صفحة العرض مضبوط مسبقًا، والاتصال يعمل بدون خادم TURN في أغلب الشبكات.</p>
       <div class="field"><label for="s-view">رابط صفحة العرض</label><input id="s-view" class="input" dir="ltr" data-setting="viewUrl" value="${esc(st.viewUrl)}" placeholder="${esc(defaultViewUrl() || 'https://…/view.html')}"></div>
@@ -1323,8 +1420,8 @@ function Settings() {
         <div class="field"><label for="s-tu">اسم المستخدم</label><input id="s-tu" class="input" dir="ltr" data-setting="turnUser" value="${esc(st.turnUser)}" autocomplete="off"></div>
         <div class="field"><label for="s-tp">كلمة المرور</label><input id="s-tp" class="input" dir="ltr" type="password" data-setting="turnPass" value="${esc(st.turnPass)}" autocomplete="off"></div>
       </div>
-    </details>
-    <p class="hint" style="text-align:center;margin:16px 0">${icon('shield')} لا حسابات: كل الدرجات على هذا الجهاز فقط.</p>
+    </details>`}
+    <p class="hint" style="text-align:center;margin:16px 0">${icon('shield')} ${REMOTE ? 'وضع الإدارة: البيانات محفوظة في جوالك، ولا شيء يُحفظ على هذا الكمبيوتر.' : 'لا حسابات: كل الدرجات على هذا الجهاز فقط.'}</p>
   </div>`;
 }
 
@@ -1594,6 +1691,9 @@ async function shareStudent(id, idx) {
 // الشاشة ٦ — العرض على الكمبيوتر (جهة الجوال)
 // =====================================================================
 const L = {
+  mode: 'display', // display = عرض للطلاب (قراءة فقط) | manage = إدارة التطبيق من الكمبيوتر
+  room: null,             // غرفة الوسيط (المفتاح) — للرجوع التلقائي بلا مسح QR
+  usedOffers: new Set(),  // رموز الكمبيوتر التي استُعملت
   link: null, state: 'idle', classId: null, scope: { kind: 'class', idx: 0 }, hideNames: false, blank: false,
   phase: 'setup', answer: null, frames: [], frameTimer: null, scanner: null, collector: null, mod: null,
 };
@@ -1605,77 +1705,183 @@ function defaultViewUrl() {
 async function liveMod() { return (L.mod ||= await import('./live.js')); }
 
 function Live() {
+  if (REMOTE) return RemotePresent();
   if (!L.classId || !cls(L.classId)) L.classId = (S.classes[0] || {}).id || null;
   const c = L.classId ? cls(L.classId) : null;
   const viewUrl = S.settings.viewUrl || defaultViewUrl();
+  const busy = L.phase !== 'setup';
   const stateLabel = { connected: 'متصل', connecting: 'جارٍ الاتصال', disconnected: 'انقطع الاتصال', closed: 'غير متصل', idle: 'غير متصل' }[L.state] || 'غير متصل';
   const pill = `<span class="live-state ${L.state}" data-live-state><span class="dot"></span>${stateLabel}</span>`;
-  if (!S.classes.length) {
-    return `${appbar({ title: 'العرض على الكمبيوتر', backBtn: false })}<div class="wrap"><div class="empty card">${ART_EMPTY}<h2>أضف شعبة أولًا</h2><p>بعدها تستطيع عرض درجاتها على شاشة الكمبيوتر أو البروجكتر.</p><button type="button" class="btn primary" data-act="new-class">${icon('plus')} إضافة شعبة</button></div></div>`;
-  }
-  const backToClass = c ? `<button type="button" class="btn block" data-act="open-class" data-id="${c.id}">${icon('edit')} ارجع لرصد «${esc(c.label)}»</button>` : '';
-  const scopeCtl = `${backToClass}<div class="card stack">
-    <div class="field"><label for="lv-class">الشعبة</label><select id="lv-class" class="select" data-live="class">${S.classes.map((o) => `<option value="${o.id}" ${o.id === L.classId ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></div>
-    <div class="field"><span class="label">ماذا يظهر على الشاشة؟</span><div class="seg" role="group">
-      <button type="button" data-act="live-scope" data-v="class" aria-pressed="${L.scope.kind === 'class'}">الشعبة كاملة</button>
-      <button type="button" data-act="live-scope" data-v="student" aria-pressed="${L.scope.kind === 'student'}">طالب واحد فقط</button></div></div>
-    ${L.scope.kind === 'student' && c ? `<div class="field"><label for="lv-stu">الطالب</label><select id="lv-stu" class="select" data-live="student">${c.names.map((nm, i) => `<option value="${i}" ${i === L.scope.idx ? 'selected' : ''}>${ar(i + 1)}. ${esc(nm)}</option>`).join('')}</select></div>` : ''}
-    <label class="toggle-line" style="justify-content:space-between">إخفاء الأسماء (أرقام فقط) <input type="checkbox" class="switch" data-live="hide" ${L.hideNames ? 'checked' : ''}></label>
-  </div>`;
 
+  // ١) ماذا تريد؟
+  const modeCard = (v, ic, t, sub) => `<button type="button" class="mode-card ${L.mode === v ? 'on' : ''}" data-act="live-mode" data-v="${v}" aria-pressed="${L.mode === v}" ${busy && L.mode !== v ? 'disabled' : ''}>
+    <span class="mode-ico">${icon(ic)}</span><span><strong>${t}</strong><small>${sub}</small></span></button>`;
+  const step1 = `<section class="live-step"><h3><span class="step-n">${ar(1)}</span> ماذا تريد على الكمبيوتر؟</h3>
+    <div class="mode-grid">
+      ${modeCard('display', 'monitor', 'اعرض شعبة للطلاب', 'الدرجات على الشاشة فقط — بدون تعديل وبدون ملاحظات')}
+      ${modeCard('manage', 'edit', 'أدِر التطبيق من الكمبيوتر', 'ارصد الدرجات والغياب وارفع ملفات Excel وPDF من الكمبيوتر')}
+    </div></section>`;
+
+  // ٢) الإعدادات حسب الوضع
+  let step2;
+  if (L.mode === 'manage') {
+    step2 = `<section class="live-step"><h3><span class="step-n">${ar(2)}</span> كيف تعمل الإدارة؟</h3>
+      <ul class="hint manage-points">
+        <li>يفتح التطبيق كاملًا على الكمبيوتر: رصد، غياب، ملاحظات، إنشاء الشعب من ملفات الكمبيوتر، والتقارير.</li>
+        <li>كل تعديل يُحفظ في <b>جوالك</b> فورًا — الكمبيوتر لا يحفظ شيئًا.</li>
+        <li>من هناك تستطيع «اعرض للطلاب» لأي شعبة.</li>
+        <li>أوقف الإدارة من هنا في أي وقت.</li>
+      </ul></section>`;
+  } else if (!S.classes.length) {
+    step2 = `<section class="live-step"><h3><span class="step-n">${ar(2)}</span> لا توجد شعب بعد</h3>
+      <p class="hint">أضف شعبة أولًا، أو اختر «أدِر التطبيق من الكمبيوتر» لإنشاء الشعب من ملفات الكمبيوتر.</p>
+      <button type="button" class="btn primary" data-act="new-class">${icon('plus')} إضافة شعبة</button></section>`;
+  } else {
+    step2 = `<section class="live-step"><h3><span class="step-n">${ar(2)}</span> ماذا يظهر على الشاشة؟</h3>
+      <div class="field"><label for="lv-class">الشعبة</label><select id="lv-class" class="select" data-live="class">${S.classes.map((o) => `<option value="${o.id}" ${o.id === L.classId ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></div>
+      <div class="seg" role="group" style="width:100%;display:grid;grid-template-columns:1fr 1fr">
+        <button type="button" data-act="live-scope" data-v="class" aria-pressed="${L.scope.kind === 'class'}">الشعبة كاملة</button>
+        <button type="button" data-act="live-scope" data-v="student" aria-pressed="${L.scope.kind === 'student'}">طالب واحد</button></div>
+      ${L.scope.kind === 'student' && c ? `<div class="field"><label for="lv-stu">الطالب</label><select id="lv-stu" class="select" data-live="student">${c.names.map((nm, i) => `<option value="${i}" ${i === L.scope.idx ? 'selected' : ''}>${ar(i + 1)}. ${esc(nm)}</option>`).join('')}</select></div>` : ''}
+      ${c ? displayOptionsHTML(c) : ''}
+    </section>`;
+  }
+
+  // ٣) الربط
   let body = '';
   if (L.phase === 'setup') {
-    body = `<div class="card stack">
-      <h3>${icon('monitor')} الخطوة ١: على الكمبيوتر</h3>
-      <p class="hint">افتح صفحة العرض في متصفح الكمبيوتر (<bdi>Chrome</bdi> أو <bdi>Edge</bdi> أو <bdi>Safari</bdi>):</p>
-      ${viewUrl ? `<div class="row"><code class="input grow" dir="ltr" style="display:flex;align-items:center;overflow:auto;white-space:nowrap">${esc(viewUrl)}</code><button type="button" class="icon-btn" data-act="copy-view" aria-label="نسخ الرابط">${icon('copy')}</button></div>` : '<div class="alert warn">' + icon('warn') + '<div class="grow">أضف رابط صفحة العرض من الإعدادات (رابط الاستضافة + view.html).</div></div>'}
-      <h3>${icon('qr')} الخطوة ٢: امسح الرمز الظاهر على الكمبيوتر</h3>
-      <p class="hint">صوّر الرمز بكاميرا الجوال فقط — الكمبيوتر يتصل بعدها تلقائيًا، ولا يحتاج كاميرا. يطلب التطبيق إذن الكاميرا لقراءة الرمز فقط ولا يحفظ أي صورة.</p>
-      <button type="button" class="btn primary lg block" data-act="live-scan">${icon('camera')} افتح الكاميرا وامسح الرمز</button>
-      <button type="button" class="btn block" data-act="live-paste">${icon('paste')} لا تعمل الكاميرا؟ الصق رمز العرض</button>
-    </div>`;
+    body = `<p class="hint">١) افتح على الكمبيوتر: <b>شاشة العرض</b>${viewUrl ? ` — <button type="button" class="link-btn" data-act="copy-view">${icon('copy')} نسخ الرابط</button>` : ''}</p>
+      <p class="hint">٢) اضغط الزر وصوّر الرمز الظاهر على الكمبيوتر. يتصل الكمبيوتر بعدها تلقائيًا.</p>
+      <button type="button" class="btn primary lg block" data-act="live-scan" ${L.mode === 'display' && !S.classes.length ? 'disabled' : ''}>${icon('camera')} صوّر رمز الكمبيوتر</button>
+      <button type="button" class="link-btn" data-act="live-paste">لا تعمل الكاميرا؟ الصق الرمز بدلًا من ذلك</button>`;
   } else if (L.phase === 'scan') {
     const pr = L.collector ? L.collector.progress() : { got: 0, total: 0 };
-    body = `<div class="card stack"><div class="video-box"><video playsinline muted autoplay data-live-video></video><div class="frame"></div></div>
+    body = `<div class="video-box"><video playsinline muted autoplay data-live-video></video><div class="frame"></div></div>
       <p class="hint" style="text-align:center" data-scan-progress>${pr.total > 1 ? `قرأنا ${ar(pr.got)} من ${ar(pr.total)} أجزاء… أبقِ الكاميرا على الرمز` : 'وجّه الكاميرا إلى الرمز على شاشة الكمبيوتر'}</p>
-      <button type="button" class="btn block" data-act="live-cancel">إلغاء</button></div>`;
+      <button type="button" class="btn block" data-act="live-cancel">إلغاء</button>`;
   } else if (L.phase === 'connecting') {
-    body = `<div class="card stack" style="text-align:center"><div class="skel" style="height:220px"></div><p class="hint">جارٍ تجهيز رمز الرد…</p></div>`;
+    body = `<div class="live-wait"><span class="spinner-lg" aria-hidden="true"></span><h3>جارٍ تجهيز الاتصال…</h3></div>`;
   } else if (L.phase === 'answer') {
     const rs = L.link && L.link.relayState;
-    const sending = rs === 'sending';
     const failed = rs === 'failed' || rs === 'none';
-    body = `<div class="card stack" style="text-align:center">
-      ${failed
-        ? `<div class="alert warn">${icon('warn')}<div class="grow"><strong>تعذّر إرسال الرد تلقائيًا</strong><p style="margin:0">انسخ الرمز وأرسله لنفسك، ثم الصقه في صفحة العرض («مشاكل الاتصال؟» ← «لصق الرد يدويًا»).</p></div></div>`
-        : `<div class="live-wait"><span class="spinner-lg" aria-hidden="true"></span><h3>${sending ? 'جارٍ الإرسال للكمبيوتر…' : 'أُرسل للكمبيوتر ✓'}</h3><p class="hint">سيتصل الكمبيوتر تلقائيًا خلال ثوانٍ. أبقِ هذه الشاشة مفتوحة.</p></div>`}
-      <details class="card flat" ${failed ? 'open' : ''}><summary style="font-weight:800;cursor:pointer;min-height:40px;display:flex;align-items:center;gap:8px">${icon('paste')} لم يتصل؟ استعمل النسخ واللصق</summary>
-        <button type="button" class="btn block" data-act="live-copy" style="margin-top:8px">${icon('copy')} نسخ رمز الرد</button>
-        <p class="hint">أرسل الرمز لنفسك (واتساب ويب مثلًا) والصقه في صفحة العرض على الكمبيوتر.</p>
-      </details>
-      <button type="button" class="btn ghost block" data-act="live-stop">إلغاء</button></div>`;
+    body = `${failed
+      ? `<div class="alert warn">${icon('warn')}<div class="grow"><strong>تعذّر الإرسال تلقائيًا</strong><p style="margin:0">انسخ الرمز وأرسله لنفسك، ثم الصقه في صفحة العرض («مشاكل الاتصال؟» ← «لصق الرد يدويًا»).</p></div></div>`
+      : `<div class="live-wait"><span class="spinner-lg" aria-hidden="true"></span><h3>${rs === 'sending' ? 'جارٍ الإرسال للكمبيوتر…' : 'أُرسل للكمبيوتر ✓'}</h3><p class="hint">يتصل الكمبيوتر خلال ثوانٍ. أبقِ الشاشة مفتوحة.</p></div>`}
+      <details class="flat-details" ${failed ? 'open' : ''}><summary>${icon('paste')} لم يتصل؟ النسخ واللصق</summary>
+        <button type="button" class="btn block" data-act="live-copy">${icon('copy')} نسخ رمز الرد</button></details>
+      <button type="button" class="btn ghost block" data-act="live-stop">إلغاء</button>`;
   } else if (L.phase === 'connected') {
-    body = `<div class="card stack">
-      <div class="alert ok">${icon('checkCircle')}<div class="grow"><strong>العرض يعمل الآن</strong><p style="margin:0">أي درجة ترصدها تظهر فورًا على الشاشة. أبقِ شاشة الجوال مفتوحة أثناء العرض.</p></div></div>
-      <button type="button" class="btn ${L.blank ? 'primary' : 'soft'} lg block" data-act="live-blank">${icon(L.blank ? 'eye' : 'eyeOff')} ${L.blank ? 'إظهار الدرجات' : 'إخفاء الدرجات مؤقتًا'}</button>
-      <button type="button" class="btn danger block" data-act="live-stop">${icon('power')} إيقاف العرض</button></div>`;
+    body = L.mode === 'manage'
+      ? `<div class="alert ok">${icon('checkCircle')}<div class="grow"><strong>الإدارة من الكمبيوتر تعمل</strong><p style="margin:0">ما تعدّله على الكمبيوتر يُحفظ هنا فورًا. تستطيع الخروج من التطبيق؛ عند رجوعك يعود الاتصال تلقائيًا.</p></div></div>
+        <button type="button" class="btn danger block lg" data-act="live-stop">${icon('power')} إيقاف الإدارة</button>`
+      : `<div class="alert ok">${icon('checkCircle')}<div class="grow"><strong>العرض يعمل الآن</strong><p style="margin:0">أي درجة ترصدها تظهر فورًا. تستطيع الخروج للواتساب مثلًا؛ عند رجوعك يعود الاتصال تلقائيًا.</p></div></div>
+        ${c ? `<button type="button" class="btn block" data-act="open-class" data-id="${c.id}">${icon('edit')} ارصد «${esc(c.label)}»</button>` : ''}
+        <button type="button" class="btn ${L.blank ? 'primary' : 'soft'} lg block" data-act="live-blank">${icon(L.blank ? 'eye' : 'eyeOff')} ${L.blank ? 'إظهار الدرجات' : 'إخفاء الدرجات مؤقتًا'}</button>
+        <button type="button" class="btn danger block" data-act="live-stop">${icon('power')} إيقاف العرض</button>`;
+  } else if (L.phase === 'resuming') {
+    body = `<div class="live-wait"><span class="spinner-lg" aria-hidden="true"></span><h3>جارٍ إعادة الاتصال تلقائيًا…</h3><p class="hint">لا حاجة لتصوير الرمز من جديد.</p></div>
+      <button type="button" class="btn ghost block" data-act="live-stop">إيقاف المشاركة</button>`;
   } else if (L.phase === 'lost') {
-    body = `<div class="card stack"><div class="alert err">${icon('warn')}<div class="grow"><strong>انقطع الاتصال بالكمبيوتر</strong><p style="margin:0">قد يكون الجوال قُفل أو تغيّرت الشبكة. أعد الاتصال بمسح رمز جديد من الكمبيوتر (اضغط «إعادة الاتصال» هناك).</p></div></div>
-      <button type="button" class="btn primary lg block" data-act="live-scan">${icon('refresh')} إعادة الاتصال</button>
-      <button type="button" class="btn block" data-act="live-reset">رجوع</button></div>`;
+    body = `<div class="alert err">${icon('warn')}<div class="grow"><strong>انقطع الاتصال بالكمبيوتر</strong><p style="margin:0">قد يكون الجوال قُفل أو تغيّرت الشبكة. اضغط «إعادة الاتصال» في الكمبيوتر ثم صوّر الرمز الجديد.</p></div></div>
+      <button type="button" class="btn primary lg block" data-act="live-scan">${icon('refresh')} صوّر الرمز الجديد</button>
+      <button type="button" class="btn block" data-act="live-reset">رجوع</button>`;
   }
+  const step3 = `<section class="live-step"><h3><span class="step-n">${ar(3)}</span> اربط بالكمبيوتر</h3>${body}</section>`;
 
-  const help = `<details class="card"><summary style="font-weight:800;cursor:pointer;min-height:40px;display:flex;align-items:center;gap:8px">${icon('wifi')} مشاكل الاتصال؟</summary>
+  const help = `<details class="card"><summary style="font-weight:800;cursor:pointer;min-height:44px;display:flex;align-items:center;gap:8px">${icon('wifi')} مشاكل الاتصال؟</summary>
     <ul class="hint" style="padding-inline-start:20px;line-height:2">
       <li>اجعل الجوال والكمبيوتر على نفس شبكة Wi‑Fi.</li>
-      <li>بعض شبكات المدارس تمنع اتصال الأجهزة ببعضها: شغّل «نقطة الاتصال» من الجوال ووصّل الكمبيوتر بها، ثم أعد المحاولة.</li>
-      <li>الاتصال مباشر ومشفّر بين الجهازين؛ لا تمر الدرجات على أي خادم ولا تُحفظ على الكمبيوتر.</li>
-      <li>في آيفون: لا تقفل الشاشة أثناء العرض.</li>
+      <li>بعض شبكات المدارس تمنع اتصال الأجهزة ببعضها: شغّل «نقطة الاتصال» من الجوال ووصّل الكمبيوتر بها.</li>
+      <li>الدرجات تنتقل مباشرة ومشفّرة بين الجهازين، ولا تُحفظ على الكمبيوتر.</li>
+      <li>إن خرجت من التطبيق يبقى العرض على الكمبيوتر، ويعود الاتصال تلقائيًا عند رجوعك (في أندرويد يبقى متصلًا ويظهر إشعار فيه «إيقاف المشاركة»).</li>
     </ul></details>`;
 
   return `${appbar({ title: 'العرض على الكمبيوتر', backBtn: false, actions: pill })}
-  <div class="wrap stack">${scopeCtl}${body}${help}</div>`;
+  <div class="wrap stack live-page">${step1}${step2}${step3}${help}</div>`;
 }
+
+// على الكمبيوتر (وضع الإدارة): اختيار شعبة لعرضها للطلاب على نفس الشاشة
+function RemotePresent() {
+  if (!S.classes.length) {
+    return `${appbar({ title: 'عرض للطلاب', backBtn: false })}<div class="wrap"><div class="empty card">${ART_EMPTY}<h2>لا توجد شعب بعد</h2><p>أنشئ الشعب من «الأدوات ← إنشاء شعب من ملف».</p></div></div>`;
+  }
+  if (!S.ui.presentPick || !cls(S.ui.presentPick)) S.ui.presentPick = S.classes[0].id;
+  const c = cls(S.ui.presentPick);
+  return `${appbar({ title: 'عرض للطلاب', backBtn: false })}
+  <div class="wrap stack">
+    <div class="field"><label for="pr-class">الشعبة</label><select id="pr-class" class="select" data-present-pick>${S.classes.map((o) => `<option value="${o.id}" ${o.id === c.id ? 'selected' : ''}>${esc(o.label)} — ${students(o.names.length)}</option>`).join('')}</select></div>
+    ${displayOptionsHTML(c)}
+    <button type="button" class="btn primary lg block" data-act="present" data-id="${c.id}">${icon('monitor')} اعرض «${esc(c.label)}» للطلاب</button>
+    <p class="hint">تتحول هذه الشاشة لعرض الدرجات للطلاب (بدون ملاحظات). للرجوع اضغط «رجوع للإدارة» أسفل الشاشة.</p>
+  </div>`;
+}
+function presentClass(id) {
+  if (!REMOTE) return;
+  const c = cls(id);
+  if (!c) return;
+  S.ui.presenting = id;
+  window.parent.postMessage({ gfu: 'present', classId: id, label: c.label, hideNames: L.hideNames, names: displayNames(c, L.hideNames), data: displayData(c) }, location.origin);
+}
+
+// خيارات ما يظهر على الشاشة (للجوال وللإدارة من الكمبيوتر)
+function displayOpts(c) {
+  const st = S.settings;
+  return { stars: st.liveShowStars !== false, issues: !!st.liveShowIssues, hidden: new Set(((st.liveIssueHidden || {})[c.id]) || []) };
+}
+function displayOptionsHTML(c) {
+  const o = displayOpts(c);
+  const d = dataOf(c.id);
+  const withIssues = c.names.map((_, i) => i).filter((i) => getNotes(d, i).some((n) => n.issue));
+  const hiddenCount = withIssues.filter((i) => o.hidden.has(i)).length;
+  return `<div class="list opts-list">
+    <label class="list-item"><span class="grow"><strong>إخفاء الأسماء</strong><small>أرقام الطلاب فقط</small></span><input type="checkbox" class="switch" data-live="hide" ${L.hideNames ? 'checked' : ''}></label>
+    <label class="list-item"><span class="grow"><strong>⭐ نجوم التميّز</strong><small>تظهر بجانب اسم الطالب المتميز</small></span><input type="checkbox" class="switch" data-live-opt="liveShowStars" ${o.stars ? 'checked' : ''}></label>
+    <label class="list-item"><span class="grow"><strong>❗ علامات التنبيه</strong><small>العلامة فقط — نص الملاحظة لا يظهر أبدًا</small></span><input type="checkbox" class="switch" data-live-opt="liveShowIssues" ${o.issues ? 'checked' : ''}></label>
+    ${o.issues ? `<button type="button" class="list-item" data-act="issue-hide" data-id="${c.id}">${icon('eyeOff')}<span class="grow"><strong>إخفاء ❗ عن طلاب معيّنين</strong><small>${withIssues.length ? `${ar(withIssues.length)} لديهم تنبيه · مخفي عن ${ar(hiddenCount)}` : 'لا توجد تنبيهات في هذه الشعبة'}</small></span>${icon('fwd')}</button>` : ''}
+  </div>`;
+}
+
+// بيانات العرض فقط: درجات + غياب + (نجوم/❗ حسب اختيار المعلم). الملاحظات لا تخرج أبدًا.
+function displayData(c, only = null) {
+  const d = dataOf(c.id);
+  const o = displayOpts(c);
+  const pick = (obj) => {
+    const out = {};
+    for (const [i, val] of Object.entries(obj || {})) if (only == null || +i === only) out[i] = val;
+    return out;
+  };
+  const out = { weeks: {}, fin: pick(d.fin), t: d.t };
+  for (let w = 1; w <= WEEKS; w++) {
+    const wk = (d.weeks || {})[w];
+    const issue = {};
+    if (o.issues) c.names.forEach((_, i) => { if ((only == null || i === only) && !o.hidden.has(i) && weekIssues(d, w, i).length) issue[i] = true; });
+    if (!wk && !Object.keys(issue).length) continue;
+    out.weeks[w] = { date: (wk && wk.date) || '', lesson: (wk && wk.lesson) || '', s: pick(wk && wk.s), abs: pick(wk && wk.abs), star: o.stars ? pick(wk && wk.star) : {}, issue };
+  }
+  return out;
+}
+function displayNames(c, hide, only = null) {
+  return c.names.map((nm, i) => (only != null && i !== only ? '' : hide ? `طالب ${ar(i + 1)}` : nm));
+}
+
+// اختيار الطلاب الذين نُخفي عنهم ❗
+function showIssueHide(c) {
+  const d = dataOf(c.id);
+  const withIssues = c.names.map((_, i) => i).filter((i) => getNotes(d, i).some((n) => n.issue));
+  if (!withIssues.length) { toast('لا يوجد طلاب عليهم تنبيه في هذه الشعبة'); return; }
+  const o = displayOpts(c);
+  const s = openSheet(`<h2>إخفاء ❗ عن طلاب معيّنين</h2><p>الطلاب المحددون لن تظهر عندهم علامة التنبيه على الشاشة.</p>
+    <div class="list" style="max-height:55vh;overflow:auto">${withIssues.map((i) => `<label class="pick"><input type="checkbox" data-ih="${i}" ${o.hidden.has(i) ? 'checked' : ''}><span class="stu-num num">${ar(i + 1)}</span><span class="grow">${esc(c.names[i])}</span></label>`).join('')}</div>
+    <div class="actions"><button type="button" class="btn primary" data-x>تم</button></div>`, { label: 'إخفاء التنبيه', onClose: async () => {
+    const list = [...s.sheet.querySelectorAll('[data-ih]:checked')].map((x) => +x.dataset.ih);
+    S.settings.liveIssueHidden = { ...(S.settings.liveIssueHidden || {}), [c.id]: list };
+    await saveSettingsNow();
+    sendSnapshot(); if (S.ui.presenting === c.id) presentClass(c.id);
+    if (route().name === 'live') render();
+  } });
+  s.sheet.addEventListener('click', (e) => { if (e.target.closest('[data-x]')) s.close(); });
+}
+
 afterRender.live = () => {
   if (L.phase === 'scan') startScanner();
   if (L.phase === 'answer' && main().querySelector('[data-answer-qr]')) paintAnswerQR();
@@ -1688,16 +1894,42 @@ function setLiveState(st) {
   if (st === 'connected') {
     L.phase = 'connected';
     stopScanner(); stopFrames();
-    sendHello(); sendSnapshot();
-    liveMod().then((m) => m.wakeLock(true));
-    toast('تم الاتصال بالكمبيوتر ✓');
+    sendHello();
+    if (L.mode === 'manage') sendState(); else sendSnapshot();
+    if (L.link && L.link.room) L.room = L.link.room;
+    const c0 = cls(L.classId);
+    if (platform.sharingStart) platform.sharingStart(L.mode === 'manage' ? 'الإدارة من الكمبيوتر — اضغط للعودة' : `${c0 ? c0.label : 'الشعبة'} — اضغط للعودة`);
+    toast(L.mode === 'manage' ? 'الإدارة من الكمبيوتر تعمل ✓' : 'تم الاتصال بالكمبيوتر ✓');
   } else if (st === 'disconnected' && (L.phase === 'connected' || L.phase === 'answer')) {
     L.phase = 'lost';
-    liveMod().then((m) => m.wakeLock(false));
-    haptic('error');
+    // نحاول الرجوع تلقائيًا (الآن إن كان التطبيق ظاهرًا، أو عند العودة إليه)
+    if (!document.hidden) tryResume();
   }
-  if (route().name === 'live') render();
+  if (route().name === 'live') render(); else renderShareBar();
 }
+
+// الرجوع التلقائي: نجلب رمز الكمبيوتر الجديد من الوسيط (بنفس المفتاح) ونتصل بلا مسح
+async function tryResume() {
+  if (!L.room || L.phase === 'resuming' || L.state === 'connected') return;
+  L.phase = 'resuming';
+  if (route().name === 'live') render(); else renderShareBar();
+  const m = await liveMod();
+  const ac = new AbortController();
+  L.resumeAbort = ac;
+  const code = await m.fetchLatestOffer(L.room, L.usedOffers, { timeoutMs: 25000, signal: ac.signal });
+  if (L.phase !== 'resuming') return; // أُلغي
+  if (code) { startLiveFromCode(code); return; }
+  L.phase = 'lost';
+  if (route().name === 'live') render(); else renderShareBar();
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || REMOTE) return;
+  // رجع المعلم للتطبيق: إن كان الاتصال قد انقطع نعيده تلقائيًا
+  if (L.phase === 'lost') tryResume();
+  else if (L.phase === 'connected' && L.link && Date.now() - L.link.lastSeen > 12000) { L.phase = 'lost'; L.state = 'disconnected'; tryResume(); }
+});
+// إيقاف من إشعار أندرويد
+window.__gfuStopSharing = () => { liveStop(); render(); toast('أُوقفت المشاركة'); };
 
 async function startLiveFromCode(code) {
   const m = await liveMod();
@@ -1705,8 +1937,15 @@ async function startLiveFromCode(code) {
   if (route().name === 'live') render();
   try {
     if (L.link) L.link.stop();
-    L.link = new m.PhoneLink({ iceServers: m.iceServersFrom(S.settings), onState: setLiveState, onWant: () => { sendHello(); sendSnapshot(); } });
+    L.link = new m.PhoneLink({
+      iceServers: m.iceServersFrom(S.settings), onState: setLiveState,
+      onWant: () => { sendHello(); if (L.mode === 'manage') sendState(); else sendSnapshot(); },
+      // يقبل الجوال تعديلات الكمبيوتر فقط في وضع الإدارة الذي اختاره المعلم بنفسه
+      acceptData: () => L.mode === 'manage' && L.state === 'connected',
+      onData: (msg) => { applyRemoteOp(msg); },
+    });
     L.state = 'connecting';
+    L.usedOffers.add(code);
     L.answer = await L.link.acceptOffer(code);
     if (L.link.relaySent) L.link.relaySent.then(() => { if (route().name === 'live' && L.phase === 'answer') render(); }).catch(() => {});
     // رموز صغيرة متتابعة بمربعات كبيرة: أسهل بكثير لكاميرا الكمبيوتر من رمز واحد كثيف
@@ -1765,58 +2004,78 @@ async function paintAnswerQR() {
 }
 function stopFrames() { clearInterval(L.frameTimer); L.frameTimer = null; }
 
-function liveNames(c) {
-  return c.names.map((nm, i) => {
-    if (L.scope.kind === 'student' && i !== L.scope.idx) return '';
-    return L.hideNames ? `طالب ${ar(i + 1)}` : nm;
-  });
-}
-function liveData(c) {
-  // نسخة للعرض فقط: لا ملاحظات المعلم ولا أي حقل آخر. للطالب الواحد: بياناته فقط.
-  const d = dataOf(c.id);
-  const only = L.scope.kind === 'student' ? L.scope.idx : null;
-  const pick = (obj) => {
-    const o = {};
-    for (const [i, val] of Object.entries(obj || {})) if (only == null || +i === only) o[i] = val;
-    return o;
-  };
-  const out = { weeks: {}, fin: pick(d.fin), t: d.t };
-  for (const [w, wk] of Object.entries(d.weeks || {})) {
-    out.weeks[w] = { date: wk.date || '', lesson: wk.lesson || '', s: pick(wk.s), abs: pick(wk.abs) };
-  }
-  return out;
-}
 function liveSend(msg) {
   if (L.link && L.state === 'connected') { try { L.link.send({ v: 1, ...msg }); } catch { /* تجاهل */ } }
 }
 function sendHello() {
   const c = cls(L.classId);
-  liveSend({ type: 'hello', teacher: S.settings.teacher, subject: S.settings.subject, classLabel: c ? c.label : '', criteria: CRIT.map((x) => x.label), finals: FINS.map((f) => ({ label: f.label, max: f.max })) });
+  liveSend({ type: 'hello', mode: L.mode, teacher: S.settings.teacher, subject: S.settings.subject, classLabel: L.mode === 'manage' ? '' : (c ? c.label : ''), criteria: CRIT.map((x) => x.label), finals: FINS.map((f) => ({ label: f.label, max: f.max })) });
 }
 function sendSnapshot() {
+  if (L.mode === 'manage') return;
   const c = cls(L.classId);
   if (!c) return;
-  liveSend({ type: 'snapshot', scope: { ...L.scope }, hideNames: L.hideNames, names: liveNames(c), data: liveData(c) });
+  const only = L.scope.kind === 'student' ? L.scope.idx : null;
+  liveSend({ type: 'snapshot', scope: { ...L.scope }, hideNames: L.hideNames, names: displayNames(c, L.hideNames, only), data: displayData(c, only) });
+}
+// وضع الإدارة: نسخة كاملة لتطبيق الكمبيوتر (في ذاكرته فقط)
+function sendState() {
+  if (S.dirty.size) flushSave();
+  liveSend({ type: 'state', classes: S.classes, grades: S.grades, settings: pickTeacher(S.settings), lastBackupAt: S.meta.lastBackupAt || null });
+}
+function manageSend(msg) {
+  if (L.mode === 'manage' && L.state === 'connected' && !L.applyingRemote) liveSend(msg);
+}
+// تعديل وصل من الكمبيوتر (يُقبل فقط في وضع الإدارة الذي فعّله المعلم من جواله)
+async function applyRemoteOp(m) {
+  if (L.mode !== 'manage') return;
+  L.applyingRemote = true;
+  try {
+    if (m.type === 'put-classes' && Array.isArray(m.classes)) {
+      const clean = m.classes.filter((c) => c && typeof c.id === 'string' && c.id.length < 40 && typeof c.label === 'string' && Array.isArray(c.names))
+        .slice(0, 100).map((c) => ({ id: c.id, label: c.label.slice(0, 100), names: c.names.slice(0, MAX_STUDENTS).map((x) => String(x ?? '').slice(0, 120)) }));
+      const ids = new Set(clean.map((c) => c.id));
+      for (const id of Object.keys(S.grades)) if (!ids.has(id)) { delete S.grades[id]; await localStore.deleteGrades(id); }
+      for (const c of clean) if (!S.grades[c.id]) { S.grades[c.id] = emptyClassData(); await localStore.saveGrades(c.id, S.grades[c.id]); }
+      S.classes = clean;
+      await localStore.saveClasses(S.classes);
+    } else if (m.type === 'put-grades' && typeof m.id === 'string' && cls(m.id)) {
+      S.grades[m.id] = localStore.sanitizeClassData(m.data);
+      await localStore.saveGrades(m.id, S.grades[m.id]);
+    } else if (m.type === 'del-grades' && typeof m.id === 'string') {
+      delete S.grades[m.id]; await localStore.deleteGrades(m.id);
+    } else if (m.type === 'put-settings' && m.settings) {
+      Object.assign(S.settings, pickTeacher(m.settings));
+      await localStore.saveSettings(S.settings);
+    } else return;
+    noteChange();
+    setSaveState('saved');
+    if (route().name !== 'live') softRender();
+  } finally { L.applyingRemote = false; }
 }
 function livePatchItems(classId, w, i) {
-  if (L.classId !== classId || L.state !== 'connected') return;
+  if (L.mode === 'manage' || L.classId !== classId || L.state !== 'connected') return;
   if (L.scope.kind === 'student' && L.scope.idx !== i) return;
-  liveSend({ type: 'patch', kind: 'items', week: w, idx: i, values: getItems(dataOf(classId), w, i), absent: isAbsent(dataOf(classId), w, i) });
+  const c = cls(classId); const o = displayOpts(c); const d = dataOf(classId);
+  liveSend({ type: 'patch', kind: 'items', week: w, idx: i, values: getItems(d, w, i), absent: isAbsent(d, w, i), star: o.stars && isStar(d, w, i), issue: o.issues && !o.hidden.has(i) && weekIssues(d, w, i).length > 0 });
 }
 function livePatchFin(classId, i) {
-  if (L.classId !== classId || L.state !== 'connected') return;
+  if (L.mode === 'manage' || L.classId !== classId || L.state !== 'connected') return;
   if (L.scope.kind === 'student' && L.scope.idx !== i) return;
   liveSend({ type: 'patch', kind: 'fin', idx: i, values: getFin(dataOf(classId), i) });
 }
 function livePatchMeta(classId, w) {
-  if (L.classId !== classId || L.state !== 'connected') return;
+  if (L.mode === 'manage' || L.classId !== classId || L.state !== 'connected') return;
   const m = getWeekMeta(dataOf(classId), w);
   liveSend({ type: 'patch', kind: 'meta', week: w, date: m.date, lesson: m.lesson });
 }
-function liveResync(classId) { if (L.classId === classId && L.state === 'connected') { sendHello(); sendSnapshot(); } }
+function liveResync(classId) { if (L.mode !== 'manage' && L.classId === classId && L.state === 'connected') { sendHello(); sendSnapshot(); } }
 function liveStop() {
   const link = L.link;
   L.link = null;
+  L.room = null; L.usedOffers = new Set();
+  if (L.resumeAbort) { L.resumeAbort.abort(); L.resumeAbort = null; }
+  if (platform.sharingStop) platform.sharingStop();
   L.state = 'idle'; L.phase = 'setup'; L.blank = false;
   if (link) { try { link.stop(); } catch { /* */ } }
   stopScanner(); stopFrames();
@@ -1872,6 +2131,15 @@ document.addEventListener('click', async (e) => {
     }
     case 'missing': S.ui.missingOnly = el.checked; rerenderList(); break;
     case 'undo-bulk': if (S.ui.undo) S.ui.undo.fn(); break;
+    case 'star': {
+      const c = cls(p.id); const w = p.tab; const i = +el.dataset.idx; const d = dataOf(c.id);
+      const on = !isStar(d, w, i);
+      setStar(d, w, i, on);
+      markDirty(c.id); livePatchItems(c.id, w, i); haptic(on ? 'success' : 'light');
+      el.classList.toggle('on', on); el.setAttribute('aria-pressed', on); el.textContent = on ? '★' : '☆';
+      if (on) toast(`⭐ ${c.names[i].split(' ')[0]}: نجمة تميّز في الأسبوع ${ar(w)}`);
+      break;
+    }
     case 'absent': {
       const c = cls(p.id); const w = p.tab; const i = +el.dataset.idx; const d = dataOf(c.id);
       const on = !isAbsent(d, w, i);
@@ -1897,7 +2165,9 @@ document.addEventListener('click', async (e) => {
       const ta = document.querySelector(`[data-note-input="${i}"]`);
       const text = (ta && ta.value || '').trim();
       if (!text) { toast('اكتب الملاحظة أولًا', { err: true }); break; }
-      addNote(dataOf(c.id), i, text); markDirty(c.id);
+      const iss = document.querySelector(`[data-note-issue="${i}"]`);
+      addNote(dataOf(c.id), i, text, new Date(), iss ? { week: +iss.dataset.week, issue: iss.checked } : {});
+      markDirty(c.id);
       toast('أُضيفت الملاحظة ✓');
       if (route().name === 'student') render(); else refreshAside();
       break;
@@ -1933,7 +2203,7 @@ document.addEventListener('click', async (e) => {
     case 'open-student': {
       const idx = +el.dataset.idx;
       if (ASIDE.matches && r.name === 'class') { S.ui.selected = { id: p.id, idx }; refreshAside(); }
-      else go('student', { id: p.id, idx });
+      else go('student', { id: p.id, idx, week: typeof p.tab === 'number' ? p.tab : null });
       break;
     }
     case 'close-aside': S.ui.selected = null; refreshAside(); break;
@@ -2004,6 +2274,9 @@ document.addEventListener('click', async (e) => {
     case 'pick-all': p.pick = el.dataset.v === '1' ? new Set(p.tr.students.map((_, i) => i)) : new Set(); render(); break;
     case 'apply-transfer': applyTransferUI(p); break;
     // العرض الحي
+    case 'live-mode': if (L.phase === 'setup' || L.phase === 'lost') { L.mode = el.dataset.v; render(); } break;
+    case 'issue-hide': showIssueHide(cls(el.dataset.id)); break;
+    case 'present': presentClass(el.dataset.id); break;
     case 'live-scope': L.scope = { kind: el.dataset.v, idx: L.scope.idx || 0 }; sendSnapshot(); render(); break;
     case 'live-scan': L.phase = 'scan'; render(); break;
     case 'live-cancel': stopScanner(); L.phase = 'setup'; render(); break;
@@ -2030,6 +2303,7 @@ document.addEventListener('click', async (e) => {
     case 'copy-view': if (await platform.copyText(S.settings.viewUrl || defaultViewUrl())) toast('نُسخ الرابط ✓'); break;
     case 'live-blank': L.blank = !L.blank; liveSend({ type: 'blank', on: L.blank }); haptic('light'); render(); break;
     case 'live-stop': liveStop(); render(); toast('أُوقف العرض'); break;
+    case 'live-stop-quick': liveStop(); renderShareBar(); toast('أُوقفت المشاركة'); break;
     case 'live-reset': L.phase = 'setup'; L.state = 'idle'; render(); break;
     default: break;
   }
@@ -2198,9 +2472,17 @@ document.addEventListener('change', async (e) => {
   if (t.matches('[data-pick-st]')) { const i = +t.dataset.pickSt; if (t.checked) r.p.pick.add(i); else r.p.pick.delete(i); render(); return; }
   if (t.matches('[data-tgt]')) { r.p.target = t.dataset.tgt; render(); return; }
   if (t.matches('[data-report-class]')) { S.ui.reportClass = t.value; render(); return; }
+  if (t.matches('[data-present-pick]')) { S.ui.presentPick = t.value; render(); return; }
   if (t.matches('[data-live="class"]')) { L.classId = t.value; L.scope.idx = 0; liveResync(L.classId); render(); return; }
   if (t.matches('[data-live="student"]')) { L.scope.idx = +t.value; sendSnapshot(); return; }
-  if (t.matches('[data-live="hide"]')) { L.hideNames = t.checked; sendSnapshot(); return; }
+  if (t.matches('[data-live="hide"]')) { L.hideNames = t.checked; sendSnapshot(); if (S.ui.presenting) presentClass(S.ui.presenting); return; }
+  if (t.matches('[data-live-opt]')) {
+    S.settings[t.dataset.liveOpt] = t.checked;
+    await saveSettingsNow();
+    sendSnapshot(); if (S.ui.presenting) presentClass(S.ui.presenting);
+    render();
+    return;
+  }
 });
 
 function onScoreInput(t, p) {
@@ -2307,7 +2589,17 @@ async function boot() {
     main().innerHTML = `<div class="wrap"><div class="alert err">${icon('warn')}<div class="grow"><strong>تعذّر فتح التخزين</strong><p>قد يكون المتصفح في وضع التصفح الخاص أو يمنع حفظ البيانات. افتح التطبيق في وضع عادي.</p></div></div></div>`;
     return;
   }
+  S.booted = true;
   applyTheme();
+  if (REMOTE) {
+    // على الكمبيوتر: لا تخزين، لا جولة، لا Service Worker — البيانات في الجوال
+    S.stack = [{ name: 'home', p: {} }];
+    history.replaceState({ depth: 1 }, '');
+    document.body.classList.add('remote');
+    render();
+    setSaveState(S.classes.length ? 'saved' : '');
+    return;
+  }
   if (S.meta.persist == null || S.meta.persist === 'denied') {
     store.requestPersist().then((st) => { S.meta.persist = st; store.setMeta('persist', st); }).catch(() => {});
   }

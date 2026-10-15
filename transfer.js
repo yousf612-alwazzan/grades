@@ -1,7 +1,7 @@
 // نقل الطلاب بين المعلمين (ملف نقل) أو بين صفين على نفس الجهاز. منطق صافٍ بلا DOM.
 import {
   WEEKS, ITEMS, ITEM_MAX, FIN_MAX, MAX_STUDENTS,
-  getItems, getFin, getWeekMeta, emptyClassData, cleanName, nameKey, remapData, isAbsent, getNotes,
+  getItems, getFin, getWeekMeta, emptyClassData, cleanName, nameKey, remapData, isAbsent, getNotes, noteShape, isStar,
 } from './grades-core.js';
 import { sanitizeScore, sanitizeNotes } from './store.js';
 
@@ -22,7 +22,9 @@ export function buildTransfer({ classLabel, names, data, idxs, settings }) {
     }
     const abs = [];
     for (let w = 1; w <= WEEKS; w++) if (isAbsent(data, w, i)) abs.push(w);
-    return { name: names[i], weeks, fin: getFin(data, i), abs, notes: getNotes(data, i) };
+    const star = [];
+    for (let w = 1; w <= WEEKS; w++) if (isStar(data, w, i)) star.push(w);
+    return { name: names[i], weeks, fin: getFin(data, i), abs, star, notes: getNotes(data, i) };
   });
   return {
     app: 'grades-transfer', v: 1, at: new Date().toISOString(),
@@ -82,8 +84,10 @@ export function parseTransfer(textOrObj) {
       const fin = FIN_MAX.map((m, i) => sanitizeScore(Array.isArray(s.fin) ? s.fin[i] : null, m));
       const abs = [...new Set((Array.isArray(s.abs) ? s.abs : []).map(Number))]
         .filter(n => Number.isInteger(n) && n >= 1 && n <= WEEKS).sort((a, b) => a - b);
+      const star = [...new Set((Array.isArray(s.star) ? s.star : []).map(Number))]
+        .filter(n => Number.isInteger(n) && n >= 1 && n <= WEEKS).sort((a, b) => a - b);
       const notes = sanitizeNotes({ 0: s.notes })?.[0] || [];
-      return { name: s.name.trim(), weeks, fin, abs, notes };
+      return { name: s.name.trim(), weeks, fin, abs, star, notes };
     });
   if (!students.length) throw new Error(ERR_EMPTY);
   const f = obj.from || {};
@@ -133,9 +137,13 @@ function appendStudents({ names, data }, transfer, pickIdxs, max) {
       (w.abs ||= {})[idx] = true;
       w.s[idx] = Array(ITEMS).fill(0); // الغائب درجاته أصفار
     }
+    for (const wk of st.star || []) {
+      const w = (outData.weeks[wk] ||= { date: '', lesson: '', s: {} });
+      (w.star ||= {})[idx] = true;
+    }
     if (Array.isArray(st.notes) && st.notes.length) {
       outData.notes ||= {};
-      outData.notes[idx] = st.notes.map(x => ({ t: x.t, text: x.text }));
+      outData.notes[idx] = st.notes.map(noteShape);
     }
     taken.push(p);
   }

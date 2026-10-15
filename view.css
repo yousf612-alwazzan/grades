@@ -512,3 +512,19 @@ textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 
 .grid tr.row-absent td { background: color-mix(in srgb, var(--error, #c0362c) 6%, transparent); }
 .waiting.error { color: var(--error); }
 .waiting.error .btn { margin-top: 12px; }
+.star-badge { display: inline-flex; align-items: center; gap: 2px; margin-inline-start: 8px; font-size: 1.05em; animation: starPop 600ms ease-out; }
+.star-badge small { font-size: .7em; font-weight: 800; }
+@keyframes starPop { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.3); } 100% { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .star-badge { animation: none; } }
+
+/* وضع الإدارة */
+.manage { position: fixed; inset: 0; top: var(--topbar-h, 64px); background: var(--bg); }
+.app.managing .topbar { position: relative; }
+.manage-frame { width: 100%; height: 100%; border: 0; display: block; background: var(--bg); }
+.manage-back { position: fixed; z-index: 40; inset-block-end: 20px; inset-inline-start: 20px; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+.issue-badge { margin-inline-start: 6px; }
+
+/* الرجوع التلقائي */
+.soft-pause { position: fixed; z-index: 45; inset-inline: 0; inset-block-end: 0; display: flex; align-items: center; justify-content: center; gap: 14px; padding: 12px 20px; background: var(--warning-soft, #fff4e5); color: var(--text); border-top: 1px solid var(--border); font-size: 1rem; }
+.soft-pause .spinner { width: 18px; height: 18px; }
+.manage.paused::after { content: 'انقطع الاتصال بالجوال — التعديل متوقف حتى يعود المعلم للتطبيق'; position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.45); color: #fff; font-size: 1.2rem; font-weight: 800; text-align: center; padding: 24px; }

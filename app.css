@@ -601,3 +601,45 @@ details.whats-new summary { font-weight: 800; cursor: pointer; min-height: 40px;
 details.advanced summary, details.whats-new summary { min-height: 48px; }
 .srow-name { min-height: 44px; }
 table.grid .abs-btn { min-height: 40px; }
+
+/* الإصدار ٢.٢: نجمة التميّز و❗ */
+.srow { grid-template-areas: "num name flags total" "num boxes boxes act"; }
+.row-flags { grid-area: flags; display: flex; gap: 6px; align-items: center; }
+.star-btn { min-width: 44px; min-height: 44px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--card); font-size: 22px; line-height: 1; color: var(--muted); }
+.star-btn.on { color: #e3a008; border-color: color-mix(in srgb, #e3a008 50%, var(--border)); background: color-mix(in srgb, #e3a008 14%, var(--card)); }
+.issue-mark { margin-inline-end: 4px; }
+.notes li.issue { background: var(--error-soft); }
+.issue-toggle { font-size: 14px; }
+@media (min-width: 460px) and (max-width: 899px) {
+  .srow { grid-template-columns: 26px minmax(0, 1fr) auto auto 40px 64px; grid-template-areas: "num name boxes flags total act"; }
+}
+
+/* ===== الإصدار ٢.٢: صفحة العرض بخطوات + وضع الإدارة ===== */
+.live-page .live-step { background: var(--card); border: 1px solid var(--border); border-radius: var(--r-card); padding: var(--s4); display: grid; gap: var(--s3); }
+.live-step h3 { margin: 0; display: flex; align-items: center; gap: 10px; font-size: 17px; }
+.step-n { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--primary); color: var(--primary-ink); font-size: 15px; font-weight: 800; flex: none; }
+.mode-grid { display: grid; gap: var(--s2); }
+.mode-card { display: flex; gap: var(--s3); align-items: center; text-align: start; padding: 14px; border-radius: 14px; border: 2px solid var(--border); background: var(--card); min-height: 76px; }
+.mode-card strong { display: block; font-size: 16px; }
+.mode-card small { display: block; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.mode-card.on { border-color: var(--primary); background: var(--primary-soft); }
+.mode-card:disabled { opacity: .45; }
+.mode-ico { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 12px; background: var(--chip); color: var(--primary); flex: none; }
+.mode-card.on .mode-ico { background: var(--primary); color: var(--primary-ink); }
+.manage-points { margin: 0; padding-inline-start: 20px; line-height: 2; }
+.opts-list .list-item { min-height: 60px; }
+.link-btn { border: 0; background: none; color: var(--primary); font-weight: 700; padding: 6px 2px; min-height: 40px; display: inline-flex; align-items: center; gap: 4px; }
+.flat-details summary { font-weight: 800; cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 8px; }
+.remote-bar { position: sticky; top: 0; z-index: 25; display: flex; align-items: center; gap: 8px; justify-content: center; padding: 8px 16px; background: var(--primary); color: var(--primary-ink); font-size: 14px; }
+.remote-bar svg.i { width: 18px; height: 18px; }
+body.remote .appbar { top: 38px; }
+@media (min-width: 700px) { .mode-grid { grid-template-columns: 1fr 1fr; } }
+
+/* شريط «المشاركة تعمل» في كل الصفحات */
+.share-bar { position: sticky; top: 0; z-index: 26; display: flex; align-items: center; gap: 8px; padding: calc(4px + var(--safe-t)) 12px 4px; background: var(--success-soft); color: var(--success); font-weight: 800; font-size: 13.5px; }
+.share-bar .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--success); animation: pulse 1.4s infinite; flex: none; }
+.share-bar.resuming, .share-bar.lost { background: var(--warning-soft); color: var(--warning); }
+.share-bar.resuming .dot, .share-bar.lost .dot { background: var(--warning); }
+.share-txt { flex: 1; border: 0; background: none; color: inherit; font-weight: 800; text-align: start; min-height: 36px; padding: 0; }
+.share-stop { border: 0; border-radius: 99px; background: var(--error); color: #fff; font-weight: 800; min-height: 36px; padding: 0 14px; }
+body:has(.share-bar) .appbar { top: 0; }

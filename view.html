@@ -121,6 +121,13 @@
 
     <!-- بطاقة طالب واحد بملء الصفحة -->
     <main class="solo" id="screen-solo" hidden></main>
+    <main class="manage" id="screen-manage" hidden></main>
+    <button class="btn primary manage-back" id="btn-manage-back" type="button" hidden>⟵ رجوع للإدارة</button>
+    <div class="soft-pause" id="soft-pause" role="status" aria-live="polite" hidden>
+      <span class="spinner" aria-hidden="true"></span>
+      <span><strong>المعلم خارج التطبيق مؤقتًا</strong> — يعود الاتصال تلقائيًا عند رجوعه</span>
+      <button class="btn ghost" id="btn-soft-end" type="button">إنهاء</button>
+    </div>
   </div>
 
   <!-- لوحة تفاصيل الطالب -->

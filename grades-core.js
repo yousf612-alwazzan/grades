@@ -149,20 +149,52 @@ export function attendanceSummary(data, n) {
 export const NOTE_MAX_LEN = 500;
 export const NOTES_PER_STUDENT = 200;
 
+// شكل الملاحظة: {t, text} + اختياريًا w (رقم الأسبوع) و issue (مشكلة تظهر ❗ عند اسمه في ذلك الأسبوع)
+export function noteShape(x) {
+  const o = { t: x.t, text: x.text };
+  const w = Number(x.w);
+  if (Number.isInteger(w) && w >= 1 && w <= WEEKS) o.w = w;
+  if (x.issue === true) o.issue = true;
+  return o;
+}
+
 export function getNotes(data, idx) {
   const list = data?.notes?.[idx];
-  return Array.isArray(list) ? list.map(x => ({ t: x.t, text: x.text })) : [];
+  return Array.isArray(list) ? list.map(noteShape) : [];
+}
+
+/** ملاحظات «مشكلة» مسجّلة على هذا الأسبوع */
+export function weekIssues(data, week, idx) {
+  return getNotes(data, idx).filter((n) => n.issue && n.w === Number(week));
+}
+
+// ----- نجمة التميّز (لكل أسبوع؛ تظهر على شاشة العرض) -----
+export function isStar(data, week, idx) {
+  return data?.weeks?.[String(week)]?.star?.[idx] === true;
+}
+export function setStar(data, week, idx, on) {
+  const wk = String(week);
+  data.weeks ||= {};
+  const w = (data.weeks[wk] ||= { date: '', lesson: '', s: {} });
+  if (on) { w.star ||= {}; w.star[idx] = true; }
+  else if (w.star) { delete w.star[idx]; if (!Object.keys(w.star).length) delete w.star; }
+  data.t = Date.now();
+}
+export function starCount(data, idx) {
+  let n = 0;
+  for (let w = 1; w <= WEEKS; w++) if (isStar(data, w, idx)) n++;
+  return n;
 }
 
 /** يضيف ملاحظة مؤرخة (تُقص لـ ٥٠٠ حرف). نص فارغ يُتجاهل → null. ترجع الملاحظة المضافة. */
-export function addNote(data, idx, text, now = new Date()) {
+export function addNote(data, idx, text, now = new Date(), opts = {}) {
   const clean = String(text ?? '').trim().slice(0, NOTE_MAX_LEN).trim();
   if (!clean) return null;
   data.notes ||= {};
   const list = (data.notes[idx] ||= []);
   let ms = now.getTime();
   while (list.some(x => x.t === new Date(ms).toISOString())) ms++; // t فريد لكل ملاحظة
-  const note = { t: new Date(ms).toISOString(), text: clean };
+  const note = noteShape({ t: new Date(ms).toISOString(), text: clean, w: opts.week, issue: !!opts.issue });
   list.push(note);
   if (list.length > NOTES_PER_STUDENT) list.splice(0, list.length - NOTES_PER_STUDENT);
   data.t = Date.now();
@@ -449,6 +481,9 @@ export function remapData(data, from) {
     const abs = {};
     from.forEach((old, i) => { if (old != null && w?.abs?.[old] === true) abs[i] = true; });
     if (Object.keys(abs).length) out.weeks[wk].abs = abs;
+    const star = {};
+    from.forEach((old, i) => { if (old != null && w?.star?.[old] === true) star[i] = true; });
+    if (Object.keys(star).length) out.weeks[wk].star = star;
   }
   from.forEach((old, i) => {
     const arr = old == null ? null : data?.fin?.[old];
@@ -457,7 +492,7 @@ export function remapData(data, from) {
   const notes = {};
   from.forEach((old, i) => {
     const list = old == null ? null : data?.notes?.[old];
-    if (Array.isArray(list) && list.length) notes[i] = list.map(x => ({ t: x.t, text: x.text }));
+    if (Array.isArray(list) && list.length) notes[i] = list.map(noteShape);
   });
   if (Object.keys(notes).length) out.notes = notes;
   return out;

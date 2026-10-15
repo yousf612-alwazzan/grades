@@ -548,6 +548,33 @@ class BaseLink {
     try { this.dc.send(JSON.stringify(obj)); return true; } catch { return false; }
   }
 
+  // إرسال رسالة (تُقسَّم تلقائيًا إن كانت كبيرة)
+  sendJSON(msg) {
+    if (!msg || typeof msg !== 'object') return false;
+    const text = JSON.stringify({ ...msg, v: PROTO });
+    if (text.length <= CHUNK) return this.rawSend({ ...msg, v: PROTO });
+    const id = Math.random().toString(36).slice(2, 10);
+    const n = Math.ceil(text.length / CHUNK);
+    let ok = true;
+    for (let i = 0; i < n; i++) ok = this.rawSend({ v: PROTO, type: 'part', id, i, n, d: text.slice(i * CHUNK, (i + 1) * CHUNK) }) && ok;
+    return ok;
+  }
+
+  // يجمع رسالة مقسّمة؛ يرجع الرسالة الكاملة عند اكتمالها وإلا null
+  assemble(msg) {
+    const id = String(msg.id || ''); const n = Number(msg.n); const i = Number(msg.i);
+    if (!id || !(n > 0 && n < 2000) || !(i >= 0 && i < n) || typeof msg.d !== 'string') return null;
+    this.parts ||= new Map();
+    const p = this.parts.get(id) || { n, got: new Map() };
+    p.got.set(i, msg.d);
+    this.parts.set(id, p);
+    if (p.got.size < p.n) return null;
+    this.parts.delete(id);
+    let text = '';
+    for (let k = 0; k < p.n; k++) text += p.got.get(k);
+    try { return JSON.parse(text); } catch { return null; }
+  }
+
   startHeartbeat() {
     this.stopHeartbeat();
     this.hb = setInterval(() => {
@@ -608,6 +635,9 @@ export class PhoneLink extends BaseLink {
     super(opts);
     this.droppedCount = 0;
     this.onWant = typeof opts.onWant === 'function' ? opts.onWant : null;
+    // وضع الإدارة: acceptData() يرجع true فقط إذا اختار المعلم «أدِر من الكمبيوتر» في جواله
+    this.acceptData = typeof opts.acceptData === 'function' ? opts.acceptData : null;
+    this.onData = typeof opts.onData === 'function' ? opts.onData : null;
     this.onRelay = typeof opts.onRelay === 'function' ? opts.onRelay : () => {};
     this.relayState = 'none'; // none | sending | sent | failed
     this.relaySent = Promise.resolve(false);
@@ -650,6 +680,7 @@ export class PhoneLink extends BaseLink {
         let ok = false;
         try {
           const room = { key: desc.relay.key, topic: desc.relay.topic || await relayTopic(desc.relay.key) };
+          this.room = room; // للرجوع التلقائي لاحقًا
           ok = await relayPost(room, answer, { signal: ac.signal }); // رمز الرد مشفّرًا فقط — لا درجات ولا أسماء
         } catch { ok = false; }
         if (this.relayAbort === ac) { this.relayAbort = null; this.setRelay(ok ? 'sent' : 'failed'); }
@@ -660,21 +691,18 @@ export class PhoneLink extends BaseLink {
   }
 
   receive(raw) {
-    const { control } = this.handleControl(raw);
-    if (!control) this.droppedCount++; // قراءة فقط: لا نقبل أي بيانات من الكمبيوتر
+    const { msg, control } = this.handleControl(raw);
+    if (control) return;
+    // وضع العرض (الافتراضي): قراءة فقط — نرفض أي بيانات من الكمبيوتر
+    const allowed = typeof this.acceptData === 'function' && this.acceptData();
+    if (!allowed || !msg) { this.droppedCount++; return; }
+    const full = msg.type === 'part' ? this.assemble(msg) : msg;
+    if (!full) return;
+    if (!MANAGE_TYPES.has(full.type)) { this.droppedCount++; return; }
+    try { this.onData && this.onData(full); } catch { /* */ }
   }
 
-  send(msg) {
-    if (!msg || typeof msg !== 'object') return false;
-    const text = JSON.stringify({ ...msg, v: PROTO });
-    if (text.length <= CHUNK) return this.rawSend({ ...msg, v: PROTO });
-    // رسالة كبيرة (لقطة شعبة كاملة): نقسمها لأجزاء صغيرة يجمعها الكمبيوتر
-    const id = Math.random().toString(36).slice(2, 10);
-    const n = Math.ceil(text.length / CHUNK);
-    let ok = true;
-    for (let i = 0; i < n; i++) ok = this.rawSend({ v: PROTO, type: 'part', id, i, n, d: text.slice(i * CHUNK, (i + 1) * CHUNK) }) && ok;
-    return ok;
-  }
+  send(msg) { return this.sendJSON(msg); }
 
   stop() {
     if (this.relayAbort) { this.relayAbort.abort(); this.relayAbort = null; }
@@ -690,9 +718,36 @@ export class PhoneLink extends BaseLink {
   }
 }
 
-const VIEW_TYPES = new Set(['hello', 'snapshot', 'patch', 'blank', 'bye']);
+const VIEW_TYPES = new Set(['hello', 'snapshot', 'patch', 'blank', 'bye', 'state', 'put-classes', 'put-grades', 'del-grades', 'put-settings']);
+// ما يقبله الجوال من الكمبيوتر في وضع الإدارة فقط
+export const MANAGE_TYPES = new Set(['put-classes', 'put-grades', 'del-grades', 'put-settings']);
 
-/** جهة الكمبيوتر: صاحب العرض، للقراءة فقط (لا يرسل إلا ping/pong). */
+/** يجلب أحدث «رمز عرض» نشره الكمبيوتر في الغرفة (مشفّرًا) ولم يُستعمل بعد. يحاول حتى timeoutMs. */
+export async function fetchLatestOffer(room, used = new Set(), { timeoutMs = 20000, signal } = {}) {
+const t0 = Date.now();
+while (Date.now() - t0 < timeoutMs) {
+  if (signal && signal.aborted) return null;
+  try {
+    const res = await fetch(relayUrl(room.topic) + '/json?poll=1&since=all', { cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer', signal });
+    if (res.ok) {
+      let latest = null;
+      for (const line of (await res.text()).split('\n')) {
+        if (!line.trim() || line.length > 8000) continue;
+        let ev; try { ev = JSON.parse(line); } catch { continue; }
+        if (!ev || ev.event !== 'message' || typeof ev.message !== 'string') continue;
+        let code; try { code = await relayDecrypt(room, ev.message); } catch { continue; }
+        try { if (decodeSignal(code).type !== 'offer') continue; } catch { continue; }
+        if (!used.has(code)) latest = code;
+      }
+      if (latest) return latest;
+    }
+  } catch { /* نحاول مجددًا */ }
+  await sleep(1200, signal);
+}
+return null;
+}
+
+/** جهة الكمبيوتر: صاحب العرض، في وضع العرض قراءة فقط؛ في وضع الإدارة يرسل تعديلات يقبلها الجوال فقط إن فعّلها المعلم. */
 export class ViewerLink extends BaseLink {
   constructor(opts = {}) {
     super(opts);
@@ -719,7 +774,7 @@ export class ViewerLink extends BaseLink {
 
   /** ينشئ رمز العرض. افتراضيًا يضع داخله غرفة وسيط (مفتاح عشوائي) ويبدأ انتظار الرد عبر الوسيط تلقائيًا.
    *  {relay:false} = رمز بلا وسيط (لصق يدوي فقط)، {autoRelay:false} = لا يبدأ الانتظار تلقائيًا (استدعِ waitForRelayAnswer). */
-  async createOffer({ relay = true, autoRelay = true } = {}) {
+  async createOffer({ relay = true, autoRelay = true, room: reuse = null, publish = false } = {}) {
     this.stopRelay();
     this.closeQuiet();
     this.stopped = false;
@@ -731,13 +786,16 @@ export class ViewerLink extends BaseLink {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     let room = null;
-    if (relay && relaySupported()) {
+    if (reuse) room = reuse; // إعادة الاتصال: نفس الغرفة ونفس المفتاح (الجوال يعرفهما)
+    else if (relay && relaySupported()) {
       try { room = await newRelayRoom(); } catch { room = null; }
     }
     await waitGathering(pc);
     const code = await encodeSignal(pc.localDescription, { relay: room });
     if (this.pc !== pc) return code; // أُلغي أثناء التجهيز
     this.room = room;
+    // ننشر الرمز الجديد مشفّرًا ليأخذه الجوال تلقائيًا عند رجوعه للتطبيق (بلا مسح QR)
+    if (room && publish) relayPost(room, code).catch(() => {});
     if (room && autoRelay) this.waitForRelayAnswer();
     return code;
   }
@@ -758,7 +816,7 @@ export class ViewerLink extends BaseLink {
     const live = () => !ac.signal.aborted && this.room === room && !this.stopped;
     const run = async () => {
       const t0 = Date.now();
-      const seen = new Set();
+      const seen = (room.seen ||= new Set());
       let since = 'all'; // الغرفة جديدة وعشوائية؛ «all» يتفادى فرق الساعة بين الكمبيوتر والخادم
       let fails = 0;
       while (live()) {
@@ -835,18 +893,7 @@ export class ViewerLink extends BaseLink {
     if (control || !msg) return;
     this.lastSeen = Date.now();
     if (msg.type === 'part') {
-      const id = String(msg.id || ''); const n = Number(msg.n); const i = Number(msg.i);
-      if (!id || !(n > 0 && n < 500) || !(i >= 0 && i < n) || typeof msg.d !== 'string') return;
-      this.parts ||= new Map();
-      const p = this.parts.get(id) || { n, got: new Map() };
-      p.got.set(i, msg.d);
-      this.parts.set(id, p);
-      if (p.got.size < p.n) return;
-      this.parts.delete(id);
-      let text = '';
-      for (let k = 0; k < p.n; k++) text += p.got.get(k);
-      let full;
-      try { full = JSON.parse(text); } catch { return; }
+      const full = this.assemble(msg);
       if (full && VIEW_TYPES.has(full.type)) this.deliver(full);
       return;
     }
@@ -860,6 +907,9 @@ export class ViewerLink extends BaseLink {
 
   // اطلب من الجوال إعادة إرسال البيانات (لا يحمل أي بيانات)
   requestData() { return this.rawSend({ v: PROTO, type: 'want' }); }
+
+  // وضع الإدارة: تعديل يُرسل للجوال (الجوال يرفضه إن لم يكن المعلم قد فعّل الإدارة)
+  sendOp(msg) { return MANAGE_TYPES.has(msg && msg.type) ? this.sendJSON(msg) : false; }
 
   stop() { this.stopRelay(); this.room = null; this.close(); }
 }

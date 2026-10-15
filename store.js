@@ -1,7 +1,7 @@
 // التخزين المحلي (IndexedDB) والنسخ الاحتياطي.
 // لا يُلمس indexedDB عند الاستيراد، لذا يمكن استيراد الدوال الصافية من Node.
 import CONFIG from './config.js';
-import { WEEKS, ITEMS, ITEM_MAX, FIN_MAX, emptyClassData, parseScore, round2, NOTE_MAX_LEN, NOTES_PER_STUDENT } from './grades-core.js';
+import { WEEKS, ITEMS, ITEM_MAX, FIN_MAX, emptyClassData, parseScore, round2, NOTE_MAX_LEN, NOTES_PER_STUDENT, noteShape } from './grades-core.js';
 
 const DB_NAME = 'grades-followup';
 const DB_VERSION = 1;
@@ -163,6 +163,8 @@ export function sanitizeClassData(raw) {
     out.weeks[String(n)] = { date: typeof w.date === 'string' ? w.date : '', lesson: typeof w.lesson === 'string' ? w.lesson : '', s };
     const abs = sanitizeAbs(w.abs);
     if (abs) out.weeks[String(n)].abs = abs;
+    const star = sanitizeAbs(w.star); // نفس الشكل: {idx: true}
+    if (star) out.weeks[String(n)].star = star;
   }
   for (const [idx, arr] of Object.entries(raw.fin || {})) {
     if (!/^\d+$/.test(idx) || !Array.isArray(arr)) continue;
@@ -190,7 +192,7 @@ export function sanitizeNotes(raw) {
     if (!/^\d+$/.test(idx) || !Array.isArray(list)) continue;
     const clean = list
       .filter(x => x && typeof x === 'object' && typeof x.text === 'string' && typeof x.t === 'string' && !Number.isNaN(Date.parse(x.t)))
-      .map(x => ({ t: x.t, text: x.text.trim().slice(0, NOTE_MAX_LEN) }))
+      .map(x => noteShape({ ...x, text: x.text.trim().slice(0, NOTE_MAX_LEN) }))
       .filter(x => x.text)
       .slice(-NOTES_PER_STUDENT);
     if (clean.length) out[idx] = clean;

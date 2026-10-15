@@ -203,7 +203,7 @@ function startDataWatch() {
   const started = Date.now();
   ui.waitError = null;
   dataTimer = setInterval(() => {
-    if (!link || model || ui.connState !== 'connected') { clearInterval(dataTimer); return; }
+    if (!link || model || mirror || ui.connState !== 'connected') { clearInterval(dataTimer); return; }
     link.requestData();
     if (Date.now() - started > 12000 && !ui.waitError) { ui.waitError = 'timeout'; renderEmptyWaiting(); }
   }, 2000);
@@ -251,6 +251,7 @@ function onConnState(s) {
   if (s === 'connected') {
     wakeLock(true);
     hideBanner();
+    setSoftPause(false);
     if (!model) startDataWatch();
     if (ui.screen === 'pair') {
       closeModals();
@@ -258,6 +259,9 @@ function onConnState(s) {
       setScreen(model ? (isSolo() ? 'solo' : 'live') : 'live');
       render();
     }
+  } else if (s === 'disconnected' && !ui.ended && (model || mirror) && link && link.room) {
+    // الجوال خرج من التطبيق (واتساب مثلًا): نُبقي آخر عرض ونعيد الاتصال تلقائيًا بنفس المفتاح
+    autoResume();
   } else if (s === 'disconnected' || s === 'closed') {
     if (ui.screen !== 'pair' || model) {
       showBanner(ui.ended);
@@ -282,8 +286,19 @@ function hideBanner() {
   document.body.classList.remove('has-banner');
 }
 
+// وضع الإدارة: نسخة في الذاكرة فقط من بيانات الجوال (تُمسح عند الإغلاق أو قطع الاتصال)
+let mirror = null;      // {classes, grades, settings}
+let manageFrame = null; // إطار التطبيق الكامل (index.html?remote)
+let presenting = false;
+
 function wipe() {
   model = null; hello = null;
+  mirror = null; presenting = false;
+  if ($('soft-pause')) setSoftPause(false);
+  if (manageFrame) { manageFrame.remove(); manageFrame = null; }
+  $('screen-manage').innerHTML = '';
+  $('btn-manage-back').hidden = true;
+  ui.mode = 'display';
   ui.drawerIdx = null; ui.blank = false;
   closeDrawer();
   $('blank').hidden = true;
@@ -314,6 +329,9 @@ function setScreen(s) {
   $('screen-pair').hidden = s !== 'pair';
   $('screen-live').hidden = s !== 'live';
   $('screen-solo').hidden = s !== 'solo';
+  $('screen-manage').hidden = s !== 'manage';
+  $('btn-manage-back').hidden = !(presenting && s !== 'manage' && s !== 'pair');
+  $('app').classList.toggle('managing', s === 'manage');
   const connected = s !== 'pair';
   $('zoom-group').hidden = !connected || ui.ended;
   $('btn-disconnect').hidden = !connected || ui.ended;
@@ -339,7 +357,11 @@ function sanitizeData(d) {
     }
     const abs = {};
     for (const [i, on] of Object.entries(w.abs || {})) if (/^\d+$/.test(i) && on === true) abs[i] = true;
-    out.weeks[String(Number(wk))] = { date: String(w.date || '').slice(0, 40), lesson: String(w.lesson || '').slice(0, 200), s, abs };
+    const star = {};
+    for (const [i, on] of Object.entries(w.star || {})) if (/^\d+$/.test(i) && on === true) star[i] = true;
+    const issue = {};
+    for (const [i, on] of Object.entries(w.issue || {})) if (/^\d+$/.test(i) && on === true) issue[i] = true;
+    out.weeks[String(Number(wk))] = { date: String(w.date || '').slice(0, 40), lesson: String(w.lesson || '').slice(0, 200), s, abs, star, issue };
   }
   for (const [i, arr] of Object.entries(d?.fin || {})) {
     if (!/^\d+$/.test(i) || !Array.isArray(arr)) continue;
@@ -351,7 +373,22 @@ function sanitizeData(d) {
 function onMessage(m) {
   if (!m || typeof m !== 'object') return;
   switch (m.type) {
+    case 'state': {
+      if (ui.mode !== 'manage') return;
+      mirror = { classes: Array.isArray(m.classes) ? m.classes : [], grades: m.grades && typeof m.grades === 'object' ? m.grades : {}, settings: m.settings || {}, lastBackupAt: m.lastBackupAt || null };
+      openManage();
+      toFrame(m);
+      break;
+    }
+    case 'put-classes': case 'put-grades': case 'del-grades': case 'put-settings': {
+      if (ui.mode !== 'manage' || !mirror) return;
+      applyMirror(m);
+      toFrame(m);
+      if (presenting && m.type === 'put-grades') toFrame({ type: 'represent' });
+      break;
+    }
     case 'hello': {
+      ui.mode = m.mode === 'manage' ? 'manage' : 'display';
       hello = {
         teacher: String(m.teacher || '').slice(0, 120),
         subject: String(m.subject || '').slice(0, 120),
@@ -414,6 +451,10 @@ function applyPatch(m) {
     d.weeks[wk].s[idx] = CONFIG.criteria.map((_, k) => cleanNum(m.values[k], CONFIG.itemMax));
     d.weeks[wk].abs ||= {};
     if (m.absent === true) d.weeks[wk].abs[idx] = true; else delete d.weeks[wk].abs[idx];
+    d.weeks[wk].star ||= {};
+    if (m.star === true) d.weeks[wk].star[idx] = true; else delete d.weeks[wk].star[idx];
+    d.weeks[wk].issue ||= {};
+    if (m.issue === true) d.weeks[wk].issue[idx] = true; else delete d.weeks[wk].issue[idx];
     return true;
   }
   if (m.kind === 'fin') {
@@ -487,7 +528,13 @@ function renderGrid() {
   let body = '';
   const numTh = `<th class="col-num sticky-a" scope="col">${sortHeader('num', 'م')}</th>`;
   const nameTh = `<th class="col-name sticky-b" scope="col">${sortHeader('name', 'الاسم')}</th>`;
-  const nameCell = (i) => `<td class="col-num sticky-a">${ar(i + 1)}</td><th class="col-name sticky-b" scope="row"><span class="name">${esc(model.names[i]) || '<span class="muted">—</span>'}</span></th>`;
+  const stars = (i) => {
+    if (ui.view === 'week') return (issueAt(d, ui.week, i) ? '<span class="issue-badge" title="تنبيه">❗</span>' : '') + (starAt(d, ui.week, i) ? '<span class="star-badge" title="نجمة تميّز">⭐</span>' : '');
+    let n = 0; for (let w = 1; w <= WEEKS; w++) if (starAt(d, w, i)) n++;
+    let k = 0; for (let w = 1; w <= WEEKS; w++) if (issueAt(d, w, i)) k++;
+    return (k ? '<span class="issue-badge" title="تنبيه">❗</span>' : '') + (n ? `<span class="star-badge" title="نجوم التميّز">⭐${n > 1 ? `<small>${ar(n)}</small>` : ''}</span>` : '');
+  };
+  const nameCell = (i) => `<td class="col-num sticky-a">${ar(i + 1)}</td><th class="col-name sticky-b" scope="row"><span class="name">${esc(model.names[i]) || '<span class="muted">—</span>'}</span>${stars(i)}</th>`;
 
   if (ui.view === 'summary') {
     let wk = '';
@@ -531,6 +578,77 @@ function renderGrid() {
   }
   if (!n) body = `<tr><td class="empty-row" colspan="30">لا يوجد طلاب في هذا الصف بعد.</td></tr>`;
   return `<table class="grid view-${ui.view}" aria-rowcount="${n}"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+}
+
+function issueAt(d, w, i) { return !!(d.weeks[String(w)] && d.weeks[String(w)].issue && d.weeks[String(w)].issue[i]); }
+function starAt(d, w, i) { return !!(d.weeks[String(w)] && d.weeks[String(w)].star && d.weeks[String(w)].star[i]); }
+// ===== الرجوع التلقائي =====
+function setSoftPause(on) {
+  ui.paused = on;
+  $('soft-pause').hidden = !on;
+  $('screen-manage').classList.toggle('paused', on);
+}
+async function autoResume() {
+  const old = link;
+  const room = old && old.room;
+  if (!room) return;
+  setSoftPause(true);
+  link = makeLink();
+  if (E2E && window.__e2e) window.__e2e.link = link;
+  try { old.stopRelay && old.stopRelay(); old.closeQuiet ? old.closeQuiet() : old.stop(); } catch { /* */ }
+  try {
+    await link.createOffer({ room, publish: true });
+  } catch {
+    setSoftPause(false);
+    showBanner(false);
+  }
+}
+
+// ===== وضع الإدارة: التطبيق الكامل داخل إطار، والجوال هو مصدر البيانات =====
+function openManage() {
+  if (!manageFrame) {
+    manageFrame = document.createElement('iframe');
+    manageFrame.src = 'index.html?remote=1';
+    manageFrame.title = 'إدارة التطبيق';
+    manageFrame.className = 'manage-frame';
+    $('screen-manage').innerHTML = '';
+    $('screen-manage').appendChild(manageFrame);
+  }
+  if (!presenting) setScreen('manage');
+}
+function toFrame(msg) {
+  if (manageFrame && manageFrame.contentWindow) manageFrame.contentWindow.postMessage({ gfu: 'phone', msg }, location.origin);
+}
+function applyMirror(m) {
+  if (!mirror) return;
+  if (m.type === 'put-classes' && Array.isArray(m.classes)) mirror.classes = m.classes;
+  if (m.type === 'put-grades' && m.id) mirror.grades[m.id] = m.data;
+  if (m.type === 'del-grades' && m.id) delete mirror.grades[m.id];
+  if (m.type === 'put-settings' && m.settings) mirror.settings = { ...mirror.settings, ...m.settings };
+}
+window.addEventListener('message', (e) => {
+  if (e.origin !== location.origin || !manageFrame || e.source !== manageFrame.contentWindow) return;
+  const d = e.data;
+  if (!d || typeof d !== 'object') return;
+  if (d.gfu === 'ready') { if (mirror) toFrame({ type: 'state', ...mirror }); return; }
+  if (d.gfu === 'op' && d.msg && link) { applyMirror(d.msg); link.sendOp(d.msg); return; }
+  if (d.gfu === 'present') {
+    // عرض للطلاب من وضع الإدارة: بيانات العرض فقط (بلا ملاحظات)
+    presenting = true;
+    const names = Array.isArray(d.names) ? d.names.map((x) => String(x ?? '').slice(0, 120)) : [];
+    model = { names, data: sanitizeData(d.data), scope: { kind: 'class' }, hideNames: !!d.hideNames };
+    hello = { ...(hello || {}), classLabel: String(d.label || '').slice(0, 120) };
+    prevCells = null; closeDrawer();
+    renderHeader();
+    setScreen('live');
+    render(true);
+    return;
+  }
+});
+function backToManage() {
+  presenting = false;
+  model = null;
+  setScreen('manage');
 }
 
 function absentAt(d, w, i) { return !!(d.weeks[String(w)] && d.weeks[String(w)].abs && d.weeks[String(w)].abs[i]); }
@@ -824,6 +942,8 @@ function bind() {
   $('zoom-in').addEventListener('click', () => setZoom(ui.zoom + 0.1));
   $('zoom-out').addEventListener('click', () => setZoom(ui.zoom - 0.1));
   $('btn-disconnect').addEventListener('click', disconnect);
+  $('btn-manage-back').addEventListener('click', backToManage);
+  $('btn-soft-end').addEventListener('click', () => { setSoftPause(false); if (link) link.stop(); link = null; backToPairing(); });
   $('btn-reconnect').addEventListener('click', () => { if (link) link.stop(); link = null; backToPairing(); });
   $('paste-submit').addEventListener('click', submitPaste);
   $('paste-input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitPaste(); } });
