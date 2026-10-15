@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; media-src 'self' blob: mediastream:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://ntfy.sh; media-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="robots" content="noindex">
   <title>شاشة العرض — متابعة الدرجات</title>
@@ -64,42 +64,46 @@
       <section class="pair-steps" aria-labelledby="pair-title">
         <p class="eyebrow">اعرض درجات الصف على الشاشة الكبيرة</p>
         <h1 id="pair-title">اربط جوالك بهذه الشاشة</h1>
-        <p class="lead">اتصال مباشر بين الجوال وهذا الكمبيوتر، بدون حساب وبدون رفع أي بيانات.</p>
+        <p class="lead">امسح الرمز بالجوال مرة واحدة، ويتصل الكمبيوتر تلقائيًا. لا حاجة لكاميرا في الكمبيوتر.</p>
         <ol class="steps">
-          <li><span class="step-num">١</span><div><strong>افتح «عرض على الكمبيوتر» في الجوال</strong><span>من صفحة الصف في تطبيق متابعة الدرجات.</span></div></li>
-          <li><span class="step-num">٢</span><div><strong>امسح هذا الرمز بكاميرا التطبيق</strong><span>إن ظهر الرمز على أجزاء، أبقِ الجوال موجّهًا حتى تكتمل كلها.</span></div></li>
-          <li><span class="step-num">٣</span><div><strong>اضغط «مسح الرد» ووجّه شاشة الجوال للكاميرا</strong><span>أو انسخ الرد من الجوال واضغط «لصق الرد».</span></div></li>
+          <li><span class="step-num">١</span><div><strong>افتح تبويب «العرض» في تطبيق الجوال</strong><span>من صفحة الصف في تطبيق متابعة الدرجات.</span></div></li>
+          <li><span class="step-num">٢</span><div><strong>اضغط «امسح رمز الكمبيوتر» ووجّه الكاميرا لهذا الرمز</strong><span>أبقِ الجوال ثابتًا على بُعد خطوة من الشاشة حتى يُقرأ الرمز.</span></div></li>
+          <li><span class="step-num">٣</span><div><strong>انتظر — يتصل الكمبيوتر تلقائيًا</strong><span>تظهر درجات الصف هنا خلال ثوانٍ.</span></div></li>
         </ol>
         <details class="help" id="help">
           <summary><span class="help-icon" aria-hidden="true"></span>مشاكل الاتصال؟</summary>
-          <ul>
-            <li><strong>نفس الشبكة:</strong> وصّل الجوال والكمبيوتر بشبكة الـ Wi‑Fi نفسها.</li>
-            <li><strong>شبكة المدرسة تمنع الاتصال؟</strong> بعض شبكات المدارس تمنع اتصال الأجهزة ببعضها. شغّل «نقطة الاتصال» في الجوال ووصّل الكمبيوتر بها، ثم اضغط «رمز جديد».</li>
-            <li><strong>خادم TURN:</strong> إن استمرت المشكلة يمكن إضافة خادم TURN من إعدادات تطبيق الجوال (العرض الحي).</li>
-            <li><strong>لا توجد كاميرا في الكمبيوتر؟</strong> استخدم «نسخ رمز العرض» وأرسله إلى الجوال، ثم «لصق الرد».</li>
-          </ul>
+          <div class="help-body">
+            <ul>
+              <li><strong>نفس الشبكة:</strong> وصّل الجوال والكمبيوتر بشبكة الـ Wi‑Fi نفسها، أو شغّل «نقطة الاتصال» في الجوال ووصّل الكمبيوتر بها، ثم اضغط «رمز جديد».</li>
+              <li><strong>لم يتصل بعد المسح؟</strong> تأكد أن الجوال متصل بالإنترنت لحظة المسح، ثم اضغط «رمز جديد» وامسحه مرة أخرى.</li>
+              <li><strong>خادم TURN:</strong> إن كانت شبكة المدرسة تمنع اتصال الأجهزة ببعضها يمكن إضافة خادم TURN من إعدادات تطبيق الجوال (العرض الحي).</li>
+            </ul>
+            <div class="manual">
+              <div class="manual-text">
+                <strong>بدون إنترنت؟ اربط يدويًا</strong>
+                <span>انسخ «رمز الرد» من الجوال (عبر الرسائل أو البريد) والصقه هنا.</span>
+              </div>
+              <div class="manual-actions">
+                <button class="btn" id="btn-paste" type="button"></button>
+                <button class="btn ghost" id="btn-copy" type="button"></button>
+              </div>
+            </div>
+          </div>
         </details>
-        <p class="privacy"><span class="lock-icon" aria-hidden="true"></span>لا يُحفظ أي شيء على هذا الكمبيوتر. تُمسح البيانات فور إغلاق الصفحة أو قطع الاتصال.</p>
+        <p class="privacy"><span class="lock-icon" aria-hidden="true"></span><span>المصافحة تمر عبر وسيط مشفّر، والدرجات تصل من الجوال إلى هذه الشاشة مباشرة ولا تُحفظ على الكمبيوتر — تُمسح فور إغلاق الصفحة أو قطع الاتصال.</span></p>
       </section>
 
       <section class="qr-card card" aria-label="رمز الاقتران">
         <div class="qr-head">
-          <span class="qr-title">رمز العرض</span>
+          <span class="qr-title">رمز الكمبيوتر</span>
           <span class="qr-frame" id="qr-frame" hidden></span>
+          <button class="btn ghost" id="btn-new" type="button"></button>
         </div>
         <div class="qr-box" id="qr-box">
           <canvas id="qr-canvas" width="360" height="360" aria-label="رمز QR للاقتران" role="img"></canvas>
           <div class="qr-loading" id="qr-loading"><span class="spinner" aria-hidden="true"></span><span>جارٍ تجهيز الرمز…</span></div>
         </div>
-        <p class="qr-status" id="pair-status" role="status" aria-live="polite">جاهز للمسح</p>
-        <div class="qr-actions">
-          <button class="btn primary big" id="btn-scan" type="button"></button>
-          <button class="btn big" id="btn-paste" type="button"></button>
-        </div>
-        <div class="qr-actions secondary">
-          <button class="btn ghost" id="btn-copy" type="button"></button>
-          <button class="btn ghost" id="btn-new" type="button"></button>
-        </div>
+        <p class="qr-status" id="pair-status" role="status" aria-live="polite" data-kind=""><span class="status-dot" aria-hidden="true"></span><span id="pair-status-text">جارٍ تجهيز الرمز…</span></p>
       </section>
     </main>
 
@@ -122,32 +126,6 @@
   <!-- لوحة تفاصيل الطالب -->
   <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
   <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden></aside>
-
-  <!-- نافذة مسح الرد -->
-  <div class="modal-backdrop" id="modal-scan" hidden>
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="scan-title">
-      <div class="modal-head">
-        <h2 id="scan-title">مسح الرد من الجوال</h2>
-        <button class="btn ghost icon-only" type="button" data-close aria-label="إغلاق"></button>
-      </div>
-      <div class="scan-body">
-        <div class="video-box">
-          <video id="scan-video" playsinline muted></video>
-          <div class="scan-frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-          <div class="scan-error" id="scan-error" hidden></div>
-        </div>
-        <div class="scan-side">
-          <ol class="mini-steps">
-            <li>في الجوال، بعد مسح رمز العرض سيظهر «رمز الرد».</li>
-            <li>وجّه شاشة الجوال نحو كاميرا هذا الكمبيوتر على بُعد ٢٠–٤٠ سم.</li>
-            <li>ارفع سطوع الجوال وأبقه ثابتًا حتى يكتمل المسح.</li>
-          </ol>
-          <div class="scan-progress" id="scan-progress" role="status" aria-live="polite">بانتظار الرمز…</div>
-          <button class="btn" type="button" id="scan-to-paste">لا توجد كاميرا؟ الصق الرد بدلًا من ذلك</button>
-        </div>
-      </div>
-    </div>
-  </div>
 
   <!-- نافذة لصق الرد -->
   <div class="modal-backdrop" id="modal-paste" hidden>

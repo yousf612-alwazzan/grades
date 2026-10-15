@@ -1,5 +1,7 @@
-// العرض الحي: اتصال مباشر بين الجوال والكمبيوتر عبر WebRTC DataChannel بدون أي خادم.
-// الإشارة (offer/answer) تُنقل برمز QR مضغوط أو بالنسخ واللصق.
+// العرض الحي: اتصال مباشر بين الجوال والكمبيوتر عبر WebRTC DataChannel.
+// الإشارة: رمز العرض (offer) يُنقل برمز QR من شاشة الكمبيوتر إلى الجوال. رمز الرد (answer) يعود للكمبيوتر
+// عبر «وسيط المصافحة» (ntfy.sh) مشفّرًا بـ AES-GCM بمفتاح عشوائي لا يوجد إلا داخل QR — أو بالنسخ واللصق احتياطًا.
+// الوسيط لا يرى إلا نصًا مشفّرًا لرد الاتصال؛ الدرجات والأسماء لا تمر عبره أبدًا (تمر مباشرة عبر قناة WebRTC).
 // الكمبيوتر (view.html) = صاحب العرض (offerer)، والجوال = المجيب (answerer) وهو مصدر البيانات الوحيد.
 // أمان: الجوال يتجاهل كل رسالة واردة عدا ping/pong (القراءة فقط مفروضة من جهة الجوال).
 import CONFIG from './config.js';
@@ -11,6 +13,13 @@ const DEAD_MS = 12000;
 const GATHER_MS = 4000;
 const MAX_CANDS = 4;
 const BAD_CODE = 'رمز الاتصال غير صالح أو ناقص. أعد المسح أو انسخ الرمز كاملًا مرة أخرى.';
+
+// ---------- وسيط المصافحة (رد الاتصال فقط، مشفّرًا) ----------
+export const RELAY = 'https://ntfy.sh';
+const RELAY_TIMEOUT_MS = 10 * 60 * 1000; // صلاحية رمز العرض للوسيط
+const RELAY_POSTS = 3; // محاولات إرسال الرد من الجوال
+const RELAY_FAILS = 3; // إخفاقات متتالية قبل إبلاغ «تعذّر الوصول للوسيط»
+const RELAY_MSG = 'g1.'; // بادئة صيغة الرسالة المشفّرة
 
 // ---------- تحميل المكتبات المضمّنة (سكربتات كلاسيكية تضع متغيرات عامة) ----------
 const vendorUrl = (f) => new URL(`./vendor/${f}`, import.meta.url).href;
@@ -130,8 +139,9 @@ function parseSdp(sdp) {
   return r;
 }
 
-/** يحوّل وصف الجلسة إلى رمز قصير (JSON مضغوط → base64url). */
-export async function encodeSignal(desc) {
+/** يحوّل وصف الجلسة إلى رمز قصير (JSON مضغوط → base64url).
+ *  relay (اختياري، لرمز العرض فقط): {key: base64url لمفتاح ٣٢ بايت, topic?} — يُضاف كحقل k (و r إن لم يكن الاسم مشتقًا من المفتاح). */
+export async function encodeSignal(desc, { relay } = {}) {
   await loadScript('fflate.min.js', 'fflate');
   if (!desc || !desc.sdp || (desc.type !== 'offer' && desc.type !== 'answer')) throw new Error(BAD_CODE);
   const r = parseSdp(desc.sdp);
@@ -139,6 +149,10 @@ export async function encodeSignal(desc) {
   const fp = new Uint8Array(r.f.split(':').map((h) => parseInt(h, 16)));
   const obj = { v: PROTO, t: desc.type === 'offer' ? 'o' : 'a', u: r.u, p: r.p, f: bytesToB64(fp), s: r.s || (desc.type === 'offer' ? 'actpass' : 'active'), c: pickCandidates(r.cands).map(compactCand) };
   if (r.m && r.m !== '0') obj.m = r.m;
+  if (relay && relay.key && obj.t === 'o') {
+    obj.k = relay.key;
+    if (relay.topic && relay.topic !== await relayTopic(relay.key)) obj.r = relay.topic;
+  }
   const json = new TextEncoder().encode(JSON.stringify(obj));
   return toUrl(bytesToB64(window.fflate.deflateSync(json, { level: 9 })));
 }
@@ -216,7 +230,13 @@ export function decodeSignal(code) {
     'a=max-message-size:262144',
     '',
   ].join('\r\n');
-  return { type: o.t === 'o' ? 'offer' : 'answer', sdp };
+  const out = { type: o.t === 'o' ? 'offer' : 'answer', sdp };
+  // معلومات الوسيط (اختيارية): مفتاح ٢٥٦ بت + اسم غرفة اختياري. الرموز القديمة بدونها تبقى صالحة.
+  if (out.type === 'offer' && typeof o.k === 'string' && /^[A-Za-z0-9_-]{43}$/.test(o.k)) {
+    out.relay = { key: o.k };
+    if (typeof o.r === 'string' && /^gfu-[A-Za-z0-9_-]{8,64}$/.test(o.r)) out.relay.topic = o.r;
+  }
+  return out;
 }
 
 // ---------- QR متعدد الإطارات ----------
@@ -392,6 +412,75 @@ export class QrScanner {
   }
 }
 
+// ---------- وسيط المصافحة: تشفير وإرسال واستقبال ----------
+const subtle = () => (typeof crypto !== 'undefined' && crypto.subtle) || null;
+export const relaySupported = () => !!(subtle() && typeof fetch === 'function' && typeof AbortController === 'function');
+const enc = (s) => new TextEncoder().encode(s);
+const sleep = (ms, signal) => new Promise((res) => {
+  if (signal && signal.aborted) { res(); return; }
+  const done = () => { clearTimeout(t); if (signal) signal.removeEventListener('abort', done); res(); };
+  const t = setTimeout(done, ms);
+  if (signal) signal.addEventListener('abort', done);
+});
+
+/** اسم الغرفة مشتق من المفتاح (SHA-256) حتى لا يكبر QR: 'gfu-' + ٢٤ حرفًا ست عشريًا. لا يكشف المفتاح. */
+export async function relayTopic(keyB64) {
+  const h = new Uint8Array(await subtle().digest('SHA-256', enc('gfu-topic:' + keyB64)));
+  return 'gfu-' + [...h.subarray(0, 12)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+/** ينشئ غرفة جديدة: مفتاح AES-GCM عشوائي ٢٥٦ بت (base64url) + اسم الغرفة. */
+export async function newRelayRoom() {
+  const key = toUrl(bytesToB64(crypto.getRandomValues(new Uint8Array(32))));
+  return { key, topic: await relayTopic(key) };
+}
+function importKey(keyB64) {
+  const raw = b64ToBytes(fromUrl(String(keyB64 || '')));
+  if (raw.length !== 32) throw new Error(BAD_CODE);
+  return subtle().importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+}
+/** تشفير AES-GCM (IV عشوائي ١٢ بايت، واسم الغرفة كبيانات مصادَقة) → 'g1.' + base64url(iv ‖ ciphertext). */
+export async function relayEncrypt(room, text) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const k = await importKey(room.key);
+  const ct = new Uint8Array(await subtle().encrypt({ name: 'AES-GCM', iv, additionalData: enc(room.topic) }, k, enc(String(text))));
+  const all = new Uint8Array(12 + ct.length);
+  all.set(iv);
+  all.set(ct, 12);
+  return RELAY_MSG + toUrl(bytesToB64(all));
+}
+/** فك التشفير؛ يرمي خطأ إن كانت الرسالة تالفة أو بمفتاح/غرفة أخرى. */
+export async function relayDecrypt(room, msg) {
+  const s = String(msg || '');
+  if (!s.startsWith(RELAY_MSG) || s.length > 4000) throw new Error('bad relay message');
+  const all = b64ToBytes(fromUrl(s.slice(RELAY_MSG.length)));
+  if (all.length < 12 + 16) throw new Error('bad relay message');
+  const k = await importKey(room.key);
+  const pt = await subtle().decrypt({ name: 'AES-GCM', iv: all.subarray(0, 12), additionalData: enc(room.topic) }, k, all.subarray(12));
+  return new TextDecoder().decode(pt);
+}
+const relayUrl = (topic) => `${RELAY}/${encodeURIComponent(topic)}`;
+
+/** يرسل نصًا مشفّرًا إلى الغرفة. طلب «بسيط» (نص، بلا ترويسات خاصة) فلا يحتاج CORS preflight. */
+async function relayPost(room, text, { tries = RELAY_POSTS, signal } = {}) {
+  const body = await relayEncrypt(room, text);
+  for (let i = 0; i < tries; i++) {
+    if (signal && signal.aborted) return false;
+    try {
+      const res = await fetch(relayUrl(room.topic), { method: 'POST', body, cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer', signal });
+      if (res.ok) return true;
+    } catch { /* شبكة */ }
+    if (i + 1 < tries) await sleep(800 * (i + 1), signal);
+  }
+  return false;
+}
+
+/** فترة الاستطلاع: سريعة أولًا ثم أبطأ (حد الطلبات المجاني في ntfy.sh ≈ ٦٠ دفعة ثم طلب كل ٥ ث). */
+function pollDelay(elapsed) {
+  if (elapsed < 45_000) return 1500;
+  if (elapsed < 165_000) return 3000;
+  return 5000;
+}
+
 // ---------- مساعدات WebRTC ----------
 function waitGathering(pc, ms = GATHER_MS) {
   if (pc.iceGatheringState === 'complete') return Promise.resolve();
@@ -505,8 +594,19 @@ export class PhoneLink extends BaseLink {
   constructor(opts = {}) {
     super(opts);
     this.droppedCount = 0;
+    this.onRelay = typeof opts.onRelay === 'function' ? opts.onRelay : () => {};
+    this.relayState = 'none'; // none | sending | sent | failed
+    this.relaySent = Promise.resolve(false);
+    this.relayAbort = null;
   }
 
+  setRelay(s) {
+    this.relayState = s;
+    try { this.onRelay(s); } catch { /* */ }
+  }
+
+  /** يقبل رمز العرض ويعيد رمز الرد (للنسخ اليدوي احتياطًا). إن احتوى الرمز على غرفة وسيط يُرسل الرد إليها
+   *  مشفّرًا في الخلفية: تابع relayState / relaySent (Promise<boolean>) / onRelay('sending'|'sent'|'failed'). */
   async acceptOffer(code) {
     const desc = decodeSignal(code);
     if (desc.type !== 'offer') throw new Error('هذا ليس رمز شاشة العرض. امسح الرمز الظاهر على شاشة الكمبيوتر.');
@@ -519,11 +619,30 @@ export class PhoneLink extends BaseLink {
       this.bindChannel(e.channel);
     });
     this.setState('connecting');
-    await pc.setRemoteDescription(desc);
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
+    await pc.setRemoteDescription({ type: desc.type, sdp: desc.sdp });
+    const local = await pc.createAnswer();
+    await pc.setLocalDescription(local);
     await waitGathering(pc);
-    return encodeSignal(pc.localDescription);
+    const answer = await encodeSignal(pc.localDescription);
+    if (this.relayAbort) this.relayAbort.abort();
+    this.relayAbort = null;
+    this.relayState = 'none';
+    this.relaySent = Promise.resolve(false);
+    if (desc.relay && relaySupported()) {
+      const ac = new AbortController();
+      this.relayAbort = ac;
+      this.setRelay('sending');
+      this.relaySent = (async () => {
+        let ok = false;
+        try {
+          const room = { key: desc.relay.key, topic: desc.relay.topic || await relayTopic(desc.relay.key) };
+          ok = await relayPost(room, answer, { signal: ac.signal }); // رمز الرد مشفّرًا فقط — لا درجات ولا أسماء
+        } catch { ok = false; }
+        if (this.relayAbort === ac) { this.relayAbort = null; this.setRelay(ok ? 'sent' : 'failed'); }
+        return ok;
+      })();
+    }
+    return answer;
   }
 
   receive(raw) {
@@ -537,6 +656,7 @@ export class PhoneLink extends BaseLink {
   }
 
   stop() {
+    if (this.relayAbort) { this.relayAbort.abort(); this.relayAbort = null; }
     const sent = this.rawSend({ v: PROTO, type: 'bye' });
     const { dc, pc } = this;
     this.stopped = true;
@@ -556,18 +676,127 @@ export class ViewerLink extends BaseLink {
   constructor(opts = {}) {
     super(opts);
     this.onMessage = typeof opts.onMessage === 'function' ? opts.onMessage : () => {};
+    this.onRelay = typeof opts.onRelay === 'function' ? opts.onRelay : () => {};
+    this.relayTimeoutMs = Number(opts.relayTimeoutMs) || RELAY_TIMEOUT_MS;
+    this.room = null; // {topic, key} — غرفة الوسيط لرمز العرض الحالي
+    this.relayState = 'off'; // off | waiting | unreachable | received | expired | stopped
+    this.relayAbort = null;
+    this.relayWait = null;
   }
 
-  async createOffer() {
+  setRelay(s) {
+    if (this.relayState === s) return;
+    this.relayState = s;
+    try { this.onRelay(s); } catch { /* */ }
+  }
+
+  stopRelay(state = 'stopped') {
+    if (this.relayAbort) { this.relayAbort.abort(); this.relayAbort = null; }
+    this.relayWait = null;
+    if (this.relayState === 'waiting' || this.relayState === 'unreachable') this.setRelay(state);
+  }
+
+  /** ينشئ رمز العرض. افتراضيًا يضع داخله غرفة وسيط (مفتاح عشوائي) ويبدأ انتظار الرد عبر الوسيط تلقائيًا.
+   *  {relay:false} = رمز بلا وسيط (لصق يدوي فقط)، {autoRelay:false} = لا يبدأ الانتظار تلقائيًا (استدعِ waitForRelayAnswer). */
+  async createOffer({ relay = true, autoRelay = true } = {}) {
+    this.stopRelay();
     this.closeQuiet();
     this.stopped = false;
     this.state = 'idle';
+    this.room = null;
+    this.relayState = 'off';
     const pc = this.newPc();
     this.bindChannel(pc.createDataChannel('grades', { ordered: true }));
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
+    let room = null;
+    if (relay && relaySupported()) {
+      try { room = await newRelayRoom(); } catch { room = null; }
+    }
     await waitGathering(pc);
-    return encodeSignal(pc.localDescription);
+    const code = await encodeSignal(pc.localDescription, { relay: room });
+    if (this.pc !== pc) return code; // أُلغي أثناء التجهيز
+    this.room = room;
+    if (room && autoRelay) this.waitForRelayAnswer();
+    return code;
+  }
+
+  /** يستطلع غرفة الوسيط حتى يصل رد صالح فيقبله تلقائيًا (acceptAnswer). يتجاهل كل رسالة لا تُفك بالمفتاح.
+   *  يتوقف عند قبول رد، أو stop()/رمز جديد، أو signal، أو انتهاء المهلة (١٠ دقائق)، أو إغلاق الصفحة (pagehide).
+   *  يعيد Promise<boolean> (true = قُبل رد من الوسيط). الحالة عبر onRelay/relayState. */
+  waitForRelayAnswer({ signal, timeoutMs = this.relayTimeoutMs } = {}) {
+    if (!this.room) return Promise.resolve(false);
+    if (this.relayWait) return this.relayWait;
+    const room = this.room;
+    const ac = new AbortController();
+    this.relayAbort = ac;
+    if (signal) { if (signal.aborted) ac.abort(); else signal.addEventListener('abort', () => ac.abort(), { once: true }); }
+    const onHide = () => ac.abort();
+    if (typeof window !== 'undefined') window.addEventListener('pagehide', onHide);
+    this.setRelay('waiting');
+    const live = () => !ac.signal.aborted && this.room === room && !this.stopped;
+    const run = async () => {
+      const t0 = Date.now();
+      const seen = new Set();
+      let since = 'all'; // الغرفة جديدة وعشوائية؛ «all» يتفادى فرق الساعة بين الكمبيوتر والخادم
+      let fails = 0;
+      while (live()) {
+        const elapsed = Date.now() - t0;
+        if (elapsed > timeoutMs) { this.setRelay('expired'); return false; }
+        if (this.state === 'connected' || (this.pc && this.pc.signalingState !== 'have-local-offer')) return false;
+        let wait = pollDelay(elapsed);
+        try {
+          const res = await fetch(relayUrl(room.topic) + `/json?poll=1&since=${encodeURIComponent(since)}`, { cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer', signal: ac.signal });
+          if (res.status === 429) { wait = 15_000; } // تجاوز حد الطلبات: تمهّل
+          else if (!res.ok) throw new Error('relay ' + res.status);
+          else {
+            fails = 0;
+            if (this.relayState === 'unreachable') this.setRelay('waiting');
+            const text = await res.text();
+            for (const line of text.split('\n')) {
+              if (!line.trim() || line.length > 8000) continue;
+              let ev;
+              try { ev = JSON.parse(line); } catch { continue; }
+              if (!ev || ev.event !== 'message' || typeof ev.message !== 'string') continue;
+              if (typeof ev.id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(ev.id)) {
+                if (seen.has(ev.id)) continue;
+                seen.add(ev.id);
+                since = ev.id;
+              }
+              let answer;
+              try { answer = await relayDecrypt(room, ev.message); } catch { continue; } // ليست لنا أو تالفة
+              if (!live()) return false;
+              try {
+                if (decodeSignal(answer).type !== 'answer') continue;
+              } catch { continue; }
+              if (!this.pc || this.pc.signalingState !== 'have-local-offer') return false; // قُبل رد آخر (لصق يدوي)
+              this.setRelay('received');
+              try {
+                await this.acceptAnswer(answer);
+                return true;
+              } catch {
+                if (!this.pc || this.pc.signalingState !== 'have-local-offer') return false;
+                this.setRelay('waiting');
+              }
+            }
+          }
+        } catch {
+          if (ac.signal.aborted) break;
+          fails++;
+          if (fails >= RELAY_FAILS) { this.setRelay('unreachable'); wait = Math.max(wait, 4000); }
+        }
+        await sleep(wait, ac.signal);
+      }
+      return false;
+    };
+    const p = run().catch(() => false).finally(() => {
+      if (typeof window !== 'undefined') window.removeEventListener('pagehide', onHide);
+      if (this.relayAbort === ac) this.relayAbort = null;
+      if (this.relayWait === p) this.relayWait = null;
+      if (this.relayState === 'waiting' || this.relayState === 'unreachable') this.setRelay('stopped');
+    });
+    this.relayWait = p;
+    return p;
   }
 
   async acceptAnswer(code) {
@@ -577,6 +806,7 @@ export class ViewerLink extends BaseLink {
     if (this.pc.signalingState !== 'have-local-offer') throw new Error('تم استخدام هذا الرمز من قبل. أنشئ رمزًا جديدًا.');
     this.setState('connecting');
     await this.pc.setRemoteDescription(desc);
+    if (this.relayState !== 'received') this.stopRelay(); // لُصق الرد يدويًا: لا داعي لمتابعة الاستطلاع
   }
 
   receive(raw) {
@@ -587,7 +817,7 @@ export class ViewerLink extends BaseLink {
     try { this.onMessage(msg); } catch { /* */ }
   }
 
-  stop() { this.close(); }
+  stop() { this.stopRelay(); this.room = null; this.close(); }
 }
 
 export function iceServersFrom(settings = {}) {

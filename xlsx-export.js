@@ -7,13 +7,14 @@
 //  2) «طباعة ١–٥»    : جاهزة للطباعة، معادلات تشير إلى «المتابعة» + مجموع كل أسبوع + الفترة الأولى.
 //  3) «طباعة ٦–١٠»   : نفسها للأسابيع ٦–١٠ + الفترة الثانية.
 //  4) «رصد النهائي»  : الفترتان + التقويم البنائي + المشروعان + الاختبار العملي + المجموع.
+//  5) «الحضور والغياب»: لكل أسبوع ✓ حاضر / «غ» غائب / فارغ (لم يُرصد) + عدد أسابيع الغياب.
 // كل معادلة تحمل قيمة محسوبة مسبقًا (<v>) لتظهر الأرقام في المعاينات التي لا تعيد الحساب.
 //
 // تخطيط الصفوف (كل الأوراق): ١ العنوان · ٢–٣ بيانات الصف والمعلم · ٤–٧ ترويسة الجدول · ٨ فما بعد الطلاب.
 
 import CONFIG from './config.js';
 import {
-  getItems, getFin, getWeekMeta, weekTotal, periodScore, formative, finalTotal, toArabicDigits,
+  getItems, getFin, getWeekMeta, weekTotal, periodScore, formative, finalTotal, toArabicDigits, attendanceStatus,
 } from './grades-core.js';
 
 const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
@@ -35,7 +36,10 @@ export const SHEET_NAMES = [
   `طباعة ${toArabicDigits(1)}–${toArabicDigits(HALF)}`,
   `طباعة ${toArabicDigits(HALF + 1)}–${toArabicDigits(WEEKS)}`,
   'رصد النهائي',
+  'الحضور والغياب',
 ];
+export const MARK_PRESENT = '✓';
+export const MARK_ABSENT = 'غ';
 
 // أنماط الخلايا (فهارس cellXfs في styles.xml)
 const S = { title: 1, head: 2, headRot: 3, num: 4, name: 5, total: 6, headSmall: 7, infoLabel: 8, infoValue: 9, note: 10 };
@@ -327,6 +331,44 @@ function buildFinal({ names, data, info, infoRefs, n }) {
   return sh;
 }
 
+function buildAttendance({ names, data, info, infoRefs, n }) {
+  const ncols = 2 + WEEKS + 1; // م، الاسم، الأسابيع، عدد الغياب
+  const sh = new Sheet(SHEET_NAMES[4], ncols);
+  writeHeader(sh, 'كشف الحضور والغياب', info, infoRefs);
+  const main = qs(SHEET_NAMES[0]);
+  sh.str(1, 4, 'م', S.head); sh.merge(1, 4, 1, 7, S.head);
+  sh.str(2, 4, 'اسم الطالب', S.head); sh.merge(2, 4, 2, 7, S.head);
+  for (let w = 1; w <= WEEKS; w++) {
+    const c = 2 + w;
+    sh.str(c, 4, `الأسبوع ${toArabicDigits(w)}`, S.head); sh.merge(c, 4, c, 5, S.head);
+    const src = `${main}!${ref(3 + (w - 1) * NCRIT, 5)}`;
+    sh.formula(c, 6, `IF(${src}="","",${src})`, clean(getWeekMeta(data, w).date || ''), S.headSmall);
+    sh.merge(c, 6, c, 7, S.headSmall);
+  }
+  const cc = ncols;
+  sh.str(cc, 4, 'عدد أسابيع الغياب', S.head); sh.merge(cc, 4, cc, 7, S.head);
+  studentCols(sh, names, n);
+  const rg = (r) => `${ref(3, r)}:${ref(2 + WEEKS, r)}`;
+  for (let i = 0; i < ROWS; i++) {
+    const r = FIRST_ROW + i;
+    const nameSrc = `${main}!B${r}`;
+    sh.formula(2, r, `IF(${nameSrc}="","",${nameSrc})`, i < n ? clean(names[i] ?? '') : '', S.name);
+    let count = 0;
+    for (let w = 1; w <= WEEKS; w++) {
+      const st = i < n ? attendanceStatus(data, w, i) : null;
+      if (st === 'absent') { count++; sh.str(2 + w, r, MARK_ABSENT, S.num); }
+      else if (st === 'present') sh.str(2 + w, r, MARK_PRESENT, S.num);
+      else sh.blank(2 + w, r, S.num);
+    }
+    sh.formula(cc, r, `IF(B${r}="","",COUNTIF(${rg(r)},"${MARK_ABSENT}"))`, i < n ? count : '', S.total);
+  }
+  signatures(sh);
+  sh.heights[4] = 20; sh.heights[5] = 20; sh.heights[6] = 20; sh.heights[7] = 20;
+  sh.cols = [[1, 1, 4.5], [2, 2, 32], [3, 2 + WEEKS, 9], [cc, cc, 12]];
+  sh.freeze = [2, HEAD_ROWS];
+  return sh;
+}
+
 // ───────────── أجزاء الحزمة ─────────────
 const XML_HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 
@@ -431,7 +473,7 @@ export function buildParts({ classLabel = '', names = [], data, settings = {} } 
   ];
   const { sh: main, infoRefs } = buildMain({ classLabel, names, data, info, n });
   const ctx = { names, data, info, infoRefs, n };
-  const sheets = [main, buildPrint({ ...ctx, period: 1 }), buildPrint({ ...ctx, period: 2 }), buildFinal(ctx)];
+  const sheets = [main, buildPrint({ ...ctx, period: 1 }), buildPrint({ ...ctx, period: 2 }), buildFinal(ctx), buildAttendance(ctx)];
   const parts = {
     '[Content_Types].xml': contentTypes(sheets.length),
     '_rels/.rels': ROOT_RELS,

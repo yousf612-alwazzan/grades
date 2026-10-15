@@ -2,11 +2,13 @@
 // البنية: حالة S + موجّه (stack من الشاشات) + دوال رسم لكل شاشة + معالجات أحداث مفوّضة (data-act).
 // للتخصيص راجع CLAUDE.md و config.js.
 import CONFIG from './config.js';
+import { CHANGELOG } from './changelog.js';
 import {
   WEEKS, ITEMS, MAX_STUDENTS, parseScore, fmt, emptyClassData, getItems, setItem, getFin, setFin,
   getWeekMeta, setWeekMeta, weekTotal, periodScore, formative, finalTotal, studentSummary,
   studentComplete, weekRemaining, weekComplete, finalsRemaining, firstIncompleteWeek, progress,
   studentCardText, cleanNames, arCompare, remapData, nameKey,
+  isAbsent, setAbsent, absenceCount, getNotes, addNote, deleteNote,
 } from './grades-core.js';
 import * as store from './store.js';
 import { buildTransfer, transferFileName, parseTransfer, applyTransfer, moveStudents } from './transfer.js';
@@ -34,7 +36,7 @@ const cls = (id) => S.classes.find((c) => c.id === id);
 const dataOf = (id) => (S.grades[id] ||= emptyClassData());
 const uid = () => 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const route = () => S.stack[S.stack.length - 1] || { name: 'home', p: {} };
-const ROOTS = ['home', 'live', 'settings'];
+const ROOTS = ['home', 'reports', 'live', 'tools', 'settings'];
 
 function hasAnyGrades() {
   return S.classes.some((c) => progress(dataOf(c.id), c.names.length).filled > 0);
@@ -144,7 +146,7 @@ const main = () => document.getElementById('main');
 
 function render({ scrollTop = false } = {}) {
   const r = route();
-  const screens = { home: Home, class: ClassScreen, student: StudentScreen, editor: Editor, settings: Settings, live: Live, transferOut: TransferOut, transferIn: TransferIn, guide: Guide };
+  const screens = { home: Home, reports: Reports, tools: Tools, class: ClassScreen, student: StudentScreen, editor: Editor, settings: Settings, live: Live, transferOut: TransferOut, transferIn: TransferIn, guide: Guide };
   const fn = screens[r.name] || Home;
   const isRoot = ROOTS.includes(r.name);
   main().className = 'main' + (isRoot ? '' : ' no-tabbar');
@@ -161,7 +163,7 @@ const afterRender = {};
 
 function renderNav() {
   const cur = ROOTS.includes(route().name) ? route().name : (S.stack[0] || {}).name;
-  const items = [['home', 'home', 'الرئيسية'], ['live', 'monitor', 'العرض'], ['settings', 'gear', 'الإعدادات']];
+  const items = [['home', 'users', 'الشعب'], ['reports', 'sheet', 'التقارير'], ['live', 'monitor', 'العرض'], ['tools', 'bolt', 'الأدوات'], ['settings', 'gear', 'الإعدادات']];
   const btns = items.map(([n, ic, label]) => `<button type="button" class="tab" data-act="nav" data-to="${n}" ${cur === n ? 'aria-current="page"' : ''}><span class="tab-ico">${icon(ic)}</span><span>${label}</span></button>`).join('');
   document.getElementById('tabbar').innerHTML = btns;
   document.getElementById('rail').innerHTML = `<div class="brand"><img src="icons/icon-192.png" alt=""><span>${esc(CONFIG.appName)}</span></div>${btns}<div class="rail-foot">الإصدار ${ar(CONFIG.version)}<br>بياناتك على هذا الجهاز فقط</div>`;
@@ -245,12 +247,74 @@ function Home() {
     ${alerts.join('')}
     ${body}
     ${S.classes.length ? `<button type="button" class="btn primary lg fab" data-act="new-class">${icon('plus')} إضافة شعبة</button>` : ''}
-    <div class="section-title">أدوات</div>
+    <p class="hint version-line num" data-testid="app-version">الإصدار ${ar(CONFIG.version)}</p>
+  </div>`;
+}
+
+// =====================================================================
+// تبويب «الأدوات»: إنشاء الشعب من ملف، النقل والتسليم، النسخ الاحتياطي
+// =====================================================================
+function Tools() {
+  const item = (act, ic, t, sub, extra = '') => `<button type="button" class="list-item" data-act="${act}" ${extra}>${icon(ic)}<span class="grow"><strong>${t}</strong><small>${sub}</small></span>${icon('fwd')}</button>`;
+  const has = S.classes.length > 0;
+  return `${appbar({ title: 'الأدوات', backBtn: false })}
+  <div class="wrap stack">
+    <div class="section-title">الشعب</div>
     <div class="list">
-      <button type="button" class="list-item" data-act="import-classes">${icon('upload')}<span class="grow"><strong>إنشاء شعب من ملف</strong><small>كشف Excel أو PDF فيه شعبة أو أكثر</small></span></button>
-      <button type="button" class="list-item" data-act="backup">${icon('download')}<span class="grow"><strong>نسخة احتياطية</strong><small>احفظ كل الشعب والدرجات في ملف</small></span></button>
-      <button type="button" class="list-item" data-act="restore">${icon('upload')}<span class="grow"><strong>استرجاع نسخة</strong><small>من ملف نسخة احتياطية سابق</small></span></button>
-      <button type="button" class="list-item" data-act="go" data-to="transferIn">${icon('inbox')}<span class="grow"><strong>استقبال طلاب منقولين</strong><small>من ملف نقل أرسله معلم آخر</small></span></button>
+      ${item('new-class', 'plus', 'إضافة شعبة', 'بإدخال الأسماء أو لصقها')}
+      ${item('import-classes', 'upload', 'إنشاء شعب من ملف', 'كشف Excel أو PDF فيه شعبة أو أكثر — حتى الممسوح ضوئيًا')}
+    </div>
+    <div class="section-title">النقل بين المعلمين</div>
+    <div class="list">
+      ${has ? item('handover-pick', 'send', 'تسليم شعبة كاملة لمعلم آخر', 'كل الطلاب مع الدرجات والغياب والملاحظات في ملف واحد') : ''}
+      ${has ? item('transfer-pick', 'move', 'نقل طلاب', 'طالب أو أكثر لمعلم آخر أو لشعبة أخرى عندك') : ''}
+      ${item('go', 'inbox', 'استقبال شعبة أو طلاب', 'من ملف أرسله معلم آخر', 'data-to="transferIn"')}
+    </div>
+    <div class="section-title">النسخ الاحتياطي</div>
+    <div class="list">
+      <div class="list-item"><span class="grow"><strong>آخر نسخة احتياطية</strong><small class="num">${S.meta.lastBackupAt ? ar(new Date(S.meta.lastBackupAt).toLocaleDateString('en-GB')) : 'لم تُحفظ بعد'}</small></span>${S.meta.persist === 'granted' ? `<span class="status-pill ok">${icon('shield')} التخزين محمي</span>` : ''}</div>
+      ${item('backup', 'download', 'حفظ نسخة احتياطية', 'كل الشعب والدرجات في ملف — على الجوال وفي iCloud')}
+      ${item('restore', 'upload', 'استرجاع نسخة', 'من ملف نسخة احتياطية سابق (يستبدل البيانات الحالية)')}
+    </div>
+    <div class="section-title">منطقة الخطر</div>
+    <div class="list">
+      <button type="button" class="list-item" data-act="wipe">${icon('trash')}<span class="grow"><strong style="color:var(--error)">حذف كل البيانات</strong><small>كل الشعب والدرجات من هذا الجهاز — احفظ نسخة أولًا</small></span></button>
+    </div>
+  </div>`;
+}
+
+// اختيار شعبة (لتسليمها أو نقل طلاب منها)
+function pickClass(title) {
+  return new Promise((resolve) => {
+    let res = null;
+    const s = openSheet(`<h2>${esc(title)}</h2><div class="list">${S.classes.map((c) => `<button type="button" class="list-item" data-pc="${c.id}">${icon('users')}<span class="grow"><strong>${esc(c.label)}</strong><small>${students(c.names.length)}</small></span>${icon('fwd')}</button>`).join('')}</div>
+      <div class="actions"><button type="button" class="btn" data-pc="">إلغاء</button></div>`, { label: title, onClose: () => resolve(res) });
+    s.sheet.addEventListener('click', (e) => { const b = e.target.closest('[data-pc]'); if (!b) return; res = b.dataset.pc ? cls(b.dataset.pc) : null; s.close(); });
+  });
+}
+
+// =====================================================================
+// تبويب «التقارير»: كشوف PDF للطباعة وكشف Excel
+// =====================================================================
+function Reports() {
+  if (!S.classes.length) {
+    return `${appbar({ title: 'التقارير', backBtn: false })}<div class="wrap"><div class="empty card">${ART_EMPTY}<h2>لا توجد شعب بعد</h2><p>أضف شعبة وارصد الدرجات، ثم اطبع كشوفها من هنا.</p><button type="button" class="btn primary" data-act="new-class">${icon('plus')} إضافة شعبة</button></div></div>`;
+  }
+  if (!S.ui.reportClass || !cls(S.ui.reportClass)) S.ui.reportClass = S.classes[0].id;
+  const c = cls(S.ui.reportClass);
+  const d = dataOf(c.id);
+  const n = c.names.length;
+  const pr = progress(d, n);
+  const card = (act, ic, t, sub) => `<button type="button" class="report-card" data-act="${act}" data-id="${c.id}">${icon(ic)}<span><strong>${t}</strong><small>${sub}</small></span></button>`;
+  return `${appbar({ title: 'التقارير', backBtn: false })}
+  <div class="wrap stack">
+    <div class="field"><label for="rep-class">الشعبة</label><select id="rep-class" class="select" data-report-class>${S.classes.map((o) => `<option value="${o.id}" ${o.id === c.id ? 'selected' : ''}>${esc(o.label)} — ${students(o.names.length)}</option>`).join('')}</select></div>
+    <p class="hint">نسبة الرصد في هذه الشعبة ${ar(Math.round(pr.ratio * 100))}٪. التقارير تُطبع أو تُحفظ PDF من نافذة الطباعة.</p>
+    <div class="report-grid">
+      ${card('report-grades', 'sheet', 'كشف الدرجات', 'الأسابيع والفترتان والنهائي — PDF منسّق للطباعة')}
+      ${card('report-attendance', 'calendar', 'كشف الحضور والغياب', 'غياب كل طالب في كل أسبوع — PDF')}
+      ${card('export-xlsx', 'download', 'كشف Excel الرسمي', 'ملف xlsx بأوراق المتابعة والطباعة والرصد')}
+      ${card('report-student', 'users', 'تقرير طالب', 'درجات طالب واحد مع ملاحظاته — PDF')}
     </div>
   </div>`;
 }
@@ -392,6 +456,7 @@ function weekTab(c, d, w) {
         <button type="button" class="btn ${S.ui.missingOnly ? 'primary' : ''}" data-act="missing-toggle" aria-pressed="${S.ui.missingOnly}">الناقص فقط</button>
         <button type="button" class="btn" data-act="week-tools">${icon('edit')} أدوات</button>
       </div>
+      ${S.ui.undo && S.ui.undo.classId === c.id && S.ui.undo.week === w ? `<button type="button" class="btn danger-ghost block" data-act="undo-bulk">${icon('undo')} تراجع عن «${S.ui.undo.label}»</button>` : ''}
       ${metaLine}
       <span id="week-status" hidden>${weekStatusHTML(d, w, n)}</span>
       ${n > 12 ? `<div class="search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب أو رقمه" value="${esc(q)}" aria-label="بحث"></div>` : ''}
@@ -412,6 +477,7 @@ function weekTab(c, d, w) {
         ${CRIT.map((cr, k) => `<button type="button" class="btn sm soft" data-act="fill" data-k="${k}">${esc(cr.short)} ${ar(CONFIG.itemMax)}</button>`).join('')}
         <button type="button" class="btn sm" data-act="today">${icon('calendar')} تاريخ اليوم</button>
       </div></div>
+    ${S.ui.undo && S.ui.undo.classId === c.id && S.ui.undo.week === w ? `<button type="button" class="btn danger-ghost" data-act="undo-bulk">${icon('undo')} تراجع عن «${S.ui.undo.label}»</button>` : ''}
     <div class="status-line">
       <span id="week-status">${weekStatusHTML(d, w, n)}</span>
       <label class="toggle-line">الناقص فقط <input type="checkbox" class="switch" data-act="missing" ${S.ui.missingOnly ? 'checked' : ''}></label>
@@ -433,15 +499,21 @@ function totalBadge(t, max) {
 
 // ----- صف الطالب المختصر (الجوال) -----
 function stuRow(c, d, w, i) {
+  const absent = isAbsent(d, w, i);
   const done = studentComplete(d, w, i);
   const t = weekTotal(d, w, i);
-  return `<div class="srow ${done ? 'complete' : ''}" data-stu="${i}">
+  const notes = getNotes(d, i).length;
+  return `<div class="srow ${done ? 'complete' : ''} ${absent ? 'absent' : ''}" data-stu="${i}">
     <span class="srow-num num">${ar(i + 1)}</span>
-    <button type="button" class="srow-name" data-act="open-student" data-idx="${i}">${esc(c.names[i])}</button>
-    <div class="boxes" data-inputs>${rowBoxes(w, i, getItems(d, w, i), c.names[i])}</div>
+    <button type="button" class="srow-name" data-act="open-student" data-idx="${i}">${esc(c.names[i])}${notes ? `<span class="note-dot" title="ملاحظات">${icon('edit')}${ar(notes)}</span>` : ''}</button>
+    <button type="button" class="abs-btn ${absent ? 'on' : ''}" data-act="absent" data-idx="${i}" aria-pressed="${absent}">${absent ? 'غائب ✓' : 'غياب'}</button>
     <span class="srow-total num ${t === CONFIG.itemMax * ITEMS ? 'full' : ''}" data-total>${t == null ? '' : fmt(t)}</span>
-    <span class="srow-act" data-rowact>${rowAct(done, i)}</span>
+    <div class="boxes" data-inputs>${absent ? absentPill() : rowBoxes(w, i, getItems(d, w, i), c.names[i])}</div>
+    <span class="srow-act" data-rowact>${absent ? '' : rowAct(done, i)}</span>
   </div>`;
+}
+function absentPill() {
+  return `<span class="absent-pill">${icon('x')} غائب هذا الأسبوع — أصفار تلقائيًا</span>`;
 }
 function rowAct(done, i) {
   return done ? `<span class="srow-done" aria-label="مكتمل">${icon('checkCircle')}</span>`
@@ -454,36 +526,34 @@ function rowBoxes(w, i, vals, name) {
   return CRIT.map((cr, k) => `<button type="button" class="box ${vals[k] == null ? '' : 'filled'}" data-act="box" data-idx="${i}" data-k="${k}" aria-label="${esc(cr.label)}: ${vals[k] == null ? 'فارغ' : ar(vals[k])}"><small>${esc(cr.short)}</small><b class="num">${vals[k] == null ? '' : ar(vals[k])}</b></button>`).join('');
 }
 
-// نافذة اختيار الدرجة: تبقى مفتوحة وتنتقل للبند التالي حتى يكتمل الطالب
+// نافذة اختيار الدرجة: سلايدر ٠–٥ بالأنصاص. السحب ثم الترك = حفظ والانتقال للبند التالي
 function openPicker(c, w, i, k0) {
   const d = dataOf(c.id);
   let k = k0;
+  const max = CONFIG.itemMax;
   const s = openSheet('<div data-picker></div>', { label: 'اختيار الدرجة' });
   const paint = () => {
     const vals = getItems(d, w, i);
+    const cur = vals[k];
+    const start = cur == null ? max : cur;
+    const ticks = Array.from({ length: max * 2 + 1 }, (_, j) => j / 2);
     s.sheet.querySelector('[data-picker]').innerHTML = `
       <div class="picker-head"><span class="srow-num num">${ar(i + 1)}</span><b>${esc(c.names[i])}</b></div>
       <div class="seg picker-tabs" role="tablist">${CRIT.map((cr, j) => `<button type="button" data-pk="${j}" aria-pressed="${j === k}">${esc(cr.short)} <span class="num">${vals[j] == null ? '—' : ar(vals[j])}</span></button>`).join('')}</div>
-      <div class="picker-grid">${CONFIG.chipValues.map((x) => `<button type="button" class="pv ${vals[k] === x ? 'on' : ''}" data-pv="${x}">${ar(x)}</button>`).join('')}
-        <button type="button" class="pv other" data-pv="other">رقم آخر</button></div>
-      <div class="actions"><button type="button" class="btn" data-pv="clear">مسح</button><button type="button" class="btn primary" data-pv="close">تم</button></div>`;
+      <div class="slider-box">
+        <div class="slider-label">${esc(CRIT[k].label)}</div>
+        <output class="slider-val num" data-slider-val>${cur == null ? '—' : ar(cur)}</output>
+        <input type="range" class="score-slider" data-slider min="0" max="${max}" step="0.5" value="${start}" aria-label="${esc(CRIT[k].label)}">
+        <div class="slider-ticks" aria-hidden="true">${ticks.map((x) => `<span class="${Number.isInteger(x) ? 'major' : ''}">${Number.isInteger(x) ? ar(x) : ''}</span>`).join('')}</div>
+        <p class="hint" style="text-align:center;margin:4px 0 0">اسحب ثم اترك للحفظ، أو اضغط «تأكيد»</p>
+      </div>
+      <div class="actions picker-actions">
+        <button type="button" class="btn" data-pv="clear">مسح</button>
+        <button type="button" class="btn success" data-pv="confirm">تأكيد <span class="num" data-confirm-val>${ar(start)}</span></button>
+        <button type="button" class="btn primary" data-pv="close">تم</button>
+      </div>`;
   };
-  paint();
-  (s.sheet.querySelector('.pv.on') || s.sheet.querySelector('.pv')).focus({ preventScroll: true });
-  s.sheet.addEventListener('click', async (e) => {
-    const tab = e.target.closest('[data-pk]');
-    if (tab) { k = +tab.dataset.pk; paint(); return; }
-    const b = e.target.closest('[data-pv]');
-    if (!b) return;
-    const v = b.dataset.pv;
-    if (v === 'close') return s.close();
-    let val;
-    if (v === 'clear') val = null;
-    else if (v === 'other') {
-      const res = await keypad({ title: `${CRIT[k].label} — ${c.names[i]}`, max: CONFIG.itemMax, value: getItems(d, w, i)[k] });
-      if (!res) return;
-      val = res.value;
-    } else val = +v;
+  const commit = (val) => {
     const { wasDone, nowDone } = changeItem(c, w, i, k, val);
     haptic('light');
     refreshStudent(c, w, i, { rerenderInputs: true });
@@ -494,6 +564,26 @@ function openPicker(c, w, i, k0) {
       if (next != null) k = next;
     }
     paint();
+    s.sheet.querySelector('[data-slider]').focus({ preventScroll: true });
+  };
+  paint();
+  s.sheet.querySelector('[data-slider]').focus({ preventScroll: true });
+  s.sheet.addEventListener('input', (e) => {
+    if (!e.target.matches('[data-slider]')) return;
+    const v = +e.target.value;
+    s.sheet.querySelector('[data-slider-val]').textContent = ar(v);
+    s.sheet.querySelector('[data-confirm-val]').textContent = ar(v);
+  });
+  s.sheet.addEventListener('change', (e) => { if (e.target.matches('[data-slider]')) commit(+e.target.value); });
+  s.sheet.addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-pk]');
+    if (tab) { k = +tab.dataset.pk; paint(); return; }
+    const b = e.target.closest('[data-pv]');
+    if (!b) return;
+    const v = b.dataset.pv;
+    if (v === 'close') return s.close();
+    if (v === 'clear') return commit(null);
+    if (v === 'confirm') return commit(+s.sheet.querySelector('[data-slider]').value);
   });
 }
 
@@ -538,10 +628,11 @@ function weekGrid(c, d, w, idxs) {
       ${CRIT.map((cr, k) => `<td><input class="score-input" inputmode="decimal" autocomplete="off" data-score="item" data-idx="${i}" data-k="${k}" value="${vals[k] == null ? '' : ar(vals[k])}" placeholder="—" aria-label="${esc(cr.label)} — ${esc(c.names[i])}"><span class="cell-err" data-err></span></td>`).join('')}
       <td class="total num" data-total>${t == null ? '—' : fmt(t)}</td>
       <td><button type="button" class="btn-full" data-act="full" data-idx="${i}">${icon('check')} كامل</button></td>
+      <td><button type="button" class="abs-btn ${isAbsent(d, w, i) ? 'on' : ''}" data-act="absent" data-idx="${i}" aria-pressed="${isAbsent(d, w, i)}">${isAbsent(d, w, i) ? 'غائب ✓' : 'غياب'}</button></td>
     </tr>`;
   }).join('');
   return `<div class="grid-wrap"><table class="grid">
-    <thead><tr><th>م</th><th class="name">اسم الطالب</th>${CRIT.map((cr) => `<th>${esc(cr.label)}<br><small>/ ${ar(CONFIG.itemMax)}</small></th>`).join('')}<th>المجموع<br><small>/ ${ar(CONFIG.itemMax * ITEMS)}</small></th><th></th></tr></thead>
+    <thead><tr><th>م</th><th class="name">اسم الطالب</th>${CRIT.map((cr) => `<th>${esc(cr.label)}<br><small>/ ${ar(CONFIG.itemMax)}</small></th>`).join('')}<th>المجموع<br><small>/ ${ar(CONFIG.itemMax * ITEMS)}</small></th><th></th><th>الحضور</th></tr></thead>
     <tbody>${rows}</tbody></table></div>
     <p class="hint">${icon('info')} اكتب الدرجة ثم Enter للانتقال. الأسهم ↑↓ تنقلك بين الطلاب في نفس العمود.</p>`;
 }
@@ -626,11 +717,13 @@ function refreshStudent(c, w, i, { rerenderInputs = false } = {}) {
     tot.textContent = t == null ? '' : fmt(t);
     tot.classList.toggle('full', isFin ? t != null : t === CONFIG.itemMax * ITEMS);
     el.classList.toggle('complete', done);
-    if (!isFin) el.querySelector('[data-rowact]').innerHTML = rowAct(done, i);
+    const absent = !isFin && isAbsent(d, w, i);
+    el.classList.toggle('absent', absent);
+    if (!isFin) el.querySelector('[data-rowact]').innerHTML = absent ? '' : rowAct(done, i);
     if (isFin) { const f = el.querySelector('[data-form]'); if (f) f.textContent = fmt(formative(d, i)); }
     if (rerenderInputs || S.settings.inputMode !== 'fields') {
       if (isFin) { const tmp = document.createElement('div'); tmp.innerHTML = finRow(cls(c.id), d, i); el.querySelector('[data-inputs]').innerHTML = tmp.querySelector('[data-inputs]').innerHTML; }
-      else el.querySelector('[data-inputs]').innerHTML = rowBoxes(w, i, getItems(d, w, i), c.names[i]);
+      else el.querySelector('[data-inputs]').innerHTML = absent ? absentPill() : rowBoxes(w, i, getItems(d, w, i), c.names[i]);
     }
   } else if (el) {
     if (w === 'fin') {
@@ -728,20 +821,29 @@ function studentCardBody(c, i, { compact: small = false } = {}) {
   for (let w = 1; w <= WEEKS; w++) {
     const it = getItems(d, w, i);
     const meta = getWeekMeta(d, w);
-    rows.push(`<tr><td class="start"><b>${ar(w)}</b></td>${compact ? '' : `<td class="muted">${esc(meta.date) || '—'}</td>`}${it.map((v) => `<td class="num">${fmt(v)}</td>`).join('')}<td class="num"><b>${fmt(sm.weeks[w - 1])}</b></td></tr>`);
+    const abs = isAbsent(d, w, i);
+    rows.push(`<tr class="${abs ? 'abs-row' : ''}"><td class="start"><b>${ar(w)}</b></td>${compact ? '' : `<td class="muted">${esc(meta.date) || '—'}</td>`}${abs ? `<td colspan="${ITEMS}" class="abs-cell">غائب</td>` : it.map((v) => `<td class="num">${fmt(v)}</td>`).join('')}<td class="num"><b>${fmt(sm.weeks[w - 1])}</b></td></tr>`);
     if (w === 5) rows.push(`<tr class="sum"><td class="start" colspan="${compact ? 5 : 6}">الفترة الأولى (من ٢٠)</td><td class="num">${fmt(sm.p1)}</td></tr>`);
   }
   rows.push(`<tr class="sum"><td class="start" colspan="${compact ? 5 : 6}">الفترة الثانية (من ٢٠)</td><td class="num">${fmt(sm.p2)}</td></tr>`);
   return `<div class="stack">
     <div><p class="big-name" ${small ? 'style="font-size:21px"' : ''}>${esc(c.names[i])}</p>
-      <div class="meta">${esc(c.label)} · رقم ${ar(i + 1)}${S.settings.subject ? ' · ' + esc(S.settings.subject) : ''}</div></div>
+      <div class="meta">${esc(c.label)} — رقم ${ar(i + 1)}${S.settings.subject ? '، ' + esc(S.settings.subject) : ''}</div></div>
     <div class="banner ${total != null ? 'ok' : ''}"><span>المجموع النهائي</span>${total != null ? `<b class="num">${fmt(total)} <small>/ ${ar(100)}</small></b>` : '<strong>لم يكتمل بعد</strong>'}</div>
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th class="start">الأسبوع</th>${compact ? '' : '<th>التاريخ</th>'}${CRIT.map((cr) => `<th>${esc(cr.short)}</th>`).join('')}<th>المجموع</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>
     <div class="card flat"><h3 style="margin-bottom:8px">الدرجات النهائية</h3><div class="kv">
       <div>التقويم البنائي</div><div class="num">${fmt(sm.formative)} / ${ar(40)}</div>
       ${FINS.map((f, k) => `<div>${esc(f.label)}</div><div class="num">${fmt(sm.fin[k])} / ${ar(f.max)}</div>`).join('')}
     </div></div>
+    <div class="card flat"><div class="kv"><div>أسابيع الغياب</div><div class="num">${ar(absenceCount(d, i))}</div></div></div>
+    <div class="card flat stack" data-notes>
+      <h3>${icon('edit')} ملاحظات المعلم</h3>
+      ${getNotes(d, i).length ? `<ul class="notes">${getNotes(d, i).slice().reverse().map((nt) => `<li><div class="grow"><small class="muted num">${ar(new Date(nt.t).toLocaleDateString('en-GB'))}</small><p>${esc(nt.text)}</p></div><button type="button" class="icon-btn" data-act="note-del" data-id="${c.id}" data-idx="${i}" data-t="${esc(nt.t)}" aria-label="حذف الملاحظة">${icon('trash')}</button></li>`).join('')}</ul>` : '<p class="hint">لا توجد ملاحظات. الملاحظات تبقى عندك فقط ولا تظهر في بطاقة المشاركة.</p>'}
+      <textarea class="textarea" style="min-height:80px" data-note-input="${i}" maxlength="500" placeholder="اكتب ملاحظة عن الطالب (سلوك، مستوى، تواصل مع ولي الأمر…)"></textarea>
+      <button type="button" class="btn soft" data-act="note-add" data-id="${c.id}" data-idx="${i}">${icon('plus')} إضافة ملاحظة</button>
+    </div>
     <button type="button" class="btn primary block" data-act="share-student" data-id="${c.id}" data-idx="${i}">${icon('share')} مشاركة البطاقة</button>
+    <button type="button" class="btn block" data-act="print-student" data-id="${c.id}" data-idx="${i}">${icon('sheet')} طباعة تقرير الطالب (PDF)</button>
     ${small ? `<button type="button" class="btn ghost block" data-act="close-aside">إغلاق البطاقة</button>` : ''}
   </div>`;
 }
@@ -844,10 +946,10 @@ async function saveEditor(p) {
   }
 }
 
-async function deleteClass(id) {
+async function deleteClass(id, { skipConfirm = false } = {}) {
   const c = cls(id);
   if (!c) return;
-  const ok = await confirmDialog({ title: `حذف «${c.label}»؟`, text: `سيُحذف ${students(c.names.length)} وكل درجاتهم من هذا الجهاز.`, ok: 'حذف الشعبة', danger: true });
+  const ok = skipConfirm || await confirmDialog({ title: `حذف «${c.label}»؟`, text: `سيُحذف ${students(c.names.length)} وكل درجاتهم من هذا الجهاز.`, ok: 'حذف الشعبة', danger: true });
   if (!ok) return;
   const pos = S.classes.indexOf(c);
   const data = dataOf(id);
@@ -1173,27 +1275,28 @@ function Settings() {
   const st = S.settings;
   const seg = (key, opts) => `<div class="seg" role="group">${opts.map(([v, l]) => `<button type="button" data-act="set" data-key="${key}" data-v="${v}" aria-pressed="${String(st[key]) === String(v)}">${l}</button>`).join('')}</div>`;
   const sw = (key, label, hint = '') => `<label class="list-item"><span class="grow"><strong>${label}</strong>${hint ? `<small>${hint}</small>` : ''}</span><input type="checkbox" class="switch" data-setting-bool="${key}" ${st[key] ? 'checked' : ''}></label>`;
-  const persist = S.meta.persist === 'granted' ? `<span class="status-pill ok">${icon('shield')} مفعّل</span>` : S.meta.persist === 'denied' ? `<span class="status-pill">${icon('warn')} غير مفعّل</span>` : `<span class="status-pill">${icon('info')} غير مدعوم</span>`;
-  const last = S.meta.lastBackupAt ? ar(new Date(S.meta.lastBackupAt).toLocaleDateString('en-GB')) : 'لم تُحفظ بعد';
   const inst = platform.isNative ? 'مثبّت كتطبيق أندرويد' : platform.isStandalone ? 'مثبّت على الشاشة الرئيسية' : 'يعمل داخل المتصفح';
   return `${appbar({ title: 'الإعدادات', backBtn: false, save: true })}
   <div class="wrap stack">
+    <div class="section-title">التحديثات</div>
+    <div class="card stack" data-testid="update-card">${updateCardHTML()}</div>
+
     <div class="section-title">بياناتي</div>
     <div class="card stack">
       <div class="field"><label for="s-teacher">اسم المعلم</label><input id="s-teacher" class="input" data-setting="teacher" value="${esc(st.teacher)}" placeholder="مثل: يوسف أحمد" autocomplete="name"></div>
       <div class="field"><label for="s-subject">المادة (المجال الدراسي)</label><input id="s-subject" class="input" data-setting="subject" value="${esc(st.subject)}" placeholder="مثل: الحاسوب"></div>
       <div class="field"><label for="s-year">العام الدراسي</label><input id="s-year" class="input" data-setting="year" value="${esc(st.year)}" placeholder="مثل: ٢٠٢٦ / ٢٠٢٧"></div>
-      <p class="hint">تظهر في رأس كشف الإكسل وفي بطاقة الطالب.</p>
+      <p class="hint">تظهر في رأس الكشوف والتقارير وبطاقة الطالب.</p>
     </div>
 
     <div class="section-title">طريقة الرصد</div>
     <div class="card stack">
-      <div class="field"><span class="label">نمط الإدخال</span>${seg('inputMode', [['chips', 'أزرار لمس'], ['fields', 'حقول أرقام']])}
-        <p class="hint">الأزرار: ضغطة واحدة لكل بند. الحقول: اكتب الرقم ثم Enter. (على الكمبيوتر يظهر جدول دائمًا)</p></div>
+      <div class="field"><span class="label">إدخال الدرجة</span>${seg('inputMode', [['chips', 'سلايدر'], ['fields', 'كتابة الرقم']])}
+        <p class="hint">السلايدر: اضغط المربع واسحب من ٠ إلى ٥. كتابة الرقم: اكتب ثم Enter. (على الكمبيوتر يظهر جدول دائمًا)</p></div>
     </div>
     <div class="list">
       ${sw('autoAdvance', 'الانتقال التلقائي للطالب التالي', 'بعد إكمال درجات طالب')}
-      ${sw('haptics', 'الاهتزاز الخفيف', 'عند «كامل» والتعبئة السريعة والأخطاء')}
+      ${sw('haptics', 'الاهتزاز الخفيف', 'عند «كامل» والغياب والتعبئة السريعة')}
     </div>
 
     <div class="section-title">المظهر</div>
@@ -1202,37 +1305,69 @@ function Settings() {
       <div class="field"><span class="label">حجم الخط</span>${seg('textScale', [['normal', 'عادي'], ['large', 'كبير']])}</div>
     </div>
 
-    <div class="section-title">البيانات والنسخ الاحتياطي</div>
-    <div class="list">
-      <div class="list-item"><span class="grow"><strong>التخزين الدائم</strong><small>يطلب من المتصفح عدم حذف بياناتك تلقائيًا</small></span>${persist}</div>
-      <div class="list-item"><span class="grow"><strong>آخر نسخة احتياطية</strong><small class="num">${last}</small></span></div>
-      <button type="button" class="list-item" data-act="backup">${icon('download')}<span class="grow"><strong>حفظ نسخة احتياطية</strong><small>ملف واحد فيه كل الشعب والدرجات</small></span></button>
-      <button type="button" class="list-item" data-act="restore">${icon('upload')}<span class="grow"><strong>استرجاع نسخة</strong><small>يستبدل كل البيانات الحالية</small></span></button>
-      <button type="button" class="list-item" data-act="go" data-to="transferIn">${icon('inbox')}<span class="grow"><strong>استقبال طلاب منقولين</strong><small>من ملف أرسله معلم آخر</small></span></button>
-      <button type="button" class="list-item" data-act="wipe">${icon('trash')}<span class="grow"><strong style="color:var(--error)">حذف كل البيانات</strong><small>من هذا الجهاز فقط</small></span></button>
-    </div>
-
-    <div class="section-title">العرض على الكمبيوتر (متقدم)</div>
-    <div class="card stack">
-      <div class="field"><label for="s-view">رابط صفحة العرض</label><input id="s-view" class="input" dir="ltr" data-setting="viewUrl" value="${esc(st.viewUrl)}" placeholder="${esc(defaultViewUrl() || 'https://…/view.html')}"></div>
-      <div class="field"><label for="s-turn">خادم TURN (اختياري)</label><input id="s-turn" class="input" dir="ltr" data-setting="turnUrl" value="${esc(st.turnUrl)}" placeholder="turn:example.com:3478"></div>
-      <div class="meta-grid" style="grid-template-columns:1fr 1fr">
-        <div class="field"><label for="s-tu">اسم المستخدم</label><input id="s-tu" class="input" dir="ltr" data-setting="turnUser" value="${esc(st.turnUser)}" autocomplete="off"></div>
-        <div class="field"><label for="s-tp">كلمة المرور</label><input id="s-tp" class="input" dir="ltr" type="password" data-setting="turnPass" value="${esc(st.turnPass)}" autocomplete="off"></div>
-      </div>
-      <p class="hint">اتركها فارغة في الغالب. تحتاجها فقط إذا كانت شبكة المدرسة تمنع الاتصال المباشر ولا تستطيع استعمال نقطة اتصال الجوال.</p>
-    </div>
-
     <div class="section-title">التطبيق</div>
     <div class="list">
       <div class="list-item"><span class="grow"><strong>طريقة التشغيل</strong><small>${inst}</small></span></div>
       <button type="button" class="list-item" data-act="go" data-to="guide">${icon('phone')}<span class="grow"><strong>إرشادات التثبيت</strong><small>آيفون وأندرويد</small></span>${icon('fwd')}</button>
       <button type="button" class="list-item" data-act="tour">${icon('sparkle')}<span class="grow"><strong>إعادة الجولة التعريفية</strong></span>${icon('fwd')}</button>
-      <div class="list-item">${icon('code')}<span class="grow"><strong>تخصيص الواجهة</strong><small>يمكن لأي معلم تعديل التطبيق بما يناسبه عبر Claude Code: افتح مجلد المشروع واطلب التعديل بالعربية (مثل «غيّر أسماء البنود» أو «أضف زر ٣٫٥»). التفاصيل في ملف CLAUDE.md.</small></span></div>
-      <div class="list-item"><span class="grow"><strong>الإصدار</strong><small class="num">${ar(CONFIG.version)}</small></span></div>
+      <button type="button" class="list-item" data-act="nav" data-to="tools">${icon('shield')}<span class="grow"><strong>النسخ الاحتياطي والبيانات</strong><small>في تبويب «الأدوات»</small></span>${icon('fwd')}</button>
+      <div class="list-item">${icon('code')}<span class="grow"><strong>تخصيص الواجهة</strong><small>يمكن لأي معلم تعديل التطبيق بما يناسبه عبر Claude Code: افتح مجلد المشروع واطلب التعديل بالعربية. التفاصيل في ملف CLAUDE.md.</small></span></div>
     </div>
-    <p class="hint" style="text-align:center;margin:16px 0">${icon('shield')} لا حسابات ولا إنترنت: كل البيانات على هذا الجهاز فقط.</p>
+
+    <details class="card advanced">
+      <summary>${icon('gear')} خيارات متقدمة (للفني فقط)</summary>
+      <p class="hint">لا يحتاجها المعلم عادةً: رابط صفحة العرض مضبوط مسبقًا، والاتصال يعمل بدون خادم TURN في أغلب الشبكات.</p>
+      <div class="field"><label for="s-view">رابط صفحة العرض</label><input id="s-view" class="input" dir="ltr" data-setting="viewUrl" value="${esc(st.viewUrl)}" placeholder="${esc(defaultViewUrl() || 'https://…/view.html')}"></div>
+      <div class="field"><label for="s-turn">خادم TURN</label><input id="s-turn" class="input" dir="ltr" data-setting="turnUrl" value="${esc(st.turnUrl)}" placeholder="turn:example.com:3478"></div>
+      <div class="meta-grid" style="grid-template-columns:1fr 1fr">
+        <div class="field"><label for="s-tu">اسم المستخدم</label><input id="s-tu" class="input" dir="ltr" data-setting="turnUser" value="${esc(st.turnUser)}" autocomplete="off"></div>
+        <div class="field"><label for="s-tp">كلمة المرور</label><input id="s-tp" class="input" dir="ltr" type="password" data-setting="turnPass" value="${esc(st.turnPass)}" autocomplete="off"></div>
+      </div>
+    </details>
+    <p class="hint" style="text-align:center;margin:16px 0">${icon('shield')} لا حسابات: كل الدرجات على هذا الجهاز فقط.</p>
   </div>`;
+}
+
+// ===== التحديثات =====
+const UPD = { state: 'idle', worker: null, build: '' };
+function updateCardHTML() {
+  const ver = `الإصدار ${ar(CONFIG.version)}${CONFIG.releaseDate ? ` — ${ar(CONFIG.releaseDate.split('-').reverse().join('/'))}` : ''}`;
+  const news = CHANGELOG.slice(0, 5).map((e) => `<li><b class="num">${ar(e.version)}</b> <small class="muted num">${ar(String(e.date || '').split('-').reverse().join('/'))}</small>${e.items.length ? `<ul>${e.items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</li>`).join('');
+  const newsBox = news ? `<details class="whats-new"><summary>${icon('sparkle')} ما الجديد</summary><ul class="changelog">${news}</ul></details>` : '';
+  if (platform.isNative) {
+    return `<div class="row"><span class="grow"><strong>${ver}</strong><small class="muted" style="display:block">تطبيق أندرويد</small></span></div>
+      <p class="hint">يتحدّث تطبيق أندرويد بتثبيت ملف APK الجديد الذي يصلك؛ يُثبَّت فوق القديم وتبقى الدرجات.</p>${newsBox}`;
+  }
+  const st = UPD.state;
+  const line = st === 'ready' ? `<span class="status-pill">${icon('download')} تحديث جديد جاهز</span>`
+    : st === 'checking' ? `<span class="status-pill">${icon('refresh')} جارٍ البحث…</span>`
+      : st === 'latest' ? `<span class="status-pill ok">${icon('checkCircle')} عندك آخر إصدار</span>`
+        : st === 'offline' ? `<span class="status-pill">${icon('wifi')} لا يوجد اتصال بالإنترنت</span>` : '';
+  return `<div class="row" style="justify-content:space-between;flex-wrap:wrap"><strong>${ver}</strong>${line}</div>
+    ${st === 'ready'
+      ? `<button type="button" class="btn primary block" data-act="update-now">${icon('refresh')} حدّث الآن</button><p class="hint">يُعاد تشغيل التطبيق بالنسخة الجديدة. درجاتك لا تتأثر.</p>`
+      : `<button type="button" class="btn block" data-act="update-check" ${st === 'checking' ? 'disabled' : ''}>${icon('refresh')} ابحث عن تحديث</button><p class="hint">التحديثات تصل تلقائيًا عند فتح التطبيق مع اتصال بالإنترنت.</p>`}${newsBox}`;
+}
+function paintUpdate() {
+  const card = document.querySelector('[data-testid="update-card"]');
+  if (card) card.innerHTML = updateCardHTML();
+}
+async function checkForUpdate() {
+  if (!('serviceWorker' in navigator)) { UPD.state = 'latest'; return paintUpdate(); }
+  if (!navigator.onLine) { UPD.state = 'offline'; return paintUpdate(); }
+  UPD.state = 'checking'; paintUpdate();
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) { UPD.state = 'latest'; return paintUpdate(); }
+    await reg.update();
+    const w = reg.waiting || reg.installing;
+    if (w) {
+      if (w.state === 'installed') { UPD.state = 'ready'; UPD.worker = w; }
+      else await new Promise((res) => { w.addEventListener('statechange', () => { if (w.state === 'installed' || w.state === 'redundant') res(); }); setTimeout(res, 20000); });
+      if (w.state === 'installed') { UPD.state = 'ready'; UPD.worker = w; } else UPD.state = 'latest';
+    } else UPD.state = 'latest';
+  } catch { UPD.state = navigator.onLine ? 'latest' : 'offline'; }
+  paintUpdate();
 }
 
 let settingsTimer = null;
@@ -1289,6 +1424,59 @@ function showTour() {
     if (!b) return;
     if (b.dataset.t === 'skip' || i === TOUR.length - 1) s.close();
     else { i++; paint(); }
+  });
+}
+
+// =====================================================================
+// تسليم شعبة كاملة (عهدة) لمعلم آخر
+// =====================================================================
+async function doHandover(c) {
+  if (!c) return;
+  if (S.dirty.size) await flushSave();
+  const T = await import('./transfer.js');
+  const file = T.buildClassHandover({ classLabel: c.label, names: c.names, data: dataOf(c.id), settings: S.settings });
+  const name = T.handoverFileName ? T.handoverFileName(c.label) : `تسليم_عهدة_${c.label}.json`;
+  try {
+    const r = await platform.saveFile(name, new Blob([JSON.stringify(file)], { type: 'application/json' }), 'application/json');
+    if (r === 'cancelled') return;
+  } catch { toast('تعذّر حفظ ملف التسليم', { err: true }); return; }
+  const del = await confirmDialog({ title: `سلّمت «${c.label}»؟`, text: 'أرسل الملف للمعلم الجديد (واتساب أو بريد) ليستقبله من «الأدوات ← استقبال شعبة أو طلاب». هل تحذف الشعبة من جهازك الآن؟ (احتفظ بها إن لم تتأكد من وصول الملف)', ok: 'احذفها من جهازي', cancel: 'أبقها', danger: true });
+  if (del) await deleteClass(c.id, { skipConfirm: true });
+  else toast('حُفظ ملف التسليم ✓');
+}
+
+// =====================================================================
+// التقارير: نطبع تقريرًا منسّقًا (أو نحفظه PDF من نافذة الطباعة)
+// =====================================================================
+async function printReport(kind, c, idx) {
+  if (!c) return;
+  if (S.dirty.size) await flushSave();
+  let R;
+  try { R = await import('./reports.js'); } catch { toast('تعذّر تجهيز التقرير', { err: true }); return; }
+  const args = { classLabel: c.label, names: c.names, data: dataOf(c.id), settings: S.settings, idx };
+  const html = kind === 'attendance' ? R.attendanceReportHTML(args) : kind === 'student' ? R.studentReportHTML(args) : R.gradesReportHTML({ ...args, part: 'all' });
+  let css = document.getElementById('report-css');
+  if (!css) { css = document.createElement('style'); css.id = 'report-css'; document.head.appendChild(css); }
+  css.textContent = R.REPORT_CSS;
+  let root = document.getElementById('print-root');
+  if (!root) { root = document.createElement('div'); root.id = 'print-root'; document.body.appendChild(root); }
+  root.innerHTML = html;
+  const title = kind === 'attendance' ? `كشف_الحضور_${c.label}` : kind === 'student' ? `تقرير_${c.names[idx]}` : `كشف_الدرجات_${c.label}`;
+  const oldTitle = document.title;
+  document.title = title.replace(/[\\/:*?"<>|]+/g, '_');
+  try {
+    const how = await platform.print(document.title);
+    if (how === 'unsupported') toast('الطباعة غير متاحة على هذا الجهاز. جرّب من الكمبيوتر أو صدّر Excel.', { err: true, ms: 6000 });
+  } catch { toast('تعذّرت الطباعة على هذا الجهاز', { err: true }); }
+  setTimeout(() => { document.title = oldTitle; }, 1500);
+}
+
+function pickStudent(c, title) {
+  return new Promise((resolve) => {
+    let res = null;
+    const s = openSheet(`<h2>${esc(title)}</h2><div class="list" style="max-height:60vh;overflow:auto">${c.names.map((nm, i) => `<button type="button" class="list-item" data-ps="${i}"><span class="stu-num num">${ar(i + 1)}</span><span class="grow"><strong>${esc(nm)}</strong></span></button>`).join('')}</div>
+      <div class="actions"><button type="button" class="btn" data-ps="">إلغاء</button></div>`, { label: title, onClose: () => resolve(res) });
+    s.sheet.addEventListener('click', (e) => { const b = e.target.closest('[data-ps]'); if (!b) return; res = b.dataset.ps === '' ? null : +b.dataset.ps; s.close(); });
   });
 }
 
@@ -1442,7 +1630,7 @@ function Live() {
       <p class="hint">افتح صفحة العرض في متصفح الكمبيوتر (<bdi>Chrome</bdi> أو <bdi>Edge</bdi> أو <bdi>Safari</bdi>):</p>
       ${viewUrl ? `<div class="row"><code class="input grow" dir="ltr" style="display:flex;align-items:center;overflow:auto;white-space:nowrap">${esc(viewUrl)}</code><button type="button" class="icon-btn" data-act="copy-view" aria-label="نسخ الرابط">${icon('copy')}</button></div>` : '<div class="alert warn">' + icon('warn') + '<div class="grow">أضف رابط صفحة العرض من الإعدادات (رابط الاستضافة + view.html).</div></div>'}
       <h3>${icon('qr')} الخطوة ٢: امسح الرمز الظاهر على الكمبيوتر</h3>
-      <p class="hint">سيطلب التطبيق إذن الكاميرا لقراءة الرمز فقط، ولا يحفظ أي صورة.</p>
+      <p class="hint">صوّر الرمز بكاميرا الجوال فقط — الكمبيوتر يتصل بعدها تلقائيًا، ولا يحتاج كاميرا. يطلب التطبيق إذن الكاميرا لقراءة الرمز فقط ولا يحفظ أي صورة.</p>
       <button type="button" class="btn primary lg block" data-act="live-scan">${icon('camera')} افتح الكاميرا وامسح الرمز</button>
       <button type="button" class="btn block" data-act="live-paste">${icon('paste')} لا تعمل الكاميرا؟ الصق رمز العرض</button>
     </div>`;
@@ -1454,12 +1642,17 @@ function Live() {
   } else if (L.phase === 'connecting') {
     body = `<div class="card stack" style="text-align:center"><div class="skel" style="height:220px"></div><p class="hint">جارٍ تجهيز رمز الرد…</p></div>`;
   } else if (L.phase === 'answer') {
-    body = `<div class="card stack" style="text-align:center"><h3>${icon('qr')} الخطوة ٣: اعرض هذا الرمز للكمبيوتر</h3>
-      <p class="hint">اضغط «مسح الرد» على الكمبيوتر، ثم قرّب شاشة الجوال من كاميرته (٢٠–٣٠ سم) وثبّتها حتى تُقرأ كل الأجزاء.</p>
-      <button type="button" class="qr-box qr-tap" data-act="qr-full" aria-label="تكبير الرمز"><canvas data-answer-qr width="300" height="300" aria-label="رمز الرد"></canvas></button>
-      <p class="hint">${icon('info')} ارفع سطوع الشاشة. اضغط الرمز لتكبيره.</p>
-      <p class="hint" data-frame-label></p>
-      <button type="button" class="btn block" data-act="live-copy">${icon('copy')} نسخ الرمز (للصق على الكمبيوتر)</button>
+    const rs = L.link && L.link.relayState;
+    const sending = rs === 'sending';
+    const failed = rs === 'failed' || rs === 'none';
+    body = `<div class="card stack" style="text-align:center">
+      ${failed
+        ? `<div class="alert warn">${icon('warn')}<div class="grow"><strong>تعذّر إرسال الرد تلقائيًا</strong><p style="margin:0">انسخ الرمز وأرسله لنفسك، ثم الصقه في صفحة العرض («مشاكل الاتصال؟» ← «لصق الرد يدويًا»).</p></div></div>`
+        : `<div class="live-wait"><span class="spinner-lg" aria-hidden="true"></span><h3>${sending ? 'جارٍ الإرسال للكمبيوتر…' : 'أُرسل للكمبيوتر ✓'}</h3><p class="hint">سيتصل الكمبيوتر تلقائيًا خلال ثوانٍ. أبقِ هذه الشاشة مفتوحة.</p></div>`}
+      <details class="card flat" ${failed ? 'open' : ''}><summary style="font-weight:800;cursor:pointer;min-height:40px;display:flex;align-items:center;gap:8px">${icon('paste')} لم يتصل؟ استعمل النسخ واللصق</summary>
+        <button type="button" class="btn block" data-act="live-copy" style="margin-top:8px">${icon('copy')} نسخ رمز الرد</button>
+        <p class="hint">أرسل الرمز لنفسك (واتساب ويب مثلًا) والصقه في صفحة العرض على الكمبيوتر.</p>
+      </details>
       <button type="button" class="btn ghost block" data-act="live-stop">إلغاء</button></div>`;
   } else if (L.phase === 'connected') {
     body = `<div class="card stack">
@@ -1485,7 +1678,7 @@ function Live() {
 }
 afterRender.live = () => {
   if (L.phase === 'scan') startScanner();
-  if (L.phase === 'answer') paintAnswerQR();
+  if (L.phase === 'answer' && main().querySelector('[data-answer-qr]')) paintAnswerQR();
 };
 
 function setLiveState(st) {
@@ -1515,6 +1708,7 @@ async function startLiveFromCode(code) {
     L.link = new m.PhoneLink({ iceServers: m.iceServersFrom(S.settings), onState: setLiveState });
     L.state = 'connecting';
     L.answer = await L.link.acceptOffer(code);
+    if (L.link.relaySent) L.link.relaySent.then(() => { if (route().name === 'live' && L.phase === 'answer') render(); }).catch(() => {});
     // رموز صغيرة متتابعة بمربعات كبيرة: أسهل بكثير لكاميرا الكمبيوتر من رمز واحد كثيف
     L.frames = m.splitFrames(L.answer, 110);
     L.phase = 'answer';
@@ -1578,15 +1772,18 @@ function liveNames(c) {
   });
 }
 function liveData(c) {
+  // نسخة للعرض فقط: لا ملاحظات المعلم ولا أي حقل آخر. للطالب الواحد: بياناته فقط.
   const d = dataOf(c.id);
-  if (L.scope.kind === 'class') return d;
-  const i = L.scope.idx;
-  const out = { weeks: {}, fin: {}, t: d.t };
+  const only = L.scope.kind === 'student' ? L.scope.idx : null;
+  const pick = (obj) => {
+    const o = {};
+    for (const [i, val] of Object.entries(obj || {})) if (only == null || +i === only) o[i] = val;
+    return o;
+  };
+  const out = { weeks: {}, fin: pick(d.fin), t: d.t };
   for (const [w, wk] of Object.entries(d.weeks || {})) {
-    out.weeks[w] = { date: wk.date || '', lesson: wk.lesson || '', s: {} };
-    if (wk.s && wk.s[i]) out.weeks[w].s[i] = wk.s[i];
+    out.weeks[w] = { date: wk.date || '', lesson: wk.lesson || '', s: pick(wk.s), abs: pick(wk.abs) };
   }
-  if (d.fin && d.fin[i]) out.fin[i] = d.fin[i];
   return out;
 }
 function liveSend(msg) {
@@ -1604,7 +1801,7 @@ function sendSnapshot() {
 function livePatchItems(classId, w, i) {
   if (L.classId !== classId || L.state !== 'connected') return;
   if (L.scope.kind === 'student' && L.scope.idx !== i) return;
-  liveSend({ type: 'patch', kind: 'items', week: w, idx: i, values: getItems(dataOf(classId), w, i) });
+  liveSend({ type: 'patch', kind: 'items', week: w, idx: i, values: getItems(dataOf(classId), w, i), absent: isAbsent(dataOf(classId), w, i) });
 }
 function livePatchFin(classId, i) {
   if (L.classId !== classId || L.state !== 'connected') return;
@@ -1642,6 +1839,18 @@ document.addEventListener('click', async (e) => {
     case 'go': go(el.dataset.to, el.dataset.id ? { id: el.dataset.id } : {}); break;
     case 'new-class': go('editor', {}); break;
     case 'import-classes': importClassesFromFile(); break;
+    case 'handover-pick': { const c = await pickClass('أي شعبة تريد تسليمها؟'); if (c) doHandover(c); break; }
+    case 'handover': doHandover(cls(el.dataset.id)); break;
+    case 'transfer-pick': { const c = await pickClass('نقل طلاب من أي شعبة؟'); if (c) go('transferOut', { id: c.id }); break; }
+    case 'report-grades': printReport('grades', cls(el.dataset.id)); break;
+    case 'report-attendance': printReport('attendance', cls(el.dataset.id)); break;
+    case 'report-student': {
+      const c = cls(el.dataset.id);
+      const i = await pickStudent(c, 'تقرير أي طالب؟');
+      if (i != null) printReport('student', c, i);
+      break;
+    }
+    case 'print-student': printReport('student', cls(el.dataset.id), +el.dataset.idx); break;
     case 'open-class': S.ui.selected = null; S.ui.missingOnly = false; go('class', { id: el.dataset.id }); break;
     case 'resume': {
       e.stopPropagation();
@@ -1654,6 +1863,7 @@ document.addEventListener('click', async (e) => {
     }
     case 'edit-class': e.stopPropagation(); go('editor', { id: el.dataset.id }); break;
     case 'tab': {
+      S.ui.undo = null;
       p.tab = el.dataset.tab === 'fin' ? 'fin' : +el.dataset.tab;
       S.ui.tab[p.id] = p.tab; S.ui.search = '';
       p.painted = true;
@@ -1661,6 +1871,45 @@ document.addEventListener('click', async (e) => {
       break;
     }
     case 'missing': S.ui.missingOnly = el.checked; rerenderList(); break;
+    case 'undo-bulk': if (S.ui.undo) S.ui.undo.fn(); break;
+    case 'absent': {
+      const c = cls(p.id); const w = p.tab; const i = +el.dataset.idx; const d = dataOf(c.id);
+      const on = !isAbsent(d, w, i);
+      const wasDone = studentComplete(d, w, i);
+      const prev = setAbsent(d, w, i, on);
+      markDirty(c.id); livePatchItems(c.id, w, i); haptic(on ? 'error' : 'light');
+      const row = main().querySelector(`[data-stu="${i}"]`);
+      if (row && row.tagName === 'TR') rerenderList(); else if (row) row.outerHTML = stuRow(c, d, w, i);
+      refreshStudent(c, w, i);
+      if (on) {
+        toast(`${c.names[i].split(' ')[0]}: غائب (أصفار)`, { ms: 10000, action: { label: 'تراجع', fn: () => {
+          setAbsent(d, w, i, false); prev.forEach((v, k) => setItem(d, w, i, k, v));
+          markDirty(c.id); livePatchItems(c.id, w, i);
+          const r2 = main().querySelector(`[data-stu="${i}"]`); if (r2 && r2.tagName === 'TR') rerenderList(); else if (r2) r2.outerHTML = stuRow(c, d, w, i);
+          refreshStudent(c, w, i);
+        } } });
+        if (!wasDone) { advanceFrom(c, w, i); hideIfMissingOnly(i); }
+      }
+      break;
+    }
+    case 'note-add': {
+      const c = cls(el.dataset.id); const i = +el.dataset.idx;
+      const ta = document.querySelector(`[data-note-input="${i}"]`);
+      const text = (ta && ta.value || '').trim();
+      if (!text) { toast('اكتب الملاحظة أولًا', { err: true }); break; }
+      addNote(dataOf(c.id), i, text); markDirty(c.id);
+      toast('أُضيفت الملاحظة ✓');
+      if (route().name === 'student') render(); else refreshAside();
+      break;
+    }
+    case 'note-del': {
+      const c = cls(el.dataset.id); const i = +el.dataset.idx;
+      const ok = await confirmDialog({ title: 'حذف الملاحظة؟', ok: 'حذف', danger: true });
+      if (!ok) break;
+      deleteNote(dataOf(c.id), i, el.dataset.t); markDirty(c.id);
+      if (route().name === 'student') render(); else refreshAside();
+      break;
+    }
     case 'missing-toggle': S.ui.missingOnly = !S.ui.missingOnly; rerenderList(); break;
     case 'box': openPicker(cls(p.id), p.tab, +el.dataset.idx, +el.dataset.k); break;
     case 'fin-box': {
@@ -1675,7 +1924,7 @@ document.addEventListener('click', async (e) => {
     case 'week-step': {
       const order = [...Array(WEEKS).keys()].map((x) => x + 1).concat(['fin']);
       const j = order.indexOf(p.tab) + +el.dataset.dir;
-      if (j >= 0 && j < order.length) { p.tab = order[j]; S.ui.tab[p.id] = p.tab; S.ui.search = ''; p.painted = true; render({ scrollTop: true }); }
+      if (j >= 0 && j < order.length) { S.ui.undo = null; p.tab = order[j]; S.ui.tab[p.id] = p.tab; S.ui.search = ''; p.painted = true; render({ scrollTop: true }); }
       break;
     }
     case 'week-pick': showWeekPicker(p); break;
@@ -1707,6 +1956,8 @@ document.addEventListener('click', async (e) => {
     case 'restore': doRestore(); break;
     case 'wipe': doWipe(); break;
     case 'tour': showTour(); break;
+    case 'update-check': checkForUpdate(); break;
+    case 'update-now': if (UPD.worker) UPD.worker.postMessage({ type: 'skip-waiting' }); else location.reload(); break;
     case 'dismiss-guide': try { sessionStorage.setItem('iosGuideSeen', '1'); } catch { /* */ } go('home'); break;
     case 'set': {
       S.settings[el.dataset.key] = el.dataset.v;
@@ -1828,7 +2079,8 @@ function showClassMenu(p) {
       ${item('edit-class', 'users', 'الطلاب', 'إضافة، تعديل الأسماء، حذف، ترتيب')}
       ${item('export-xlsx', 'sheet', 'تصدير Excel', 'كشف المتابعة الرسمي للطباعة')}
       ${item('go-live', 'monitor', 'عرض على الكمبيوتر', 'اعرض الدرجات على البروجكتر')}
-      ${item('go', 'send', 'نقل طلاب', 'لمعلم آخر أو لشعبة أخرى', 'data-to="transferOut"')}
+      ${item('handover', 'send', 'تسليم الشعبة لمعلم آخر', 'كل الطلاب مع الدرجات والغياب والملاحظات')}
+      ${item('go', 'move', 'نقل طلاب', 'طالب أو أكثر لمعلم آخر أو لشعبة أخرى', 'data-to="transferOut"')}
       ${item('go', 'inbox', 'استقبال طلاب منقولين', 'من ملف أرسله معلم آخر', 'data-to="transferIn"')}
     </div>
     <div class="actions"><button type="button" class="btn" data-x>إغلاق</button></div>`, { label: 'خيارات الشعبة' });
@@ -1882,27 +2134,37 @@ async function onScoreAction(act, el, p) {
   if (!wasDone && nowDone) { advanceFrom(c, w, i); hideIfMissingOnly(i); }
 }
 
-function quickFill(p, which) {
+async function quickFill(p, which) {
   const c = cls(p.id); const w = p.tab; const d = dataOf(c.id);
   const ks = which === 'all' ? CRIT.map((_, k) => k) : [+which];
-  const changes = [];
+  const plan = [];
   c.names.forEach((_, i) => {
+    if (isAbsent(d, w, i)) return; // الغائب لا يُعبَّأ
     const vals = getItems(d, w, i);
-    ks.forEach((k) => { if (vals[k] == null) { changes.push([i, k]); setItem(d, w, i, k, CONFIG.itemMax); } });
+    ks.forEach((k) => { if (vals[k] == null) plan.push([i, k]); });
   });
-  if (!changes.length) { toast('لا توجد خانات فارغة لتعبئتها'); return; }
-  markDirty(c.id);
-  [...new Set(changes.map(([i]) => i))].forEach((i) => livePatchItems(c.id, w, i));
-  haptic('success');
-  rerenderList(); refreshChip(c, w); refreshAside();
+  if (!plan.length) { toast('لا توجد خانات فارغة لتعبئتها'); return; }
   const label = which === 'all' ? 'كل البنود' : CRIT[+which].label;
-  toast(`عُبّئت ${cells(changes.length)} (${label})`, { action: { label: 'تراجع', fn: () => {
-    changes.forEach(([i, k]) => setItem(d, w, i, k, null));
+  const who = new Set(plan.map(([i]) => i)).size;
+  const ok = await confirmDialog({ title: `تعبئة ${label} بـ ${ar(CONFIG.itemMax)}؟`, text: `سيوضع ${ar(CONFIG.itemMax)} في ${cells(plan.length)} فارغة لـ ${students(who)} في الأسبوع ${ar(w)}. الخانات التي فيها درجات والطلاب الغائبون لا يتغيرون، ويمكنك التراجع بعدها.`, ok: 'عبّئ' });
+  if (!ok) return;
+  plan.forEach(([i, k]) => setItem(d, w, i, k, CONFIG.itemMax));
+  markDirty(c.id);
+  const touched = [...new Set(plan.map(([i]) => i))];
+  touched.forEach((i) => livePatchItems(c.id, w, i));
+  haptic('success');
+  const undo = () => {
+    plan.forEach(([i, k]) => setItem(d, w, i, k, null));
     markDirty(c.id);
-    [...new Set(changes.map(([i]) => i))].forEach((i) => livePatchItems(c.id, w, i));
+    touched.forEach((i) => livePatchItems(c.id, w, i));
+    S.ui.undo = null;
     rerenderList(); refreshChip(c, w); refreshAside();
     toast('تم التراجع');
-  } } });
+  };
+  // يبقى زر التراجع ظاهرًا في شريط الإجراءات حتى تعبئة أخرى أو تغيير الأسبوع
+  S.ui.undo = { classId: c.id, week: w, label: which === 'all' ? `الكل ${ar(CONFIG.itemMax)}` : `${CRIT[+which].short} ${ar(CONFIG.itemMax)}`, fn: undo };
+  rerenderList(); refreshChip(c, w); refreshAside();
+  toast(`عُبّئت ${cells(plan.length)} (${label})`, { action: { label: 'تراجع', fn: () => S.ui.undo && S.ui.undo.fn === undo && undo() } });
 }
 
 // إدخال الحقول (الأرقام، البيانات، الإعدادات، البحث)
@@ -1935,6 +2197,7 @@ document.addEventListener('change', async (e) => {
   if (t.matches('[data-sel]')) { const i = +t.dataset.sel; if (t.checked) r.p.sel.add(i); else r.p.sel.delete(i); render(); return; }
   if (t.matches('[data-pick-st]')) { const i = +t.dataset.pickSt; if (t.checked) r.p.pick.add(i); else r.p.pick.delete(i); render(); return; }
   if (t.matches('[data-tgt]')) { r.p.target = t.dataset.tgt; render(); return; }
+  if (t.matches('[data-report-class]')) { S.ui.reportClass = t.value; render(); return; }
   if (t.matches('[data-live="class"]')) { L.classId = t.value; L.scope.idx = 0; liveResync(L.classId); render(); return; }
   if (t.matches('[data-live="student"]')) { L.scope.idx = +t.value; sendSnapshot(); return; }
   if (t.matches('[data-live="hide"]')) { L.hideNames = t.checked; sendSnapshot(); return; }
@@ -2022,13 +2285,14 @@ function maybeNagBackup() {
 function registerSW() {
   if (platform.isNative || !('serviceWorker' in navigator) || !window.isSecureContext) return;
   const hadController = !!navigator.serviceWorker.controller; // أول زيارة: لا نعيد التحميل
+  fetch('version.txt', { cache: 'no-store' }).then((r) => (r.ok ? r.text() : '')).then((t) => { UPD.build = t.trim().slice(0, 7); paintUpdate(); }).catch(() => {});
   navigator.serviceWorker.register('sw.js').then((reg) => {
-    const ask = (w) => toast('تحديث متوفر، أعد التشغيل', { ms: 0, action: { label: 'أعد التشغيل', fn: () => w.postMessage({ type: 'skip-waiting' }) } });
-    if (reg.waiting && navigator.serviceWorker.controller) ask(reg.waiting);
+    const ask = (w) => { UPD.state = 'ready'; UPD.worker = w; paintUpdate(); toast('تحديث متوفر، أعد التشغيل', { ms: 0, action: { label: 'أعد التشغيل', fn: () => w.postMessage({ type: 'skip-waiting' }) } }); };
+    if (reg.waiting && hadController) ask(reg.waiting);
     reg.addEventListener('updatefound', () => {
       const w = reg.installing;
       if (!w) return;
-      w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) ask(w); });
+      w.addEventListener('statechange', () => { if (w.state === 'installed' && hadController) ask(w); });
     });
     setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
   }).catch(() => {});

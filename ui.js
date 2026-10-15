@@ -101,6 +101,8 @@ export function toast(msg, opts = {}) {
     b.addEventListener('click', () => { close(); opts.action.fn(); });
     el.appendChild(b);
   }
+  // نفس الرسالة الظاهرة لا تتكرر
+  for (const old of host.children) if (old.firstChild && old.firstChild.textContent === String(msg)) old.remove();
   // لا نكدّس أكثر من رسالتين
   while (host.children.length >= 2) host.firstChild.remove();
   host.appendChild(el);
@@ -180,6 +182,7 @@ export function keypad({ title, max, value }) {
         <button type="button" data-k="del" aria-label="حذف">⌫</button>
       </div>
       <div class="actions">
+        <button type="button" class="btn" data-k="cancel">إلغاء</button>
         <button type="button" class="btn" data-k="clear">مسح الدرجة</button>
         <button type="button" class="btn primary" data-k="ok">حفظ</button>
       </div>`, { label: title, onClose: () => resolve(result) });
@@ -191,6 +194,7 @@ export function keypad({ title, max, value }) {
       const b = e.target.closest('[data-k]');
       if (!b) return;
       const k = b.dataset.k;
+      if (k === 'cancel') return s.close();
       if (k === 'del') v = v.slice(0, -1);
       else if (k === 'clear') { result = { value: null }; return s.close(); }
       else if (k === 'ok') {

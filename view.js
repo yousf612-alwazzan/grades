@@ -1,6 +1,6 @@
 // شاشة العرض على الكمبيوتر/جهاز العرض: قراءة فقط، في الذاكرة فقط، لا تخزين لأي بيانات.
 import CONFIG from './config.js';
-import { ViewerLink, QrScanner, FrameCollector, renderQR, splitFrames, iceServersFrom, wakeLock } from './live.js';
+import { ViewerLink, FrameCollector, renderQR, splitFrames, iceServersFrom, wakeLock } from './live.js';
 import {
   WEEKS, FIN_MAX, toArabicDigits, fmt, weekTotal, periodScore, formative, finalTotal,
   studentSummary, getItems, getFin, getWeekMeta, progress, weekRemaining, arCompare, round2,
@@ -32,7 +32,6 @@ const FRAME_MAX = 480; // أقصى طول لإطار QR الواحد على ال
 // ---------- أيقونات (SVG مضمّن) ----------
 const svg = (p, extra = '') => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${p}</svg>`;
 const I = {
-  scan: svg('<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M7 12h10"/>'),
   paste: svg('<rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/><path d="M9 13h6M9 17h4"/>'),
   copy: svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>'),
   refresh: svg('<path d="M20 11a8 8 0 0 0-14.9-3.9L4 9"/><path d="M4 4v5h5"/><path d="M4 13a8 8 0 0 0 14.9 3.9L20 15"/><path d="M20 20v-5h-5"/>'),
@@ -73,8 +72,6 @@ let offerCode = '';
 let frames = [];
 let frameIdx = 0;
 let frameTimer = 0;
-let scanner = null;
-let collector = null;
 let offerSeq = 0;
 
 // ---------- أدوات ----------
@@ -136,9 +133,24 @@ function setZoom(z) {
 
 // ---------- الاقتران ----------
 function setPairStatus(text, kind = '') {
-  const s = $('pair-status');
-  s.textContent = text;
-  s.dataset.kind = kind;
+  $('pair-status-text').textContent = text;
+  $('pair-status').dataset.kind = kind;
+}
+const RELAY_TEXT = {
+  waiting: ['بانتظار الجوال…', 'wait'],
+  received: ['تم استلام الرد، جارٍ الاتصال…', 'busy'],
+  unreachable: ['تعذّر الوصول للوسيط — استعمل اللصق اليدوي', 'error'],
+  expired: ['انتهت صلاحية الرمز. اضغط «رمز جديد».', 'error'],
+};
+function onRelay(s) {
+  if (ui.screen !== 'pair' || !offerCode) return;
+  const t = RELAY_TEXT[s];
+  if (!t) return;
+  setPairStatus(t[0], t[1]);
+  if (s === 'unreachable') { // أظهر خيار اللصق اليدوي
+    $('help').open = true;
+    try { document.querySelector('.manual').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch { /* */ }
+  }
 }
 
 function drawFrame() {
@@ -164,7 +176,12 @@ function showOffer(code) {
   if (frames.length > 1) {
     frameTimer = setInterval(() => { frameIdx = (frameIdx + 1) % frames.length; drawFrame(); }, 900);
   }
-  setPairStatus('جاهز للمسح — امسح الرمز من تطبيق الجوال', 'ok');
+  if (link && link.room) onRelay(link.relayState === 'off' ? 'waiting' : link.relayState);
+  else {
+    // متصفح لا يدعم التشفير/الوسيط: اللصق اليدوي فقط
+    setPairStatus('امسح الرمز بالجوال، ثم الصق رمز الرد يدويًا', 'wait');
+    $('help').open = true;
+  }
 }
 
 function makeLink() {
@@ -173,6 +190,7 @@ function makeLink() {
     iceServers,
     onState: (s) => { if (l === link) onConnState(s); },
     onMessage: (m) => { if (l === link) onMessage(m); },
+    onRelay: (s) => { if (l === link) onRelay(s); },
   });
   return l;
 }
@@ -304,7 +322,9 @@ function sanitizeData(d) {
       if (!/^\d+$/.test(i) || !Array.isArray(arr)) continue;
       s[i] = CONFIG.criteria.map((_, k) => cleanNum(arr[k], CONFIG.itemMax));
     }
-    out.weeks[String(Number(wk))] = { date: String(w.date || '').slice(0, 40), lesson: String(w.lesson || '').slice(0, 200), s };
+    const abs = {};
+    for (const [i, on] of Object.entries(w.abs || {})) if (/^\d+$/.test(i) && on === true) abs[i] = true;
+    out.weeks[String(Number(wk))] = { date: String(w.date || '').slice(0, 40), lesson: String(w.lesson || '').slice(0, 200), s, abs };
   }
   for (const [i, arr] of Object.entries(d?.fin || {})) {
     if (!/^\d+$/.test(i) || !Array.isArray(arr)) continue;
@@ -377,6 +397,8 @@ function applyPatch(m) {
     d.weeks[wk] ||= { date: '', lesson: '', s: {} };
     d.weeks[wk].s ||= {};
     d.weeks[wk].s[idx] = CONFIG.criteria.map((_, k) => cleanNum(m.values[k], CONFIG.itemMax));
+    d.weeks[wk].abs ||= {};
+    if (m.absent === true) d.weeks[wk].abs[idx] = true; else delete d.weeks[wk].abs[idx];
     return true;
   }
   if (m.kind === 'fin') {
@@ -463,7 +485,7 @@ function renderGrid() {
       <th scope="col" class="c-total">${sortHeader('total', headSub('المجموع', '/' + ar(TOTAL_MAX)))}</th></tr>`;
     for (const i of order) {
       const s = studentSummary(d, i);
-      body += `<tr data-idx="${i}">${nameCell(i)}${s.weeks.map((v, w) => cell(v, WEEK_MAX, '" data-k="w' + (w + 1))).join('')}
+      body += `<tr data-idx="${i}">${nameCell(i)}${s.weeks.map((v, w) => (absentAt(d, w + 1, i) ? absCell('w' + (w + 1)) : cell(v, WEEK_MAX, '" data-k="w' + (w + 1)))).join('')}
         ${cell(s.p1, WEEK_MAX, ' c-sep" data-k="p1')}${cell(s.p2, WEEK_MAX, '" data-k="p2')}${cell(s.formative, FORM_MAX, ' c-strong" data-k="fo')}
         ${s.fin.map((v, k) => cell(v, FIN_MAX[k], (k === 0 ? ' c-sep' : '') + '" data-k="f' + k)).join('')}
         ${totalCell(s.total, 'tt')}</tr>`;
@@ -475,7 +497,9 @@ function renderGrid() {
     for (const i of order) {
       const items = getItems(d, w, i);
       const t = weekTotal(d, w, i);
-      body += `<tr data-idx="${i}">${nameCell(i)}${items.map((v, k) => cell(v, CONFIG.itemMax, ' c-crit" data-k="i' + k)).join('')}${totalCell(t, 'wt', WEEK_MAX)}</tr>`;
+      body += absentAt(d, w, i)
+        ? `<tr data-idx="${i}" class="row-absent">${nameCell(i)}<td class="c-absent" colspan="${items.length}" data-k="ab">غائب</td>${totalCell(t, 'wt', WEEK_MAX)}</tr>`
+        : `<tr data-idx="${i}">${nameCell(i)}${items.map((v, k) => cell(v, CONFIG.itemMax, ' c-crit" data-k="i' + k)).join('')}${totalCell(t, 'wt', WEEK_MAX)}</tr>`;
     }
   } else {
     head = `<tr>${numTh}${nameTh}
@@ -493,6 +517,9 @@ function renderGrid() {
   if (!n) body = `<tr><td class="empty-row" colspan="30">لا يوجد طلاب في هذا الصف بعد.</td></tr>`;
   return `<table class="grid view-${ui.view}" aria-rowcount="${n}"><thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
+
+function absentAt(d, w, i) { return !!(d.weeks[String(w)] && d.weeks[String(w)].abs && d.weeks[String(w)].abs[i]); }
+function absCell(k) { return `<td class="num c-absent" data-k="${k}" title="غائب">غ</td>`; }
 
 function totalCell(v, k, max = TOTAL_MAX) {
   const cls = v == null ? 'missing' : v >= max ? 'complete full' : 'complete';
@@ -613,7 +640,7 @@ function studentDetail(i, big = false) {
     const items = getItems(d, w, i);
     const meta = getWeekMeta(d, w);
     rows += `<tr><th scope="row"><span class="wk-n">أسبوع ${ar(w)}</span>${meta.date ? `<span class="wk-d">${esc(fmtDate(meta.date, true))}</span>` : ''}</th>
-      ${items.map((v, k) => cell(v, CONFIG.itemMax, '" data-k="w' + w + 'i' + k)).join('')}${totalCell(s.weeks[w - 1], 'w' + w + 't', WEEK_MAX)}</tr>`;
+      ${absentAt(d, w, i) ? `<td class="c-absent" colspan="${items.length}">غائب</td>` : items.map((v, k) => cell(v, CONFIG.itemMax, '" data-k="w' + w + 'i' + k)).join('')}${totalCell(s.weeks[w - 1], 'w' + w + 't', WEEK_MAX)}</tr>`;
   }
   const tile = (label, v, max, k, strong = false) => `<div class="tile${strong ? ' strong' : ''}${v != null && v >= max ? ' full' : ''}" data-k="${k}"><span class="tile-label">${esc(label)}</span><strong>${fmt(v)}</strong><span class="tile-max">من ${ar(max)}</span></div>`;
   const total = s.total;
@@ -698,59 +725,10 @@ function openModal(id) {
   requestAnimationFrame(() => m.classList.add('open'));
 }
 function closeModals() {
-  for (const id of ['modal-scan', 'modal-paste']) {
+  for (const id of ['modal-paste']) {
     const m = $(id);
     m.classList.remove('open');
     m.hidden = true;
-  }
-  stopScanner();
-}
-
-function stopScanner() {
-  if (scanner) { scanner.stop(); scanner = null; }
-}
-
-async function startScan() {
-  openModal('modal-scan');
-  const err = $('scan-error');
-  err.hidden = true;
-  $('scan-progress').textContent = 'بانتظار رمز الرد…';
-  $('scan-progress').dataset.kind = '';
-  collector = new FrameCollector();
-  let busy = false;
-  scanner = new QrScanner($('scan-video'), async (text) => {
-    if (busy) return;
-    const full = collector.push(text);
-    const p = collector.progress();
-    if (!full) {
-      if (p.total > 1) $('scan-progress').textContent = `تمت قراءة ${ar(p.got)} من ${ar(p.total)} أجزاء…`;
-      return;
-    }
-    busy = true;
-    try {
-      await acceptAnswer(full);
-      $('scan-progress').textContent = 'تمت القراءة. جارٍ الاتصال…';
-      $('scan-progress').dataset.kind = 'ok';
-      stopScanner();
-      setTimeout(() => { if (!$('modal-scan').hidden) closeModals(); }, 600);
-    } catch (e) {
-      $('scan-progress').textContent = e.message || 'رمز غير صالح.';
-      $('scan-progress').dataset.kind = 'error';
-      collector.reset();
-      busy = false;
-    }
-  });
-  try {
-    await scanner.start('user');
-  } catch (e) {
-    const msg = {
-      denied: { t: 'لم يُسمح باستخدام الكاميرا', s: 'اضغط على أيقونة الكاميرا في شريط العنوان واسمح بالوصول، ثم أعد فتح هذه النافذة. أو استخدم «لصق الرد».' },
-      notfound: { t: 'لا توجد كاميرا متاحة', s: 'لم نجد كاميرا في هذا الكمبيوتر أو أنها مستخدمة في برنامج آخر. استخدم «لصق الرد» بدلًا من ذلك.' },
-      insecure: { t: 'الكاميرا غير متاحة على هذا الرابط', s: 'افتح شاشة العرض عبر رابط آمن (https) أو استخدم «لصق الرد».' },
-    }[e.code] || { t: 'تعذر تشغيل الكاميرا', s: 'استخدم «لصق الرد» بدلًا من ذلك.' };
-    err.innerHTML = `<span class="err-icon">${I.close}</span><strong>${esc(msg.t)}</strong><span>${esc(msg.s)}</span>`;
-    err.hidden = false;
-    scanner = null;
   }
 }
 
@@ -812,15 +790,13 @@ function disconnect() {
 
 // ---------- الأحداث ----------
 function bind() {
-  $('btn-scan').innerHTML = btnHtml(I.scan, 'مسح الرد');
-  $('btn-paste').innerHTML = btnHtml(I.paste, 'لصق الرد');
+  $('btn-paste').innerHTML = btnHtml(I.paste, 'لصق الرد يدويًا');
   $('btn-copy').innerHTML = btnHtml(I.copy, 'نسخ رمز العرض');
   $('btn-new').innerHTML = btnHtml(I.refresh, 'رمز جديد');
   $('btn-disconnect').innerHTML = btnHtml(I.unlink, 'قطع الاتصال');
   $('btn-disconnect').setAttribute('aria-label', 'قطع الاتصال');
   document.querySelectorAll('.modal [data-close].icon-only').forEach((b) => { b.innerHTML = I.close; });
 
-  $('btn-scan').addEventListener('click', startScan);
   $('btn-paste').addEventListener('click', openPaste);
   $('btn-copy').addEventListener('click', copyOffer);
   $('btn-new').addEventListener('click', () => newOffer());
@@ -832,7 +808,6 @@ function bind() {
   $('btn-reconnect').addEventListener('click', () => { if (link) link.stop(); link = null; backToPairing(); });
   $('paste-submit').addEventListener('click', submitPaste);
   $('paste-input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitPaste(); } });
-  $('scan-to-paste').addEventListener('click', openPaste);
   document.querySelectorAll('.modal-backdrop').forEach((m) => {
     m.addEventListener('click', (e) => { if (e.target === m || e.target.closest('[data-close]')) closeModals(); });
   });
@@ -876,7 +851,6 @@ function bind() {
   const teardown = () => {
     try { if (link) link.stop(); } catch { /* */ }
     link = null;
-    stopScanner();
     wipe();
     offerCode = ''; frames = [];
     clearInterval(frameTimer);

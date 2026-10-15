@@ -130,6 +130,21 @@ export const platform = {
     } catch { return false; }
   },
 
+  // طباعة الصفحة الحالية (الكشف داخل #print-root). أندرويد: نافذة الطباعة في النظام عبر الجسر الأصلي
+  // GradesNative.printPage — ومنها «حفظ بتنسيق PDF». الويب/آيفون: window.print().
+  // ترجع 'native' | 'web' | 'unsupported'.
+  print(title) {
+    const name = String(title || document.title || 'كشف').slice(0, 120);
+    const bridge = globalThis.GradesNative;
+    if (isNative && bridge && typeof bridge.printPage === 'function') {
+      try { bridge.printPage(name); return 'native'; } catch { /* نجرب طباعة المتصفح */ }
+    }
+    if (typeof window.print !== 'function') return 'unsupported';
+    const old = document.title;
+    try { document.title = name; window.print(); } finally { setTimeout(() => { document.title = old; }, 1000); }
+    return 'web';
+  },
+
   exitApp() {
     if (isNative && P('App')) P('App').exitApp();
   },

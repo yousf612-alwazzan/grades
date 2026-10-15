@@ -1,9 +1,9 @@
 // نقل الطلاب بين المعلمين (ملف نقل) أو بين صفين على نفس الجهاز. منطق صافٍ بلا DOM.
 import {
   WEEKS, ITEMS, ITEM_MAX, FIN_MAX, MAX_STUDENTS,
-  getItems, getFin, getWeekMeta, emptyClassData, cleanName, nameKey, remapData,
+  getItems, getFin, getWeekMeta, emptyClassData, cleanName, nameKey, remapData, isAbsent, getNotes,
 } from './grades-core.js';
-import { sanitizeScore } from './store.js';
+import { sanitizeScore, sanitizeNotes } from './store.js';
 
 const clone = v => JSON.parse(JSON.stringify(v));
 
@@ -20,13 +20,27 @@ export function buildTransfer({ classLabel, names, data, idxs, settings }) {
       const items = getItems(data, w, i);
       if (items.some(v => v !== null)) weeks[w] = items;
     }
-    return { name: names[i], weeks, fin: getFin(data, i) };
+    const abs = [];
+    for (let w = 1; w <= WEEKS; w++) if (isAbsent(data, w, i)) abs.push(w);
+    return { name: names[i], weeks, fin: getFin(data, i), abs, notes: getNotes(data, i) };
   });
   return {
     app: 'grades-transfer', v: 1, at: new Date().toISOString(),
     from: { teacher: settings?.teacher || '', subject: settings?.subject || '', classLabel: classLabel || '' },
     weeksMeta, students,
   };
+}
+
+// ملف «تسليم عهدة»: الصف كاملًا (كل الطلاب + بيانات الأسابيع + الغياب + الملاحظات) لمعلم آخر.
+// نفس صيغة ملف النقل (app:'grades-transfer', v:1) مع handover:true و classLabel، فيُقرأ بـ parseTransfer.
+export function buildClassHandover({ classLabel, names, data, settings }) {
+  const t = buildTransfer({ classLabel, names: names || [], data: data || emptyClassData(), settings });
+  return { ...t, handover: true, classLabel: String(classLabel || '') };
+}
+
+export function handoverFileName(classLabel) {
+  const label = String(classLabel || 'صف').replace(/[\\/:*?"<>|\u0000-\u001F]+/g, '').trim().replace(/\s+/g, '_') || 'صف';
+  return `تسليم_عهدة_${label}.json`;
 }
 
 export function transferFileName(classLabel, count) {
@@ -66,15 +80,23 @@ export function parseTransfer(textOrObj) {
         weeks[n] = Array.from({ length: ITEMS }, (_, i) => sanitizeScore(arr[i], ITEM_MAX));
       }
       const fin = FIN_MAX.map((m, i) => sanitizeScore(Array.isArray(s.fin) ? s.fin[i] : null, m));
-      return { name: s.name.trim(), weeks, fin };
+      const abs = [...new Set((Array.isArray(s.abs) ? s.abs : []).map(Number))]
+        .filter(n => Number.isInteger(n) && n >= 1 && n <= WEEKS).sort((a, b) => a - b);
+      const notes = sanitizeNotes({ 0: s.notes })?.[0] || [];
+      return { name: s.name.trim(), weeks, fin, abs, notes };
     });
   if (!students.length) throw new Error(ERR_EMPTY);
   const f = obj.from || {};
-  return {
+  const out = {
     app: 'grades-transfer', v: 1, at: typeof obj.at === 'string' ? obj.at : null,
     from: { teacher: String(f.teacher || ''), subject: String(f.subject || ''), classLabel: String(f.classLabel || '') },
     weeksMeta, students,
   };
+  if (obj.handover === true) {
+    out.handover = true;
+    out.classLabel = String(obj.classLabel || f.classLabel || '');
+  }
+  return out;
 }
 
 // يضيف الطلاب المختارين إلى صف ويعيد أيضًا مواضعهم في المصدر (للاستخدام الداخلي في moveStudents)
@@ -105,6 +127,16 @@ function appendStudents({ names, data }, transfer, pickIdxs, max) {
       w.s[idx] = items.slice(0, ITEMS);
     }
     if (st.fin && st.fin.some(v => v !== null)) outData.fin[idx] = st.fin.slice(0, FIN_MAX.length);
+    for (const wk of st.abs || []) {
+      const w = (outData.weeks[wk] ||= { date: '', lesson: '', s: {} });
+      w.s ||= {};
+      (w.abs ||= {})[idx] = true;
+      w.s[idx] = Array(ITEMS).fill(0); // الغائب درجاته أصفار
+    }
+    if (Array.isArray(st.notes) && st.notes.length) {
+      outData.notes ||= {};
+      outData.notes[idx] = st.notes.map(x => ({ t: x.t, text: x.text }));
+    }
     taken.push(p);
   }
 

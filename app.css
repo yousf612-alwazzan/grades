@@ -76,7 +76,7 @@ svg.i { width: 22px; height: 22px; flex: none; stroke: currentColor; fill: none;
 
 .tabbar {
   position: fixed; inset-inline: 0; bottom: 0; z-index: 30;
-  display: grid; grid-template-columns: repeat(3, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   height: calc(var(--tabbar-h) + var(--safe-b)); padding-bottom: var(--safe-b);
   background: color-mix(in srgb, var(--card) 92%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   border-top: 1px solid var(--border);
@@ -283,7 +283,7 @@ button.list-item:hover { background: var(--chip); }
 .score-input.bad { border-color: var(--error); background: var(--error-soft); }
 .score-input::placeholder { color: color-mix(in srgb, var(--muted) 60%, transparent); font-weight: 600; }
 
-.fin-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s2); margin-top: var(--s3); }
+.fin-sum { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--s2); margin-top: var(--s3); }
 .mini-stat { background: var(--chip); border-radius: 12px; padding: 6px 8px; text-align: center; }
 .mini-stat small { display: block; color: var(--muted); font-size: 12px; font-weight: 700; }
 .mini-stat b { font-size: 16px; }
@@ -364,7 +364,7 @@ body.no-tabbar .toasts { bottom: calc(var(--safe-b) + var(--s4)); }
 .toast.out { opacity: 0; transform: translateY(8px); transition: all 200ms; }
 
 /* لوحة الأرقام */
-.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s2); margin-top: var(--s3); direction: ltr; }
+.keypad { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--s2); margin-top: var(--s3); direction: ltr; }
 .keypad button { min-height: 56px; border-radius: 14px; border: 1px solid var(--border); background: var(--card); font-size: 22px; font-weight: 800; }
 .keypad button.wide { grid-column: span 1; }
 .keypad-display { text-align: center; font-size: 36px; font-weight: 800; min-height: 60px; border-radius: 14px; background: var(--chip); display: grid; place-items: center; }
@@ -532,3 +532,72 @@ body.no-tabbar .toasts { bottom: calc(var(--safe-b) + var(--s4)); }
 .box.field .cell-err { position: absolute; top: calc(100% + 2px); inset-inline-start: 0; z-index: 2; white-space: nowrap; font-size: 11px; background: var(--card); padding: 0 4px; border-radius: 4px; }
 .box.field .cell-err:empty { display: none; }
 .srow:has(.cell-err:not(:empty)) { padding-bottom: 24px; }
+
+/* ===== الإصدار ٣: خمس خانات، الغياب، السلايدر، الملاحظات، التقارير ===== */
+.tab { font-size: 11.5px; padding: 0 2px; }
+.tab-ico { width: 48px; }
+
+/* صف الطالب: السطر الأول (الاسم + غياب + المجموع)، والثاني (المربعات + كامل) — بدون تداخل */
+.srow {
+  grid-template-columns: 26px minmax(0, 1fr) auto auto;
+  grid-template-areas: "num name abs total" "num boxes boxes act";
+}
+.srow .boxes { min-width: 0; }
+.box { min-width: 0; }
+.abs-btn { grid-area: abs; min-height: 32px; padding: 0 10px; border-radius: 99px; border: 1.5px solid var(--border); background: var(--card); color: var(--muted); font-weight: 800; font-size: 12.5px; white-space: nowrap; }
+.abs-btn.on { background: var(--error-soft); border-color: color-mix(in srgb, var(--error) 45%, var(--border)); color: var(--error); }
+.srow.absent { background: color-mix(in srgb, var(--error-soft) 55%, var(--card)); }
+.absent-pill { display: flex; align-items: center; gap: 6px; min-height: 52px; padding: 0 12px; border-radius: 12px; background: var(--error-soft); color: var(--error); font-weight: 800; font-size: 13.5px; width: 100%; }
+.absent-pill svg.i { width: 18px; height: 18px; }
+.note-dot { display: inline-flex; align-items: center; gap: 2px; margin-inline-start: 6px; font-size: 11.5px; font-weight: 700; color: var(--primary); vertical-align: middle; }
+.note-dot svg.i { width: 13px; height: 13px; }
+@media (min-width: 460px) and (max-width: 899px) {
+  .srow { grid-template-columns: 26px minmax(0, 1fr) auto auto 40px 64px; grid-template-areas: "num name boxes abs total act"; }
+  .srow .boxes { min-width: 240px; }
+}
+
+/* السلايدر */
+.slider-box { background: var(--chip); border-radius: 18px; padding: 14px 16px 10px; margin-bottom: var(--s2); }
+.slider-label { text-align: center; font-weight: 800; color: var(--muted); font-size: 14px; }
+.slider-val { display: block; text-align: center; font-size: 46px; font-weight: 800; line-height: 1.15; color: var(--primary); }
+.score-slider { width: 100%; height: 44px; margin: 6px 0 0; accent-color: var(--primary); -webkit-appearance: none; appearance: none; background: transparent; touch-action: none; }
+.score-slider::-webkit-slider-runnable-track { height: 10px; border-radius: 99px; background: linear-gradient(to left, var(--error), var(--warning), var(--success)); }
+.score-slider::-moz-range-track { height: 10px; border-radius: 99px; background: linear-gradient(to left, var(--error), var(--warning), var(--success)); }
+.score-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 36px; height: 36px; margin-top: -13px; border-radius: 50%; background: #fff; border: 4px solid var(--primary); box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+.score-slider::-moz-range-thumb { width: 30px; height: 30px; border-radius: 50%; background: #fff; border: 4px solid var(--primary); }
+.slider-ticks { display: flex; justify-content: space-between; padding: 0 12px; font-size: 13px; font-weight: 800; color: var(--muted); }
+.slider-ticks span { width: 1px; text-align: center; display: flex; justify-content: center; position: relative; }
+.slider-ticks span::before { content: ''; position: absolute; top: -6px; width: 1px; height: 5px; background: var(--muted); opacity: .5; }
+.slider-ticks span.major::before { height: 8px; opacity: 1; }
+.picker-actions { display: grid !important; grid-template-columns: 1fr 1.4fr 1fr; }
+
+/* بطاقة الطالب: الغياب والملاحظات */
+table.tbl tr.abs-row td { background: var(--error-soft); }
+table.tbl td.abs-cell { color: var(--error); font-weight: 800; }
+.notes { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.notes li { display: flex; gap: 8px; align-items: flex-start; background: var(--chip); border-radius: 12px; padding: 8px 12px; }
+.notes p { margin: 2px 0 0; white-space: pre-wrap; }
+
+/* التقارير */
+.report-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--s3); }
+.report-card { display: flex; gap: var(--s3); align-items: center; text-align: start; padding: var(--s4); min-height: 88px; border-radius: var(--r-card); border: 1px solid var(--border); background: var(--card); box-shadow: var(--shadow); }
+.report-card svg.i { width: 34px; height: 34px; color: var(--primary); flex: none; }
+.report-card strong { display: block; font-size: 16.5px; }
+.report-card small { display: block; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.report-card:active { transform: scale(.99); }
+#print-root { display: none; }
+.live-wait { display: grid; justify-items: center; gap: 4px; padding: var(--s3) 0; }
+.live-wait h3 { margin: 6px 0 0; }
+.spinner-lg { width: 44px; height: 44px; border-radius: 50%; border: 4px solid var(--primary-soft); border-top-color: var(--primary); animation: spin 900ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.version-line { text-align: center; margin-top: var(--s5); opacity: .8; }
+details.whats-new summary { font-weight: 800; cursor: pointer; min-height: 40px; display: flex; align-items: center; gap: 8px; }
+.changelog { margin: 0; padding-inline-start: 18px; display: grid; gap: 8px; }
+.changelog ul { margin: 4px 0 0; padding-inline-start: 18px; color: var(--muted); font-size: 14px; }
+
+/* الإصدار ٢.١: لمس وتباين */
+:root { --success: #0f6e4f; --muted: #5b6474; }
+.abs-btn { min-height: 44px; min-width: 56px; padding: 0 12px; font-size: 13px; }
+details.advanced summary, details.whats-new summary { min-height: 48px; }
+.srow-name { min-height: 44px; }
+table.grid .abs-btn { min-height: 40px; }

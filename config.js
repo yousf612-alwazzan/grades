@@ -4,15 +4,16 @@
 
 export const CONFIG = {
   appName: 'متابعة الدرجات',
-  version: '2.0.0',
+  version: '2.1.0',
+  releaseDate: '2026-10-15',
 
   // قواعد الدرجات
   weeks: 10,
   criteria: [
     { key: 'b', label: 'السلوك', short: 'سلوك' },
-    { key: 't', label: 'الأدوات', short: 'الأدوات' },
+    { key: 't', label: 'الأدوات', short: 'أدوات' },
     { key: 'a', label: 'التطبيق', short: 'تطبيق' },
-    { key: 'p', label: 'المشاركة', short: 'المشاركة' },
+    { key: 'p', label: 'المشاركة', short: 'مشاركة' },
   ],
   itemMax: 5,
   finals: [

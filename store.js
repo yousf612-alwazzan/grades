@@ -1,7 +1,7 @@
 // التخزين المحلي (IndexedDB) والنسخ الاحتياطي.
 // لا يُلمس indexedDB عند الاستيراد، لذا يمكن استيراد الدوال الصافية من Node.
 import CONFIG from './config.js';
-import { WEEKS, ITEMS, ITEM_MAX, FIN_MAX, emptyClassData, parseScore, round2 } from './grades-core.js';
+import { WEEKS, ITEMS, ITEM_MAX, FIN_MAX, emptyClassData, parseScore, round2, NOTE_MAX_LEN, NOTES_PER_STUDENT } from './grades-core.js';
 
 const DB_NAME = 'grades-followup';
 const DB_VERSION = 1;
@@ -161,13 +161,41 @@ export function sanitizeClassData(raw) {
       s[idx] = Array.from({ length: ITEMS }, (_, i) => sanitizeScore(arr[i], ITEM_MAX));
     }
     out.weeks[String(n)] = { date: typeof w.date === 'string' ? w.date : '', lesson: typeof w.lesson === 'string' ? w.lesson : '', s };
+    const abs = sanitizeAbs(w.abs);
+    if (abs) out.weeks[String(n)].abs = abs;
   }
   for (const [idx, arr] of Object.entries(raw.fin || {})) {
     if (!/^\d+$/.test(idx) || !Array.isArray(arr)) continue;
     out.fin[idx] = FIN_MAX.map((m, i) => sanitizeScore(arr[i], m));
   }
+  const notes = sanitizeNotes(raw.notes);
+  if (notes) out.notes = notes;
   out.t = Number.isFinite(Number(raw.t)) ? Number(raw.t) : 0;
   return out;
+}
+
+// علامات الغياب: {"<idx>": true} فقط؛ أي قيمة أخرى تُهمل
+function sanitizeAbs(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out = {};
+  for (const [idx, v] of Object.entries(raw)) if (/^\d+$/.test(idx) && v === true) out[idx] = true;
+  return Object.keys(out).length ? out : null;
+}
+
+// الملاحظات: {"<idx>": [{t: ISO, text}]}، النص ≤ ٥٠٠ حرف، ≤ ٢٠٠ ملاحظة لكل طالب (الأحدث)
+export function sanitizeNotes(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out = {};
+  for (const [idx, list] of Object.entries(raw)) {
+    if (!/^\d+$/.test(idx) || !Array.isArray(list)) continue;
+    const clean = list
+      .filter(x => x && typeof x === 'object' && typeof x.text === 'string' && typeof x.t === 'string' && !Number.isNaN(Date.parse(x.t)))
+      .map(x => ({ t: x.t, text: x.text.trim().slice(0, NOTE_MAX_LEN) }))
+      .filter(x => x.text)
+      .slice(-NOTES_PER_STUDENT);
+    if (clean.length) out[idx] = clean;
+  }
+  return Object.keys(out).length ? out : null;
 }
 
 const def = k => CONFIG.defaultSettings[k];

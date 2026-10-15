@@ -70,11 +70,116 @@ export function getItems(data, week, idx) {
   return Array.from({ length: ITEMS }, (_, i) => (arr && isNum(arr[i]) ? arr[i] : null));
 }
 
+// إدخال درجة غير صفرية لطالب مسجّل غائبًا في هذا الأسبوع يلغي علامة الغياب تلقائيًا
+// (لا يبقى «غائب» وله درجات). الصفر أو المسح (null) لا يغيّران علامة الغياب.
 export function setItem(data, week, idx, item, value) {
   const w = ensureWeek(data, week);
   const arr = (w.s[idx] ||= Array(ITEMS).fill(null));
   arr[item] = isNum(value) ? value : null;
+  if (isNum(value) && value !== 0 && w.abs && w.abs[idx]) {
+    delete w.abs[idx];
+    if (!Object.keys(w.abs).length) delete w.abs;
+  }
   data.t = Date.now();
+}
+
+// ---------- الغياب ----------
+// الشكل: data.weeks["w"].abs = {"<idx>": true}. الغائب درجاته في الأسبوع أصفار (فيُعد مكتملًا ويُحسب في المجموع).
+
+export function isAbsent(data, week, idx) {
+  return data?.weeks?.[week]?.abs?.[idx] === true;
+}
+
+/** on=true: علامة غياب + البنود الأربعة = ٠. on=false: تُزال العلامة، وإن كانت البنود [٠،٠،٠،٠] بالضبط تعود فارغة.
+ *  ترجع البنود السابقة (للتراجع). */
+export function setAbsent(data, week, idx, on) {
+  const prev = getItems(data, week, idx);
+  const w = ensureWeek(data, week);
+  if (on) {
+    w.abs ||= {};
+    w.abs[idx] = true;
+    w.s[idx] = Array(ITEMS).fill(0);
+  } else {
+    if (w.abs) {
+      delete w.abs[idx];
+      if (!Object.keys(w.abs).length) delete w.abs;
+    }
+    if (prev.every(v => v === 0)) delete w.s[idx];
+  }
+  data.t = Date.now();
+  return prev;
+}
+
+export function absenceCount(data, idx) {
+  let c = 0;
+  for (let w = 1; w <= WEEKS; w++) if (isAbsent(data, w, idx)) c++;
+  return c;
+}
+
+export function weekAbsentList(data, week, n) {
+  const out = [];
+  for (let i = 0; i < n; i++) if (isAbsent(data, week, i)) out.push(i);
+  return out;
+}
+
+/** حالة الحضور: 'absent' | 'present' (له أي درجة في الأسبوع) | null (لم يُرصد بعد) */
+export function attendanceStatus(data, week, idx) {
+  if (isAbsent(data, week, idx)) return 'absent';
+  return getItems(data, week, idx).some(v => v !== null) ? 'present' : null;
+}
+
+/** لكل طالب: {absent:[أرقام الأسابيع], count, present:عدد الأسابيع المرصود حضوره} */
+export function attendanceSummary(data, n) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const absent = [];
+    let present = 0;
+    for (let w = 1; w <= WEEKS; w++) {
+      const st = attendanceStatus(data, w, i);
+      if (st === 'absent') absent.push(w);
+      else if (st === 'present') present++;
+    }
+    out.push({ absent, count: absent.length, present });
+  }
+  return out;
+}
+
+// ---------- الملاحظات ----------
+// الشكل: data.notes = {"<idx>": [{t: ISO, text}]} — لا تدخل في بطاقة المشاركة ولا كشف الدرجات.
+export const NOTE_MAX_LEN = 500;
+export const NOTES_PER_STUDENT = 200;
+
+export function getNotes(data, idx) {
+  const list = data?.notes?.[idx];
+  return Array.isArray(list) ? list.map(x => ({ t: x.t, text: x.text })) : [];
+}
+
+/** يضيف ملاحظة مؤرخة (تُقص لـ ٥٠٠ حرف). نص فارغ يُتجاهل → null. ترجع الملاحظة المضافة. */
+export function addNote(data, idx, text, now = new Date()) {
+  const clean = String(text ?? '').trim().slice(0, NOTE_MAX_LEN).trim();
+  if (!clean) return null;
+  data.notes ||= {};
+  const list = (data.notes[idx] ||= []);
+  let ms = now.getTime();
+  while (list.some(x => x.t === new Date(ms).toISOString())) ms++; // t فريد لكل ملاحظة
+  const note = { t: new Date(ms).toISOString(), text: clean };
+  list.push(note);
+  if (list.length > NOTES_PER_STUDENT) list.splice(0, list.length - NOTES_PER_STUDENT);
+  data.t = Date.now();
+  return { ...note };
+}
+
+/** يحذف الملاحظة ذات الوقت t. ترجع true إن حُذفت. */
+export function deleteNote(data, idx, t) {
+  const list = data?.notes?.[idx];
+  if (!Array.isArray(list)) return false;
+  const i = list.findIndex(x => x.t === t);
+  if (i < 0) return false;
+  list.splice(i, 1);
+  if (!list.length) delete data.notes[idx];
+  if (!Object.keys(data.notes).length) delete data.notes;
+  data.t = Date.now();
+  return true;
 }
 
 export function getFin(data, idx) {
@@ -341,10 +446,19 @@ export function remapData(data, from) {
       if (arr) s[i] = arr.slice();
     });
     out.weeks[wk] = { date: w?.date || '', lesson: w?.lesson || '', s };
+    const abs = {};
+    from.forEach((old, i) => { if (old != null && w?.abs?.[old] === true) abs[i] = true; });
+    if (Object.keys(abs).length) out.weeks[wk].abs = abs;
   }
   from.forEach((old, i) => {
     const arr = old == null ? null : data?.fin?.[old];
     if (arr) out.fin[i] = arr.slice();
   });
+  const notes = {};
+  from.forEach((old, i) => {
+    const list = old == null ? null : data?.notes?.[old];
+    if (Array.isArray(list) && list.length) notes[i] = list.map(x => ({ t: x.t, text: x.text }));
+  });
+  if (Object.keys(notes).length) out.notes = notes;
   return out;
 }
