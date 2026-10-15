@@ -409,8 +409,7 @@ function Reports() {
   const card = (act, ic, t, sub) => `<button type="button" class="report-card" data-act="${act}" data-id="${c.id}">${icon(ic)}<span><strong>${t}</strong><small>${sub}</small></span></button>`;
   return `${appbar({ title: 'التقارير', backBtn: false })}
   <div class="wrap stack">
-    <div class="label" id="rep-class-l">اختر الشعبة</div>
-    <div class="class-pick" role="radiogroup" aria-labelledby="rep-class-l">${S.classes.map((o) => { const p = Math.round(progress(dataOf(o.id), o.names.length).ratio * 100); const on = o.id === c.id; return `<button type="button" role="radio" class="cp" aria-checked="${on}" data-act="report-class" data-id="${o.id}"><span class="cp-dot" aria-hidden="true"></span><span class="grow"><strong>${esc(o.label)}</strong><small>${students(o.names.length)} · رصد ${ar(p)}٪</small></span></button>`; }).join('')}</div>
+    <button type="button" class="pick-btn" data-act="report-class-pick" aria-haspopup="dialog"><span class="pick-ico">${icon('users')}</span><span class="grow"><small>الشعبة</small><strong>${esc(c.label)}</strong><span class="pick-meta">${students(n)} · رصد ${ar(Math.round(pr.ratio * 100))}٪</span></span><span class="pick-chev" aria-hidden="true">▾</span></button>
     <p class="hint">التقارير تُطبع أو تُحفظ PDF من نافذة الطباعة.</p>
     <div class="report-grid">
       ${card('report-grades', 'sheet', 'كشف الدرجات', 'الأسابيع والفترتان والنهائي — PDF منسّق للطباعة')}
@@ -419,6 +418,21 @@ function Reports() {
       ${card('report-student', 'users', 'تقرير طالب', 'درجات طالب واحد مع ملاحظاته — PDF')}
     </div>
   </div>`;
+}
+
+// اختيار شعبة من نافذة سفلية بنفس هوية التطبيق (بدل القائمة المنسدلة)
+function pickClassSheet(current, done) {
+  const items = S.classes.map((o) => {
+    const p = Math.round(progress(dataOf(o.id), o.names.length).ratio * 100);
+    return `<button type="button" role="radio" class="cp" aria-checked="${o.id === current}" data-pick="${o.id}"><span class="cp-dot" aria-hidden="true"></span><span class="grow"><strong>${esc(o.label)}</strong><small>${students(o.names.length)} · رصد ${ar(p)}٪</small></span></button>`;
+  }).join('');
+  const s = openSheet(`<h2>اختر الشعبة</h2><div class="class-pick" role="radiogroup" aria-label="الشعب">${items}</div>`, { label: 'اختر الشعبة' });
+  s.sheet.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-pick]');
+    if (!b) return;
+    s.close();
+    done(b.dataset.pick);
+  });
 }
 
 function classCard(c) {
@@ -609,19 +623,19 @@ function stuRow(c, d, w, i) {
   const star = isStar(d, w, i);
   return `<div class="srow ${done ? 'complete' : ''} ${absent ? 'absent' : ''}" data-stu="${i}">
     <span class="srow-num num">${ar(i + 1)}</span>
-    <button type="button" class="srow-name" data-act="open-student" data-idx="${i}">${issues ? `<span class="issue-mark" title="مشكلة مسجّلة هذا الأسبوع">!</span>` : ''}${esc(c.names[i])}${notes ? `<span class="note-dot" title="ملاحظات">${icon('edit')}${ar(notes)}</span>` : ''}</button>
-    <span class="row-flags">
-      <button type="button" class="star-btn note-btn ${issues ? 'issue' : ''}" data-act="quick-note" data-idx="${i}" aria-label="ملاحظة أو تنبيه">${issues ? '<b aria-hidden="true">!</b>' : icon('note')}</button>
-      <button type="button" class="star-btn ${star ? 'on' : ''}" data-act="star" data-idx="${i}" aria-pressed="${star}" aria-label="نجمة تميّز هذا الأسبوع">${icon('star')}</button>
-      <button type="button" class="abs-btn ${absent ? 'on' : ''}" data-act="absent" data-idx="${i}" aria-pressed="${absent}">${absent ? 'غائب ✓' : 'غياب'}</button>
-    </span>
-    <span class="srow-total num ${t === CONFIG.itemMax * ITEMS ? 'full' : ''}" data-total>${t == null ? '' : fmt(t)}</span>
+    <button type="button" class="srow-name" data-act="open-student" data-idx="${i}">${issues ? `<span class="issue-mark" title="تنبيه هذا الأسبوع" aria-label="تنبيه">!</span>` : ''}${esc(c.names[i])}</button>
+    <span class="srow-total num ${t === CONFIG.itemMax * ITEMS ? 'full' : ''} ${absent ? 'abs' : ''}" data-total>${t == null ? '' : fmt(t)}</span>
     <div class="boxes" data-inputs>${absent ? absentPill() : rowBoxes(w, i, getItems(d, w, i), c.names[i])}</div>
     <span class="srow-act" data-rowact>${absent ? '' : rowAct(done, i)}</span>
+    <span class="row-flags">
+      <button type="button" class="flag abs-btn ${absent ? 'on' : ''}" data-act="absent" data-idx="${i}" aria-pressed="${absent}">${absent ? `${icon('undo')} تسجيل حضور` : `${icon('x')} غياب`}</button>
+      <button type="button" class="flag star-btn ${star ? 'on' : ''}" data-act="star" data-idx="${i}" aria-pressed="${star}" aria-label="نجمة تميّز هذا الأسبوع">${icon('star')} نجمة</button>
+      <button type="button" class="flag note-btn" data-act="quick-note" data-idx="${i}" aria-label="ملاحظة أو تنبيه">${icon('note')} ملاحظة${notes ? `<span class="note-dot" title="ملاحظات">${ar(notes)}</span>` : ''}</button>
+    </span>
   </div>`;
 }
 function absentPill() {
-  return `<span class="absent-pill">${icon('x')} غائب هذا الأسبوع — أصفار تلقائيًا</span>`;
+  return `<span class="absent-pill">غائب هذا الأسبوع · الدرجات أصفار تلقائيًا</span>`;
 }
 function rowAct(done, i) {
   return done ? `<span class="srow-done" aria-label="مكتمل">${icon('checkCircle')}</span>`
@@ -2258,7 +2272,7 @@ document.addEventListener('click', async (e) => {
       const on = !isStar(d, w, i);
       setStar(d, w, i, on);
       markDirty(c.id); livePatchItems(c.id, w, i); haptic(on ? 'success' : 'light');
-      el.classList.toggle('on', on); el.setAttribute('aria-pressed', on); el.textContent = on ? '★' : '☆';
+      { const row = main().querySelector(`[data-stu="${i}"]`); if (row && row.tagName === 'TR') rerenderList(); else if (row) row.outerHTML = stuRow(c, d, w, i); }
       if (on) toast(`⭐ ${c.names[i].split(' ')[0]}: نجمة تميّز في الأسبوع ${ar(w)}`);
       break;
     }
@@ -2349,7 +2363,7 @@ document.addEventListener('click', async (e) => {
     case 'wipe': doWipe(); break;
     case 'tour': showTour(); break;
     case 'update-check': checkForUpdate(); break;
-    case 'report-class': S.ui.reportClass = el.dataset.id; render(); break;
+    case 'report-class-pick': pickClassSheet(S.ui.reportClass, (id) => { S.ui.reportClass = id; render(); }); break;
     case 'update-now': if (UPD.worker) UPD.worker.postMessage({ type: 'skip-waiting' }); else location.reload(); break;
     case 'dismiss-guide': try { sessionStorage.setItem('iosGuideSeen', '1'); } catch { /* */ } go('home'); break;
     case 'set': {

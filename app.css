@@ -855,3 +855,36 @@ table.tbl tr.sum td { background: var(--chip); }
 .select { -webkit-appearance: none; appearance: none; padding-inline-end: 40px; font-weight: 700; cursor: pointer;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235d626d' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-size: 18px; background-position: left 14px center; }
+
+/* ٢.٦.٣ — صف الطالب المرتّب: الاسم والمجموع، ثم الدرجات، ثم أزرار هادئة. كل حالة تظهر مرة واحدة */
+.srow {
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-areas: "num name total" "num boxes act" "num flags flags";
+  gap: 8px 10px; padding: 14px 14px 10px;
+}
+.srow-name { font-size: 16px; line-height: 1.4; min-height: 0; padding: 2px 0; }
+.srow-total { align-self: center; min-width: 40px; padding: 4px 10px; border-radius: 99px; background: var(--chip); font-size: 14.5px; }
+.srow-total:empty { visibility: hidden; }
+.srow-total.full { background: var(--success-soft); color: var(--success); }
+.srow-total.abs { color: var(--muted); }
+.srow .boxes { min-width: 0; }
+.srow-act { align-self: stretch; display: flex; align-items: center; }
+.row-flags { grid-area: flags; display: flex; gap: 4px; flex-wrap: wrap; margin-inline-start: -8px; }
+.flag {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 10px; border: 0; border-radius: 10px;
+  background: transparent; color: var(--muted); font-weight: 700; font-size: 13.5px; box-shadow: none; min-width: 0;
+}
+.flag svg.i { width: 17px; height: 17px; }
+.flag:hover { background: var(--chip); color: var(--text); }
+.flag.abs-btn.on { background: transparent; color: var(--text); box-shadow: none; }
+.flag.star-btn.on { background: var(--gold-soft); color: var(--gold); box-shadow: none; }
+.flag.star-btn.on svg.i { fill: currentColor; }
+.flag .note-dot { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; margin: 0; border-radius: 99px; background: var(--chip); color: var(--text); font-size: 11.5px; }
+.issue-mark { width: 20px; height: 20px; font-size: 12.5px; vertical-align: 1px; }
+.srow.absent { background: color-mix(in srgb, var(--chip) 55%, var(--card)); }
+.srow.absent .srow-name { color: var(--muted); }
+.absent-pill { background: transparent; color: var(--muted); font-weight: 700; font-size: 13.5px; min-height: 52px; padding: 0 4px; border: 1.5px dashed var(--border); border-radius: 12px; justify-content: center; }
+@media (min-width: 460px) and (max-width: 899px) {
+  .srow { grid-template-columns: 28px minmax(0, 1fr) auto auto auto; grid-template-areas: "num name boxes total act" "num flags flags flags flags"; }
+  .srow .boxes { min-width: 240px; }
+}
