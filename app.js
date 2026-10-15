@@ -324,7 +324,9 @@ function Home() {
 
   const backupOk = last && !pending && hasAnyGrades()
     ? `<p class="hint" data-testid="backup-ok" style="color:var(--success);font-weight:700">${icon('checkCircle')} نسختك الاحتياطية محدّثة (${days < 1 ? 'اليوم' : `قبل ${ar(Math.floor(days))} يوم`})</p>` : '';
-  const hello = `<div class="hello"><h2>${st.teacher ? `أهلًا أ. ${esc(st.teacher)}` : 'أهلًا بك'}</h2><p>${st.subject ? esc(st.subject) + ' · ' : ''}${S.classes.length ? `${ar(S.classes.length)} ${S.classes.length === 1 ? 'صف' : S.classes.length === 2 ? 'صفّان' : 'صفوف'}` : 'لنبدأ'}</p></div>`;
+  const helloTitle = st.teacher ? `أهلًا أ. ${st.teacher}` : 'أهلًا بك';
+  const helloSub = `${st.subject ? esc(st.subject) + ' · ' : ''}${S.classes.length ? `${ar(S.classes.length)} ${S.classes.length === 1 ? 'صف' : S.classes.length === 2 ? 'صفّان' : 'صفوف'}` : 'لنبدأ'}`;
+  const addBtn = S.classes.length ? `<button type="button" class="btn sm soft add-class" data-act="new-class">${icon('plus')} إضافة صف</button>` : '';
 
   let body;
   if (!S.classes.length) {
@@ -341,13 +343,11 @@ function Home() {
     body = `<div class="home-grid stack">${S.classes.map(classCard).join('')}</div>`;
   }
 
-  return `${appbar({ title: CONFIG.appName, backBtn: false, save: true })}
+  return `${appbar({ title: helloTitle, sub: helloSub, backBtn: false, save: true, actions: addBtn })}
   <div class="wrap stack home-wrap">
-    ${hello}
     ${backupOk}
     ${alerts.join('')}
     ${body}
-    ${S.classes.length ? `<button type="button" class="btn primary lg fab" data-act="new-class">${icon('plus')} إضافة صف</button>` : ''}
     <p class="hint version-line num" data-testid="app-version">الإصدار ${ar(CONFIG.version)}</p>
   </div>`;
 }
@@ -625,7 +625,7 @@ function stuRow(c, d, w, i) {
     <button type="button" class="srow-name" data-act="open-student" data-idx="${i}">${issues ? `<span class="issue-mark" title="تنبيه هذا الأسبوع" aria-label="تنبيه">!</span>` : ''}${esc(c.names[i])}</button>
     <span class="srow-total num ${t === CONFIG.itemMax * ITEMS ? 'full' : ''} ${absent ? 'abs' : ''}" data-total>${t == null ? '' : fmt(t)}</span>
     <div class="boxes" data-inputs>${absent ? absentPill() : rowBoxes(w, i, getItems(d, w, i), c.names[i])}</div>
-    <span class="srow-act" data-rowact>${absent ? '' : rowAct(done, i)}</span>
+    <span class="srow-act" data-rowact>${absent ? `<span class="srow-done abs" aria-label="غائب">${icon('xCircle')}</span>` : rowAct(done, i)}</span>
     <span class="row-flags">
       <button type="button" class="flag abs-btn ${absent ? 'on' : ''}" data-act="absent" data-idx="${i}" aria-pressed="${absent}">${absent ? `${icon('undo')} تسجيل حضور` : `${icon('x')} غياب`}</button>
       <button type="button" class="flag star-btn ${star ? 'on' : ''}" data-act="star" data-idx="${i}" aria-pressed="${star}" aria-label="نجمة تميّز هذا الأسبوع">${icon('star')} نجمة</button>
@@ -634,7 +634,7 @@ function stuRow(c, d, w, i) {
   </div>`;
 }
 function absentPill() {
-  return `<span class="absent-pill">غائب هذا الأسبوع · الدرجات أصفار تلقائيًا</span>`;
+  return `<span class="absent-pill">غائب — الدرجات أصفار</span>`;
 }
 function rowAct(done, i) {
   return done ? `<span class="srow-done" aria-label="مكتمل">${icon('checkCircle')}</span>`

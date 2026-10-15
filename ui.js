@@ -44,6 +44,7 @@ const P = {
   search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
   checkCircle: '<circle cx="12" cy="12" r="10"/><path d="M8 12.5l3 3 5-6"/>',
+  xCircle: '<circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/>',
   x: '<path d="M18 6 6 18M6 6l12 12"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
   upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',

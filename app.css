@@ -1058,3 +1058,25 @@ b, strong, h1, h2, h3, .btn, .tab { font-weight: 700; }
 }
 /* أرقام الخطوات نص ملوّن بلا دائرة */
 .step-n { background: none !important; width: auto; height: auto; color: var(--primary) !important; font-size: 17px; font-weight: 700; }
+
+/* ٢.٧.١ — أيقونات بلا إطار ولا خلفية */
+.class-badge, .pick-ico, .mode-ico, .ios-steps .pic { background: none !important; box-shadow: none !important; border: 0 !important; color: var(--muted) !important; width: auto; height: auto; }
+.class-badge svg.i, .pick-ico svg.i { width: 26px; height: 26px; }
+.report-card svg.i { background: none !important; padding: 0; width: 28px; height: 28px; color: var(--muted); border-radius: 0; }
+
+/* الشريط السفلي: اللون وحده يدل على المختار */
+.tab[aria-current="page"] .tab-ico::after { content: none !important; display: none !important; }
+
+/* هيدر الرئيسية: الترحيب والمادة وزر «إضافة صف» */
+.appbar h1 .sub { font-size: 13px; font-weight: 400; margin-top: 2px; }
+.add-class { min-height: 40px; padding: 0 12px; gap: 4px; font-size: 14px; flex: none; }
+.add-class svg.i { width: 18px; height: 18px; }
+.home-wrap { padding-bottom: var(--s4); }
+
+/* الأحمر في شاشة الرصد للغياب فقط: ✗ والمجموع صفر */
+.srow-done.abs { color: var(--error); }
+.srow-total.abs { color: var(--error) !important; }
+.issue-mark { background: var(--warning) !important; }
+.srow.absent { background: var(--card); }
+.srow.absent .srow-name { color: var(--text); }
+.srow-total.abs { font-size: 18px; }
