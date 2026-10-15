@@ -192,7 +192,21 @@ function makeLink() {
     onMessage: (m) => { if (l === link) onMessage(m); },
     onRelay: (s) => { if (l === link) onRelay(s); },
   });
+  l.onError = () => { if (l === link) { ui.waitError = 'render'; renderEmptyWaiting(); } };
   return l;
+}
+
+// بعد الاتصال: إن لم تصل البيانات نطلبها من الجوال كل ثانيتين، وبعد ١٢ ثانية نعرض رسالة واضحة
+let dataTimer = 0;
+function startDataWatch() {
+  clearInterval(dataTimer);
+  const started = Date.now();
+  ui.waitError = null;
+  dataTimer = setInterval(() => {
+    if (!link || model || ui.connState !== 'connected') { clearInterval(dataTimer); return; }
+    link.requestData();
+    if (Date.now() - started > 12000 && !ui.waitError) { ui.waitError = 'timeout'; renderEmptyWaiting(); }
+  }, 2000);
 }
 
 async function newOffer() {
@@ -237,6 +251,7 @@ function onConnState(s) {
   if (s === 'connected') {
     wakeLock(true);
     hideBanner();
+    if (!model) startDataWatch();
     if (ui.screen === 'pair') {
       closeModals();
       clearInterval(frameTimer);
@@ -622,7 +637,11 @@ function renderEmptyWaiting() {
   $('stats').innerHTML = '';
   $('views').innerHTML = '';
   $('toolbar').innerHTML = '';
-  $('grid-wrap').innerHTML = ui.ended ? '' : `<div class="waiting"><span class="spinner" aria-hidden="true"></span><strong>تم الاتصال</strong><span>بانتظار البيانات من الجوال…</span></div>`;
+  $('grid-wrap').innerHTML = ui.ended ? '' : ui.waitError
+    ? `<div class="waiting error"><strong>${ui.waitError === 'render' ? 'تعذّر عرض البيانات' : 'لم تصل البيانات من الجوال'}</strong><span>${ui.waitError === 'render' ? 'حدّث صفحة العرض (F5) ثم أعد الاتصال.' : 'تأكد أن شاشة «العرض» مفتوحة في الجوال وأنه على نفس الشبكة، ثم أعد الاتصال.'}</span><button class="btn primary" type="button" id="btn-wait-reconnect">إعادة الاتصال</button></div>`
+    : `<div class="waiting"><span class="spinner" aria-hidden="true"></span><strong>تم الاتصال</strong><span>جارٍ استلام الدرجات من الجوال…</span></div>`;
+  const wr = document.getElementById('btn-wait-reconnect');
+  if (wr) wr.addEventListener('click', () => $('btn-reconnect').click());
 }
 
 function renderEnded() {

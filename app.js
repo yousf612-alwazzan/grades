@@ -1705,7 +1705,7 @@ async function startLiveFromCode(code) {
   if (route().name === 'live') render();
   try {
     if (L.link) L.link.stop();
-    L.link = new m.PhoneLink({ iceServers: m.iceServersFrom(S.settings), onState: setLiveState });
+    L.link = new m.PhoneLink({ iceServers: m.iceServersFrom(S.settings), onState: setLiveState, onWant: () => { sendHello(); sendSnapshot(); } });
     L.state = 'connecting';
     L.answer = await L.link.acceptOffer(code);
     if (L.link.relaySent) L.link.relaySent.then(() => { if (route().name === 'live' && L.phase === 'answer') render(); }).catch(() => {});

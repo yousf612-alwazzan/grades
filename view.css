@@ -510,3 +510,5 @@ textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 
 /* الغياب */
 .grid td.c-absent { color: var(--error, #c0362c); font-weight: 800; background: color-mix(in srgb, var(--error, #c0362c) 10%, transparent); text-align: center; }
 .grid tr.row-absent td { background: color-mix(in srgb, var(--error, #c0362c) 6%, transparent); }
+.waiting.error { color: var(--error); }
+.waiting.error .btn { margin-top: 12px; }

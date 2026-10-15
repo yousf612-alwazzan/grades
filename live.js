@@ -10,7 +10,9 @@ export const PROTO = 1;
 
 const HEARTBEAT_MS = 5000;
 const DEAD_MS = 12000;
-const GATHER_MS = 4000;
+const GATHER_MS = 3000;       // أقصى انتظار لجمع مسارات الشبكة
+const GATHER_SETTLE_MS = 900;  // بعد أول مسار نكتفي بانتظار قصير (شبكة المدرسة/نقطة الاتصال تكفيها المسارات المحلية)
+const CHUNK = 12000;           // حجم آمن لكل رسالة على كل الأجهزة (بعضها يرفض الرسائل الكبيرة بصمت)
 const MAX_CANDS = 4;
 const BAD_CODE = 'رمز الاتصال غير صالح أو ناقص. أعد المسح أو انسخ الرمز كاملًا مرة أخرى.';
 
@@ -476,6 +478,7 @@ async function relayPost(room, text, { tries = RELAY_POSTS, signal } = {}) {
 
 /** فترة الاستطلاع: سريعة أولًا ثم أبطأ (حد الطلبات المجاني في ntfy.sh ≈ ٦٠ دفعة ثم طلب كل ٥ ث). */
 function pollDelay(elapsed) {
+  if (elapsed < 20_000) return 900;
   if (elapsed < 45_000) return 1500;
   if (elapsed < 165_000) return 3000;
   return 5000;
@@ -485,10 +488,14 @@ function pollDelay(elapsed) {
 function waitGathering(pc, ms = GATHER_MS) {
   if (pc.iceGatheringState === 'complete') return Promise.resolve();
   return new Promise((resolve) => {
-    const done = () => { clearTimeout(t); pc.removeEventListener('icegatheringstatechange', on); resolve(); };
+    let settle = 0;
+    const done = () => { clearTimeout(t); clearTimeout(settle); pc.removeEventListener('icegatheringstatechange', on); pc.removeEventListener('icecandidate', cand); resolve(); };
     const on = () => { if (pc.iceGatheringState === 'complete') done(); };
+    // أول مسار: ننتظر قليلًا لمسارات أخرى ثم ننطلق بدل انتظار STUN البطيء
+    const cand = (e) => { if (e.candidate && !settle) settle = setTimeout(done, GATHER_SETTLE_MS); };
     const t = setTimeout(done, ms);
     pc.addEventListener('icegatheringstatechange', on);
+    pc.addEventListener('icecandidate', cand);
   });
 }
 
@@ -567,6 +574,12 @@ class BaseLink {
       if (this.state !== 'connected' && this.state !== 'closed') this.setState('connected');
       return { msg, control: true };
     }
+    if (msg.type === 'want' && typeof this.onWant === 'function') {
+      // الكمبيوتر لم تصله البيانات: يطلب الإعادة فقط — لا يستطيع تعديل أي شيء
+      this.lastSeen = Date.now();
+      try { this.onWant(); } catch { /* */ }
+      return { msg, control: true };
+    }
     return { msg, control: false };
   }
 
@@ -594,6 +607,7 @@ export class PhoneLink extends BaseLink {
   constructor(opts = {}) {
     super(opts);
     this.droppedCount = 0;
+    this.onWant = typeof opts.onWant === 'function' ? opts.onWant : null;
     this.onRelay = typeof opts.onRelay === 'function' ? opts.onRelay : () => {};
     this.relayState = 'none'; // none | sending | sent | failed
     this.relaySent = Promise.resolve(false);
@@ -652,7 +666,14 @@ export class PhoneLink extends BaseLink {
 
   send(msg) {
     if (!msg || typeof msg !== 'object') return false;
-    return this.rawSend({ ...msg, v: PROTO });
+    const text = JSON.stringify({ ...msg, v: PROTO });
+    if (text.length <= CHUNK) return this.rawSend({ ...msg, v: PROTO });
+    // رسالة كبيرة (لقطة شعبة كاملة): نقسمها لأجزاء صغيرة يجمعها الكمبيوتر
+    const id = Math.random().toString(36).slice(2, 10);
+    const n = Math.ceil(text.length / CHUNK);
+    let ok = true;
+    for (let i = 0; i < n; i++) ok = this.rawSend({ v: PROTO, type: 'part', id, i, n, d: text.slice(i * CHUNK, (i + 1) * CHUNK) }) && ok;
+    return ok;
   }
 
   stop() {
@@ -813,9 +834,32 @@ export class ViewerLink extends BaseLink {
     const { msg, control } = this.handleControl(raw);
     if (control || !msg) return;
     this.lastSeen = Date.now();
+    if (msg.type === 'part') {
+      const id = String(msg.id || ''); const n = Number(msg.n); const i = Number(msg.i);
+      if (!id || !(n > 0 && n < 500) || !(i >= 0 && i < n) || typeof msg.d !== 'string') return;
+      this.parts ||= new Map();
+      const p = this.parts.get(id) || { n, got: new Map() };
+      p.got.set(i, msg.d);
+      this.parts.set(id, p);
+      if (p.got.size < p.n) return;
+      this.parts.delete(id);
+      let text = '';
+      for (let k = 0; k < p.n; k++) text += p.got.get(k);
+      let full;
+      try { full = JSON.parse(text); } catch { return; }
+      if (full && VIEW_TYPES.has(full.type)) this.deliver(full);
+      return;
+    }
     if (!VIEW_TYPES.has(msg.type)) return;
-    try { this.onMessage(msg); } catch { /* */ }
+    this.deliver(msg);
   }
+
+  deliver(msg) {
+    try { this.onMessage(msg); } catch (e) { if (typeof this.onError === 'function') this.onError(e); }
+  }
+
+  // اطلب من الجوال إعادة إرسال البيانات (لا يحمل أي بيانات)
+  requestData() { return this.rawSend({ v: PROTO, type: 'want' }); }
 
   stop() { this.stopRelay(); this.room = null; this.close(); }
 }
