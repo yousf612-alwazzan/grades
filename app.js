@@ -238,7 +238,7 @@ function render({ scrollTop = false } = {}) {
   const screens = { home: Home, reports: Reports, tools: Tools, class: ClassScreen, student: StudentScreen, editor: Editor, settings: Settings, live: Live, transferOut: TransferOut, transferIn: TransferIn, guide: Guide };
   const fn = screens[r.name] || Home;
   const isRoot = ROOTS.includes(r.name);
-  main().className = 'main' + (isRoot ? '' : ' no-tabbar');
+  main().className = 'main' + (isRoot ? '' : ' no-tabbar') + (r.name === 'class' && WIDE.matches && cls(r.p.id) && cls(r.p.id).names.length ? ' desk-class' : '');
   document.body.classList.toggle('no-tabbar', !isRoot);
   document.getElementById('tabbar').classList.toggle('hide', !isRoot);
   main().innerHTML = shareBarHTML() + (REMOTE ? `<div class="remote-bar">${icon('phone')} <span><b>متصل بجوالك</b> — كل التعديلات تُحفظ في جوالك</span></div>` : '') + `<div class="screen-enter">${fn(r.p)}</div>`;
@@ -496,13 +496,13 @@ function ClassScreen(p) {
       <button type="button" class="btn primary lg" data-act="edit-class" data-id="${c.id}">${icon('plus')} أضف الطلاب</button>
       <button type="button" class="btn lg ghost" data-act="go" data-to="transferIn" data-id="${c.id}">${icon('inbox')} استقبال طلاب منقولين</button></div></div>`;
   } else {
-    body = `<div class="wrap wide"><div class="split">
-      <section id="cls-body">${n > 30 && !p.painted ? skeleton() : (p.tab === 'fin' ? finTab(c, d) : weekTab(c, d, p.tab))}</section>
-      <aside class="desk-only" id="aside">${asideHTML(c, d, p)}</aside>
-    </div></div>`;
+    body = wide
+      ? `<section id="cls-body" class="desk-body">${n > 30 && !p.painted ? skeleton() : (p.tab === 'fin' ? finTab(c, d) : weekTab(c, d, p.tab))}</section>`
+      : `<div class="wrap wide"><section id="cls-body">${n > 30 && !p.painted ? skeleton() : (p.tab === 'fin' ? finTab(c, d) : weekTab(c, d, p.tab))}</section></div>`;
   }
 
-  return `<div class="cls-head">${appbar({ title: c.label, sub: students(n), save: true, actions: menuBtn })}${tools}${n ? (wide ? chips : weekbar) : ''}</div>${body}`;
+  void tools; void chips;
+  return `<div class="cls-head">${appbar({ title: c.label, sub: students(n), save: true, actions: menuBtn })}${n && !wide ? weekbar : ''}</div>${body}`;
 }
 afterRender.class = (p) => {
   if (!p.painted) {
@@ -523,6 +523,36 @@ function skeleton() {
   return `<div class="stack" aria-busy="true">${'<div class="skel" style="height:120px"></div>'.repeat(5)}</div>`;
 }
 
+// الكمبيوتر: عمود جانبي ثابت (يسار) — الأسابيع، أدوات الأسبوع، الإجراءات، الملخص
+function deskSide(c, d, inner) {
+  const p = route().p || {};
+  const n = c.names.length;
+  const w = p.tab;
+  const weeks = Array.from({ length: WEEKS }, (_, j) => {
+    const x = j + 1;
+    const done = n && weekComplete(d, x, n);
+    return `<button type="button" role="tab" class="chip wk-mini ${done ? 'done' : ''}" aria-selected="${w === x}" data-act="tab" data-tab="${x}" aria-label="الأسبوع ${ar(x)}">${ar(x)}</button>`;
+  }).join('');
+  const finDone = n && !finalsRemaining(d, n);
+  const act = (a, ic, label, extra = '') => `<button type="button" class="side-act" data-act="${a}" data-id="${c.id}" ${extra}>${icon(ic)}<span>${label}</span></button>`;
+  return `<aside class="cls-side">
+    <div class="side-card">
+      <div class="side-title">الأسابيع</div>
+      <div class="wk-mini-grid" role="tablist" aria-label="الأسابيع">${weeks}</div>
+      <button type="button" role="tab" class="chip wk-mini fin ${finDone ? 'done' : ''}" aria-selected="${w === 'fin'}" data-act="tab" data-tab="fin">الدرجات النهائية</button>
+    </div>
+    <div class="side-card side-acts">
+      ${REMOTE ? act('present', 'monitor', 'اعرض للطلاب وارصد') : act('go-live', 'monitor', 'عرض على الكمبيوتر')}
+      ${act('edit-class', 'users', 'الطلاب')}
+      ${act('export-xlsx', 'sheet', 'تصدير Excel')}
+      ${act('go', 'send', 'نقل طلاب', 'data-to="transferOut"')}
+    </div>
+    ${inner}
+
+    <div id="aside">${asideHTML(c, d, p)}</div>
+  </aside>`;
+}
+
 function asideHTML(c, d, p) {
   if (S.ui.selected && S.ui.selected.id === c.id && S.ui.selected.idx < c.names.length) {
     return `<div class="card">${studentCardBody(c, S.ui.selected.idx, { compact: true })}</div>`;
@@ -531,20 +561,20 @@ function asideHTML(c, d, p) {
   const totals = c.names.map((_, i) => finalTotal(d, i)).filter((v) => v != null);
   const avg = totals.length ? totals.reduce((a, b) => a + b, 0) / totals.length : null;
   const pr = progress(d, n);
-  return `<div class="card stack">
-    <h3>ملخص الصف</h3>
+  return `<div class="side-card">
+    <div class="side-title">ملخص الصف</div>
     <div class="kv">
       <div>نسبة الرصد</div><div class="num">${ar(Math.round(pr.ratio * 100))}٪</div>
       <div>اكتمل مجموعهم النهائي</div><div class="num">${ar(totals.length)} / ${ar(n)}</div>
       <div>متوسط المجموع النهائي</div><div class="num">${fmt(avg)}</div>
       ${p.tab !== 'fin' ? `<div>باقي في الأسبوع ${ar(p.tab)}</div><div class="num">${ar(weekRemaining(d, p.tab, n))}</div>` : ''}
     </div>
-    <p class="hint">${icon('info')} اضغط اسم أي طالب لعرض بطاقته هنا.</p>
+    <p class="hint" style="margin-top:8px">اضغط اسم أي طالب لعرض بطاقته هنا.</p>
   </div>`;
 }
 function refreshAside() {
   const r = route();
-  if (r.name !== 'class' || !ASIDE.matches) return;
+  if (r.name !== 'class' || !WIDE.matches) return;
   const a = document.getElementById('aside');
   const c = cls(r.p.id);
   if (a && c) a.innerHTML = asideHTML(c, dataOf(c.id), r.p);
@@ -581,24 +611,30 @@ function weekTab(c, d, w) {
   }
 
   const list = weekGrid(c, d, w, visible);
-  return `<div class="stack">
-    <div class="card"><div class="meta-grid">
-      <div class="field"><label for="wdate">التاريخ</label><div class="row"><input id="wdate" class="input" data-meta="date" value="${esc(meta.date)}" placeholder="مثال: ١٢/١٠" autocomplete="off"></div></div>
-      <div class="field"><label for="wlesson">عنوان الدرس</label><input id="wlesson" class="input" data-meta="lesson" value="${esc(meta.lesson)}" placeholder="اكتب عنوان الدرس" autocomplete="off"></div>
-    </div></div>
-    <div class="card"><div class="label" style="margin-bottom:8px">تعبئة سريعة <span class="hint">(تملأ الخانات الفارغة فقط)</span></div>
-      <div class="toolbar wrap-tools">
-        <button type="button" class="btn sm success" data-act="fill" data-k="all">${icon('check')} الكل ${ar(CONFIG.itemMax)}</button>
-        ${CRIT.map((cr, k) => `<button type="button" class="btn sm soft" data-act="fill" data-k="${k}">${esc(cr.short)} ${ar(CONFIG.itemMax)}</button>`).join('')}
-        <button type="button" class="btn sm" data-act="today">${icon('calendar')} تاريخ اليوم</button>
-      </div></div>
-    ${S.ui.undo && S.ui.undo.classId === c.id && S.ui.undo.week === w ? `<button type="button" class="btn danger-ghost" data-act="undo-bulk">${icon('undo')} تراجع عن «${S.ui.undo.label}»</button>` : ''}
-    <div class="status-line">
-      <span id="week-status">${weekStatusHTML(d, w, n)}</span>
-      <label class="toggle-line">الناقص فقط <input type="checkbox" class="switch" data-act="missing" ${S.ui.missingOnly ? 'checked' : ''}></label>
+  const side = `
+    <div class="side-card">
+      <div class="side-title">الأسبوع ${ar(w)}</div>
+      <div class="field"><label for="wdate">التاريخ</label><div class="row"><input id="wdate" class="input" data-meta="date" value="${esc(meta.date)}" placeholder="مثال: ١٢/١٠" autocomplete="off"><button type="button" class="btn sm" data-act="today" title="تاريخ اليوم">${icon('calendar')} اليوم</button></div></div>
+      <div class="field" style="margin-top:8px"><label for="wlesson">عنوان الدرس</label><input id="wlesson" class="input" data-meta="lesson" value="${esc(meta.lesson)}" placeholder="اكتب عنوان الدرس" autocomplete="off"></div>
     </div>
-    <div class="search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب أو رقمه" value="${esc(q)}" aria-label="بحث"></div>
-    <div id="stu-list" class="stack">${list || `<p class="hint" style="text-align:center;padding:24px">${S.ui.missingOnly && !q ? '🎉 لا يوجد طلاب ناقصون في هذا الأسبوع' : 'لا نتائج'}</p>`}</div>
+    <div class="side-card">
+      <div class="side-title">تعبئة سريعة <span class="hint">الخانات الفارغة فقط</span></div>
+      <div class="fill-tools">
+        <button type="button" class="btn sm success all" data-act="fill" data-k="all">${icon('check')} الكل ${ar(CONFIG.itemMax)}</button>
+        ${CRIT.map((cr, k) => `<button type="button" class="btn sm" data-act="fill" data-k="${k}">${esc(cr.short)} ${ar(CONFIG.itemMax)}</button>`).join('')}
+      </div>
+      ${S.ui.undo && S.ui.undo.classId === c.id && S.ui.undo.week === w ? `<button type="button" class="btn sm danger-ghost block" style="margin-top:8px" data-act="undo-bulk">${icon('undo')} تراجع عن «${S.ui.undo.label}»</button>` : ''}
+    </div>`;
+  return `<div class="cls-desk">
+    <div class="cls-main">
+      <div class="main-bar">
+        <span id="week-status">${weekStatusHTML(d, w, n)}</span>
+        <div class="search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب أو رقمه" value="${esc(q)}" aria-label="بحث"></div>
+        <label class="toggle-line">الناقص فقط <input type="checkbox" class="switch" data-act="missing" ${S.ui.missingOnly ? 'checked' : ''}></label>
+      </div>
+      <div id="stu-list" class="stu-scroll">${list || `<p class="hint" style="text-align:center;padding:24px">${S.ui.missingOnly && !q ? 'لا يوجد طلاب ناقصون في هذا الأسبوع' : 'لا نتائج'}</p>`}</div>
+    </div>
+    ${deskSide(c, d, side)}
   </div>`;
 }
 
@@ -745,8 +781,7 @@ function weekGrid(c, d, w, idxs) {
   }).join('');
   return `<div class="grid-wrap"><table class="grid">
     <thead><tr><th>م</th><th class="name">اسم الطالب</th>${CRIT.map((cr) => `<th>${esc(cr.label)}<br><small>/ ${ar(CONFIG.itemMax)}</small></th>`).join('')}<th>المجموع<br><small>/ ${ar(CONFIG.itemMax * ITEMS)}</small></th><th></th><th>الحضور</th><th>تميّز</th></tr></thead>
-    <tbody>${rows}</tbody></table></div>
-    <p class="hint">${icon('info')} اكتب الدرجة ثم Enter للانتقال. الأسهم ↑↓ تنقلك بين الطلاب في نفس العمود.</p>`;
+    <tbody>${rows}</tbody></table></div>`;
 }
 
 // ----- تبويب الدرجات النهائية -----
@@ -782,7 +817,19 @@ function finTab(c, d) {
       <div id="stu-list" class="slist">${rows || '<p class="hint" style="text-align:center;padding:24px">لا نتائج</p>'}</div>
     </div>`;
   }
-  return `<div class="stack">${intro}${status}${search}<div id="stu-list" class="stack">${list || '<p class="hint" style="text-align:center;padding:24px">لا نتائج</p>'}</div></div>`;
+  void intro; void status;
+  const side = `<div class="side-card"><div class="side-title">الدرجات النهائية</div><p class="hint" style="margin:0">${FINS.map((f) => `${esc(f.label)} من ${ar(f.max)}`).join('، ')}. المجموع من ${ar(100)} يظهر عند اكتمال كل الأسابيع والدرجات.</p></div>`;
+  return `<div class="cls-desk">
+    <div class="cls-main">
+      <div class="main-bar">
+        <span id="week-status">${rem ? `<span class="status-pill">${icon('warn')} باقي ${ar(rem)} من ${ar(n)} طالب</span>` : `<span class="status-pill ok">${icon('checkCircle')} اكتملت الدرجات النهائية</span>`}</span>
+        ${search}
+        <label class="toggle-line">الناقص فقط <input type="checkbox" class="switch" data-act="missing" ${S.ui.missingOnly ? 'checked' : ''}></label>
+      </div>
+      <div id="stu-list" class="stu-scroll">${list || '<p class="hint" style="text-align:center;padding:24px">لا نتائج</p>'}</div>
+    </div>
+    ${deskSide(c, d, side)}
+  </div>`;
 }
 
 function finRow(c, d, i) {

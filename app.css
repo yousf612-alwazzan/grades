@@ -1097,3 +1097,51 @@ b, strong, h1, h2, h3, .btn, .tab { font-weight: 700; }
 /* نجمة التميّز بجانب الاسم */
 .name-star { display: inline-grid; vertical-align: -3px; margin-inline-start: 6px; color: var(--gold); }
 .name-star svg.i { width: 18px; height: 18px; fill: currentColor; }
+
+/* ===== ٢.٨ — شاشة الصف على الكمبيوتر: الجدول بطول الشاشة + عمود أدوات ثابت يسارًا ===== */
+@media (min-width: 900px) {
+  .main.desk-class { height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
+  .main.desk-class > .screen-enter { flex: 1; min-height: 0; display: flex; flex-direction: column; animation: none; }
+  .main.desk-class .cls-head { position: static; flex: none; }
+  .main.desk-class .desk-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .cls-desk { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 4px 16px 16px; }
+  .cls-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+  .main-bar { display: flex; align-items: center; gap: 12px; flex: none; }
+  .main-bar .search { flex: 1; max-width: 420px; }
+  .main-bar .search .input { min-height: 42px; }
+  .main-bar .toggle-line { margin-inline-start: auto; white-space: nowrap; }
+  .stu-scroll { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .stu-scroll .grid-wrap { flex: 1; min-height: 0; max-height: none; overflow: auto; }
+  .cls-side { min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; padding-bottom: 4px; }
+  .side-card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px; }
+  .side-title { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 10px; display: flex; gap: 6px; align-items: baseline; }
+  .side-title .hint { font-size: 12px; font-weight: 400; }
+  .wk-mini-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 6px; }
+  .chip.wk-mini { min-height: 40px; padding: 0; justify-content: center; border-radius: 10px !important; font-size: 15px; font-weight: 600; box-shadow: none; }
+  .chip.wk-mini svg.i { display: none; }
+  .chip.wk-mini.done { color: var(--success); background: var(--success-soft) !important; }
+  .chip.wk-mini.fin { width: 100%; }
+  .chip.wk-mini[aria-selected="true"] { background: var(--primary) !important; color: var(--primary-ink) !important; }
+  .cls-side .field label { font-size: 12.5px; }
+  .cls-side .field .row { gap: 6px; }
+  .cls-side .input { min-height: 42px; padding: 8px 12px; }
+  .fill-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .fill-tools .btn { min-height: 40px; padding: 0 8px; font-size: 14px; }
+  .fill-tools .btn.all { grid-column: span 2; }
+  .side-acts { display: grid; gap: 2px; padding: 6px; }
+  .side-act { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 10px; border: 0; border-radius: 10px; background: none; color: var(--text); font-weight: 600; font-size: 14.5px; text-align: start; }
+  .side-act svg.i { width: 20px; height: 20px; color: var(--muted); }
+  .side-act:hover { background: var(--chip); }
+  .side-act[data-act="present"], .side-act[data-act="go-live"] { color: var(--primary); }
+  .side-act[data-act="present"] svg.i, .side-act[data-act="go-live"] svg.i { color: var(--primary); }
+  .cls-side #aside .card { box-shadow: none; }
+  .cls-side .kv { font-size: 14px; }
+  table.grid thead th { top: 0; }
+}
+@media (min-width: 900px) and (max-width: 1180px) { .cls-desk { grid-template-columns: minmax(0, 1fr) 290px; } }
+@media (min-width: 900px) {
+  .side-acts { grid-template-columns: 1fr 1fr; gap: 6px; padding: 10px; }
+  .side-act { min-height: 44px; padding: 0 10px; font-size: 13.5px; background: var(--chip); justify-content: flex-start; }
+  .side-act:hover { background: color-mix(in srgb, var(--chip) 70%, var(--line)); }
+  .side-act[data-act="present"], .side-act[data-act="go-live"] { grid-column: span 2; background: var(--primary-soft); justify-content: center; }
+}
