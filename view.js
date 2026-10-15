@@ -735,7 +735,7 @@ function openNotePop(anchor, i) {
   popEl.setAttribute('role', 'dialog');
   popEl.innerHTML = `<div class="pop-head"><b>ملاحظة على ${esc(name)}</b><span class="muted">تُحفظ في جوال المعلم — لا تظهر على هذه الشاشة</span></div>
     <textarea class="pop-text" maxlength="500" rows="3" placeholder="اكتب الملاحظة…"></textarea>
-    <label class="pop-check"><input type="checkbox" class="pop-issue" ${has ? 'checked' : ''}> ❗ تنبيه في الأسبوع ${ar(w)}</label>
+    <label class="pop-check"><input type="checkbox" class="pop-issue" ${has ? 'checked' : ''}> تنبيه في الأسبوع ${ar(w)}</label>
     <div class="pop-actions"><button type="button" class="btn primary" data-pv="save">حفظ</button><button type="button" class="btn ghost" data-pv="close">إلغاء</button></div>`;
   document.body.appendChild(popEl);
   const r = anchor.getBoundingClientRect();
@@ -753,7 +753,7 @@ function openNotePop(anchor, i) {
       if (has && !issue) sendEdit({ kind: 'issue-off', week: w, idx: j });
     }
     closePop();
-    toast(issue && !ui.showIssues ? `حُفظ التنبيه في الجوال — علامة ❗ مخفية عن الشاشة (فعّلها من ${presenting ? 'زر «التنبيهات» أعلاه' : 'الجوال: «علامات التنبيه»'})` : 'حُفظت الملاحظة في الجوال ✓');
+    toast(issue && !ui.showIssues ? `حُفظ التنبيه في الجوال — علامة التنبيه مخفية عن الشاشة (فعّلها من ${presenting ? 'زر «التنبيهات» أعلاه' : 'الجوال: «علامات التنبيه»'})` : 'حُفظت الملاحظة في الجوال ✓');
   });
 }
 document.addEventListener('mousedown', (e) => { if (popEl && !popEl.contains(e.target) && !e.target.closest('td.editable') && !e.target.closest('[data-ed="note"]')) closePop(); });

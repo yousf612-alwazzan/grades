@@ -120,7 +120,7 @@ export function openSheet(html, { wide = false, onClose, label = '' } = {}) {
   const root = document.getElementById('overlay-root');
   const bd = document.createElement('div');
   bd.className = 'backdrop';
-  bd.innerHTML = `<div class="sheet ${wide ? 'wide' : ''}" role="dialog" aria-modal="true" aria-label="${esc(label)}">${html}</div>`;
+  bd.innerHTML = `<div class="sheet ${wide ? 'wide' : ''}" role="dialog" aria-modal="true" aria-label="${esc(label)}">${html}<button type="button" class="sheet-x" aria-label="إغلاق">${icon('x')}</button></div>`;
   const sheet = bd.firstElementChild;
   const entry = { bd, sheet, onClose };
   const prevFocus = document.activeElement;
@@ -133,6 +133,7 @@ export function openSheet(html, { wide = false, onClose, label = '' } = {}) {
     if (prevFocus && prevFocus.focus && document.contains(prevFocus)) prevFocus.focus({ preventScroll: true });
   };
   bd.addEventListener('click', (e) => { if (e.target === bd) entry.close(); });
+  sheet.querySelector(':scope > .sheet-x').addEventListener('click', () => entry.close());
   sheet.addEventListener('keydown', (e) => { if (e.key === 'Escape') entry.close(); });
   root.appendChild(bd);
   stack.push(entry);

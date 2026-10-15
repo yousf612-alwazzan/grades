@@ -317,9 +317,9 @@ function Home() {
   const days = last ? (Date.now() - last.getTime()) / 86400000 : Infinity;
   const pending = !!S.meta.changedSinceBackup && hasAnyGrades();
   if (REMOTE) { /* النسخ الاحتياطي من الجوال */ } else if (hasAnyGrades() && days > CONFIG.backupReminderDays) {
-    alerts.push(`<div class="alert warn" data-testid="backup-reminder">${icon('shield')}<div class="grow"><strong>احفظ نسخة احتياطية</strong><p>${last ? `آخر نسخة قبل ${ar(Math.floor(days))} يومًا.` : 'لم تحفظ أي نسخة بعد.'} احفظها في «الملفات» أو أرسلها لنفسك.</p><button type="button" class="btn sm primary" data-act="backup">احفظ نسخة الآن</button></div></div>`);
+    alerts.push(`<div class="alert warn" data-testid="backup-reminder">${icon('shield')}<div class="grow"><strong>احفظ نسخة احتياطية</strong><p>${last ? `آخر نسخة قبل ${ar(Math.floor(days))} يومًا.` : 'لم تحفظ أي نسخة بعد.'} احفظها في «الملفات» أو أرسلها لنفسك.</p><button type="button" class="btn sm soft" data-act="backup">احفظ نسخة الآن</button></div></div>`);
   } else if (pending) {
-    alerts.push(`<div class="alert info" data-testid="backup-nudge">${icon('shield')}<div class="grow"><strong>عندك درجات جديدة بدون نسخة احتياطية</strong><p>ضغطة واحدة تحفظها في iCloud Drive أو ترسلها لنفسك، فلا تضيع لو ضاع الجوال.</p><button type="button" class="btn sm primary" data-act="backup">${icon('download')} احفظ نسخة الآن</button></div></div>`);
+    alerts.push(`<div class="alert info" data-testid="backup-nudge">${icon('shield')}<div class="grow"><strong>عندك درجات جديدة بدون نسخة احتياطية</strong><p>ضغطة واحدة تحفظها في iCloud Drive أو ترسلها لنفسك، فلا تضيع لو ضاع الجوال.</p><button type="button" class="btn sm soft" data-act="backup">${icon('download')} احفظ نسخة الآن</button></div></div>`);
   }
 
   const backupOk = last && !pending && hasAnyGrades()
@@ -442,9 +442,8 @@ function classCard(c) {
   const pct = Math.round(pr.ratio * 100);
   const fw = n ? firstIncompleteWeek(d, n) : null;
   const where = fw == null ? '' : fw === 'fin' ? (finalsRemaining(d, n) ? 'الدرجات النهائية' : 'اكتمل كل شيء ✓') : `الأسبوع ${ar(fw)}`;
-  const short = (c.label.match(/[\d٠-٩]+/g) || []).join('/') || c.label.slice(0, 2);
   return `<article class="card class-card tap" data-act="open-class" data-id="${c.id}">
-    <div class="head"><span class="class-badge">${esc(ar(short).slice(0, 5))}</span>
+    <div class="head"><span class="class-badge">${icon('users')}</span>
       <div class="grow"><h3>${esc(c.label)}</h3><div class="meta">${students(n)}${where ? ` · ${where}` : ''}</div></div>
     </div>
     <div><div class="row" style="justify-content:space-between"><span class="meta">نسبة الرصد</span><b class="num">${ar(pct)}٪</b></div>
@@ -961,9 +960,9 @@ function studentCardBody(c, i, { compact: small = false, week = null } = {}) {
     <div class="card flat"><div class="kv"><div>أسابيع الغياب</div><div class="num">${ar(absenceCount(d, i))}</div><div>نجوم التميّز</div><div class="num">${starCount(d, i) ? '⭐ ' + ar(starCount(d, i)) : ar(0)}</div></div></div>
     <div class="card flat stack" data-notes>
       <h3>${icon('edit')} ملاحظات المعلم</h3>
-      ${getNotes(d, i).length ? `<ul class="notes">${getNotes(d, i).slice().reverse().map((nt) => `<li class="${nt.issue ? 'issue' : ''}"><div class="grow"><small class="muted num">${nt.issue ? '❗ ' : ''}${nt.w ? `الأسبوع ${ar(nt.w)} — ` : ''}${ar(new Date(nt.t).toLocaleDateString('en-GB'))}</small><p>${esc(nt.text)}</p></div><button type="button" class="icon-btn" data-act="note-del" data-id="${c.id}" data-idx="${i}" data-t="${esc(nt.t)}" aria-label="حذف الملاحظة">${icon('trash')}</button></li>`).join('')}</ul>` : '<p class="hint">لا توجد ملاحظات. الملاحظات تبقى عندك فقط ولا تظهر في بطاقة المشاركة.</p>'}
+      ${getNotes(d, i).length ? `<ul class="notes">${getNotes(d, i).slice().reverse().map((nt) => `<li class="${nt.issue ? 'issue' : ''}"><div class="grow"><small class="muted num">${nt.issue ? 'تنبيه · ' : ''}${nt.w ? `الأسبوع ${ar(nt.w)} — ` : ''}${ar(new Date(nt.t).toLocaleDateString('en-GB'))}</small><p>${esc(nt.text)}</p></div><button type="button" class="icon-btn" data-act="note-del" data-id="${c.id}" data-idx="${i}" data-t="${esc(nt.t)}" aria-label="حذف الملاحظة">${icon('trash')}</button></li>`).join('')}</ul>` : '<p class="hint">لا توجد ملاحظات. الملاحظات تبقى عندك فقط ولا تظهر في بطاقة المشاركة.</p>'}
       <textarea class="textarea" style="min-height:80px" data-note-input="${i}" maxlength="500" placeholder="اكتب ملاحظة عن الطالب (سلوك، مستوى، تواصل مع ولي الأمر…)"></textarea>
-      ${week ? `<label class="toggle-line issue-toggle"><input type="checkbox" class="switch" data-note-issue="${i}" data-week="${week}"> ❗ مشكلة في الأسبوع ${ar(week)} (تظهر علامة عند اسمه)</label>` : ''}
+      ${week ? `<label class="toggle-line issue-toggle"><input type="checkbox" class="switch" data-note-issue="${i}" data-week="${week}"> تنبيه: مشكلة في الأسبوع ${ar(week)} (تظهر علامة عند اسمه)</label>` : ''}
       <button type="button" class="btn soft" data-act="note-add" data-id="${c.id}" data-idx="${i}">${icon('plus')} إضافة ملاحظة</button>
     </div>
     <button type="button" class="btn primary block" data-act="share-student" data-id="${c.id}" data-idx="${i}">${icon('share')} مشاركة البطاقة</button>
@@ -1755,7 +1754,7 @@ function Live() {
       <ul class="hint manage-points">
         <li>تظهر صفوفك كلها على الكمبيوتر — اختر الصف الذي تريده.</li>
         <li><b>«اعرض للطلاب وارصد»</b>: جدول الدرجات على الشاشة، وترصد منه الدرجات والغياب والنجوم والملاحظات (طالب أو عدة طلاب معًا).</li>
-        <li>تُظهر أو تُخفي النجوم ❗ والأسماء من الشاشة نفسها. نص الملاحظات لا يظهر للطلاب أبدًا.</li>
+        <li>تُظهر أو تُخفي النجوم والتنبيهات والأسماء من الشاشة نفسها. نص الملاحظات لا يظهر للطلاب أبدًا.</li>
         <li>تستطيع أيضًا إنشاء الصفوف من ملفات Excel وPDF الموجودة على الكمبيوتر.</li>
         <li>كل شيء يُحفظ في <b>جوالك</b> فقط — الكمبيوتر لا يحفظ شيئًا.</li>
       </ul></section>`;
@@ -1863,8 +1862,8 @@ function displayOptionsHTML(c) {
     <label class="list-item"><span class="grow"><strong>إخفاء الأسماء</strong><small>أرقام الطلاب فقط</small></span><input type="checkbox" class="switch" data-live="hide" ${L.hideNames ? 'checked' : ''}></label>
     ${REMOTE || L.mode === 'manage' ? '' : `<label class="list-item"><span class="grow"><strong>✏️ الرصد من الكمبيوتر</strong><small>رصد الدرجات والغياب من شاشة العرض (يُحفظ في الجوال)</small></span><input type="checkbox" class="switch" data-live-opt="liveAllowEdit" ${S.settings.liveAllowEdit !== false ? 'checked' : ''}></label>`}
     <label class="list-item"><span class="grow"><strong>⭐ نجوم التميّز</strong><small>تظهر بجانب اسم الطالب المتميز</small></span><input type="checkbox" class="switch" data-live-opt="liveShowStars" ${o.stars ? 'checked' : ''}></label>
-    <label class="list-item"><span class="grow"><strong>❗ علامات التنبيه</strong><small>العلامة فقط — نص الملاحظة لا يظهر أبدًا</small></span><input type="checkbox" class="switch" data-live-opt="liveShowIssues" ${o.issues ? 'checked' : ''}></label>
-    ${o.issues ? `<button type="button" class="list-item" data-act="issue-hide" data-id="${c.id}">${icon('eyeOff')}<span class="grow"><strong>إخفاء ❗ عن طلاب معيّنين</strong><small>${withIssues.length ? `${ar(withIssues.length)} لديهم تنبيه · مخفي عن ${ar(hiddenCount)}` : 'لا توجد تنبيهات في هذا الصف'}</small></span>${icon('fwd')}</button>` : ''}
+    <label class="list-item"><span class="grow"><strong>علامات التنبيه</strong><small>العلامة فقط — نص الملاحظة لا يظهر أبدًا</small></span><input type="checkbox" class="switch" data-live-opt="liveShowIssues" ${o.issues ? 'checked' : ''}></label>
+    ${o.issues ? `<button type="button" class="list-item" data-act="issue-hide" data-id="${c.id}">${icon('eyeOff')}<span class="grow"><strong>إخفاء التنبيه عن طلاب معيّنين</strong><small>${withIssues.length ? `${ar(withIssues.length)} لديهم تنبيه · مخفي عن ${ar(hiddenCount)}` : 'لا توجد تنبيهات في هذا الصف'}</small></span>${icon('fwd')}</button>` : ''}
   </div>`;
 }
 
@@ -1898,7 +1897,7 @@ function quickNote(c, w, i) {
   const s = openSheet(`<h2>${icon('edit')} ملاحظة على ${esc(c.names[i])}</h2>
     <p>الملاحظات خاصة بك ولا تظهر في بطاقة ولي الأمر ولا على شاشة الطلاب.</p>
     <textarea class="textarea" style="min-height:100px" data-qn-text maxlength="500" placeholder="مثال: لم يُحضر أدواته، تحدّث أثناء الشرح، مستواه تحسّن…" autofocus></textarea>
-    ${w ? `<label class="list-item" style="border:1px solid var(--border);border-radius:14px;margin-top:8px"><span class="grow"><strong>❗ تنبيه في الأسبوع ${ar(w)}</strong><small>تظهر علامة ❗ عند اسمه في هذا الأسبوع</small></span><input type="checkbox" class="switch" data-qn-issue ${has ? 'checked' : ''}></label>` : ''}
+    ${w ? `<label class="list-item" style="border:1px solid var(--border);border-radius:14px;margin-top:8px"><span class="grow"><strong>تنبيه في الأسبوع ${ar(w)}</strong><small>تظهر علامة التنبيه عند اسمه في هذا الأسبوع</small></span><input type="checkbox" class="switch" data-qn-issue ${has ? 'checked' : ''}></label>` : ''}
     ${getNotes(d, i).length ? `<p class="hint" style="margin-top:8px">لديه ${ar(getNotes(d, i).length)} ملاحظة سابقة — <button type="button" class="link-btn" data-qn="open">اعرضها في بطاقته</button></p>` : ''}
     <div class="actions"><button type="button" class="btn" data-qn="cancel">إلغاء</button><button type="button" class="btn primary" data-qn="save">حفظ</button></div>`, { label: 'ملاحظة' });
   s.sheet.addEventListener('click', (e) => {
@@ -1918,7 +1917,7 @@ function quickNote(c, w, i) {
     s.close();
     const row = main().querySelector(`[data-stu="${i}"]`);
     if (row && row.classList.contains('srow') && w) row.outerHTML = stuRow(c, d, w, i); else softRender();
-    toast(issue ? '❗ حُفظ التنبيه' : 'حُفظت الملاحظة ✓');
+    toast(issue ? 'حُفظ التنبيه' : 'حُفظت الملاحظة ✓');
   });
 }
 
@@ -1928,7 +1927,7 @@ function showIssueHide(c) {
   const withIssues = c.names.map((_, i) => i).filter((i) => getNotes(d, i).some((n) => n.issue));
   if (!withIssues.length) { toast('لا يوجد طلاب عليهم تنبيه في هذا الصف'); return; }
   const o = displayOpts(c);
-  const s = openSheet(`<h2>إخفاء ❗ عن طلاب معيّنين</h2><p>الطلاب المحددون لن تظهر عندهم علامة التنبيه على الشاشة.</p>
+  const s = openSheet(`<h2>إخفاء التنبيه عن طلاب معيّنين</h2><p>الطلاب المحددون لن تظهر عندهم علامة التنبيه على الشاشة.</p>
     <div class="list" style="max-height:55vh;overflow:auto">${withIssues.map((i) => `<label class="pick"><input type="checkbox" data-ih="${i}" ${o.hidden.has(i) ? 'checked' : ''}><span class="stu-num num">${ar(i + 1)}</span><span class="grow">${esc(c.names[i])}</span></label>`).join('')}</div>
     <div class="actions"><button type="button" class="btn primary" data-x>تم</button></div>`, { label: 'إخفاء التنبيه', onClose: async () => {
     const list = [...s.sheet.querySelectorAll('[data-ih]:checked')].map((x) => +x.dataset.ih);
