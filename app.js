@@ -1707,6 +1707,7 @@ async function liveMod() { return (L.mod ||= await import('./live.js')); }
 
 function Live() {
   if (REMOTE) return RemotePresent();
+  L.scope = { kind: 'class', idx: 0 }; // العرض للشعبة كاملة (تعديل طالب بعينه من داخل الشعبة)
   if (!L.classId || !cls(L.classId)) L.classId = (S.classes[0] || {}).id || null;
   const c = L.classId ? cls(L.classId) : null;
   const viewUrl = S.settings.viewUrl || defaultViewUrl();
@@ -1740,10 +1741,6 @@ function Live() {
   } else {
     step2 = `<section class="live-step"><h3><span class="step-n">${ar(2)}</span> ماذا يظهر على الشاشة؟</h3>
       <div class="field"><label for="lv-class">الشعبة</label><select id="lv-class" class="select" data-live="class">${S.classes.map((o) => `<option value="${o.id}" ${o.id === L.classId ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></div>
-      <div class="seg" role="group" style="width:100%;display:grid;grid-template-columns:1fr 1fr">
-        <button type="button" data-act="live-scope" data-v="class" aria-pressed="${L.scope.kind === 'class'}">الشعبة كاملة</button>
-        <button type="button" data-act="live-scope" data-v="student" aria-pressed="${L.scope.kind === 'student'}">طالب واحد</button></div>
-      ${L.scope.kind === 'student' && c ? `<div class="field"><label for="lv-stu">الطالب</label><select id="lv-stu" class="select" data-live="student">${c.names.map((nm, i) => `<option value="${i}" ${i === L.scope.idx ? 'selected' : ''}>${ar(i + 1)}. ${esc(nm)}</option>`).join('')}</select></div>` : ''}
       ${c ? displayOptionsHTML(c) : ''}
     </section>`;
   }

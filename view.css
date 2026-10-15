@@ -555,3 +555,13 @@ textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 
 .pop-text { min-height: 80px; border-radius: 10px; border: 1.5px solid var(--border); background: var(--card); color: var(--text); font: inherit; padding: 8px 10px; resize: vertical; }
 .pop-check { display: flex; align-items: center; gap: 8px; font-weight: 700; }
 .pop-check input { width: 20px; height: 20px; accent-color: var(--primary); }
+
+/* التحديد المتعدد */
+.grid .c-sel { width: 44px; text-align: center; }
+.grid .c-sel input { width: 20px; height: 20px; accent-color: var(--primary); cursor: pointer; }
+.grid tr.row-sel td, .grid tr.row-sel th { background: color-mix(in srgb, var(--primary) 12%, var(--card)) !important; }
+.bulk-bar { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px; margin-top: 8px; border-radius: 12px; background: var(--primary-soft); }
+.bulk-bar strong { margin-inline-end: 6px; }
+.pop-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.ed-btn.on { background: var(--primary); color: var(--primary-ink, #fff); border-color: var(--primary); }
+.ed-btn.ghost { border-color: transparent; background: transparent; }

@@ -294,7 +294,7 @@ let presenting = false;
 function wipe() {
   model = null; hello = null;
   mirror = null; presenting = false;
-  pending.clear(); ui.editing = false; closePop();
+  pending.clear(); ui.editing = false; ui.sel = new Set(); closePop();
   if ($('soft-pause')) setSoftPause(false);
   if (manageFrame) { manageFrame.remove(); manageFrame = null; }
   $('screen-manage').innerHTML = '';
@@ -560,16 +560,18 @@ function renderGrid() {
     }
   } else if (ui.view === 'week') {
     const w = ui.week;
-    head = `<tr>${numTh}${nameTh}${crit.map((c) => `<th scope="col" class="c-crit">${headSub(esc(c), '/' + ar(CONFIG.itemMax))}</th>`).join('')}
+    const selAll = ui.editing && canEdit() ? `<th scope="col" class="c-sel"><input type="checkbox" data-sel-all ${n && ui.sel.size === n ? 'checked' : ''} aria-label="تحديد الكل"></th>` : '';
+    head = `<tr>${selAll}${numTh}${nameTh}${crit.map((c) => `<th scope="col" class="c-crit">${headSub(esc(c), '/' + ar(CONFIG.itemMax))}</th>`).join('')}
       <th scope="col" class="c-total">${sortHeader('total', headSub('المجموع', '/' + ar(WEEK_MAX)))}</th>${ui.editing && canEdit() ? '<th scope="col" class="c-tools">رصد</th>' : ''}</tr>`;
     for (const i of order) {
       const items = getItems(d, w, i);
       const t = weekTotal(d, w, i);
       const ed = ui.editing && canEdit();
+      const selTd = ed ? `<td class="c-sel"><input type="checkbox" data-sel="${i}" ${ui.sel.has(i) ? 'checked' : ''} aria-label="تحديد ${esc(model.names[i] || '')}"></td>` : '';
       const tools = ed ? `<td class="c-tools"><button type="button" class="ed-btn" data-ed="full">كامل</button><button type="button" class="ed-btn ${absentAt(d, w, i) ? 'on abs' : ''}" data-ed="absent">${absentAt(d, w, i) ? 'غائب ✓' : 'غياب'}</button><button type="button" class="ed-btn star ${starAt(d, w, i) ? 'on' : ''}" data-ed="star" aria-label="نجمة">${starAt(d, w, i) ? '★' : '☆'}</button><button type="button" class="ed-btn" data-ed="note" aria-label="ملاحظة أو تنبيه">${issueAt(d, w, i) ? '❗' : '📝'}</button></td>` : '';
       body += absentAt(d, w, i)
-        ? `<tr data-idx="${i}" class="row-absent">${nameCell(i)}<td class="c-absent" colspan="${items.length}" data-k="ab">غائب</td>${totalCell(t, 'wt', WEEK_MAX)}${tools}</tr>`
-        : `<tr data-idx="${i}">${nameCell(i)}${items.map((v, k) => cell(v, CONFIG.itemMax, ' c-crit' + (ed ? ' editable' : '') + '" data-k="i' + k)).join('')}${totalCell(t, 'wt', WEEK_MAX)}${tools}</tr>`;
+        ? `<tr data-idx="${i}" class="row-absent ${ui.sel.has(i) ? 'row-sel' : ''}">${selTd}${nameCell(i)}<td class="c-absent" colspan="${items.length}" data-k="ab">غائب</td>${totalCell(t, 'wt', WEEK_MAX)}${tools}</tr>`
+        : `<tr data-idx="${i}" class="${ui.sel.has(i) ? 'row-sel' : ''}">${selTd}${nameCell(i)}${items.map((v, k) => cell(v, CONFIG.itemMax, ' c-crit' + (ed ? ' editable' : '') + '" data-k="i' + k)).join('')}${totalCell(t, 'wt', WEEK_MAX)}${tools}</tr>`;
     }
   } else {
     head = `<tr>${numTh}${nameTh}
@@ -593,6 +595,7 @@ function starAt(d, w, i) { return !!(d.weeks[String(w)] && d.weeks[String(w)].st
 // ===== الرصد من شاشة العرض (يقبله الجوال إن سمح المعلم) =====
 const pending = new Map(); // oid → تعديل لم يؤكد الجوال استلامه بعد (في الذاكرة فقط)
 let editSeq = 0;
+ui.sel = new Set();
 function canEdit() {
   return !!(ui.allowEdit && ui.mode !== 'manage' && model && model.scope.kind === 'class' && !presenting);
 }
@@ -667,11 +670,59 @@ function openPop(td, i) {
   });
   if (inp) inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(inp.value.trim() || null); if (e.key === 'Escape') closePop(); });
 }
+// إجراء على كل الطلاب المحددين
+function runBulk(kind, anchor) {
+  const idxs = [...ui.sel].sort((a, b) => a - b);
+  const w = ui.week; const d = model.data;
+  if (kind === 'clear') { ui.sel.clear(); render(); return; }
+  if (!idxs.length) return;
+  if (kind === 'full') idxs.forEach((i) => sendEdit({ kind: 'full', week: w, idx: i }));
+  else if (kind === 'absent') idxs.forEach((i) => sendEdit({ kind: 'absent', week: w, idx: i, on: true }));
+  else if (kind === 'present') idxs.forEach((i) => { if (absentAt(d, w, i)) sendEdit({ kind: 'absent', week: w, idx: i, on: false }); });
+  else if (kind === 'star') { const allOn = idxs.every((i) => starAt(d, w, i)); idxs.forEach((i) => sendEdit({ kind: 'star', week: w, idx: i, on: !allOn })); }
+  else if (kind === 'note') { openNotePop(anchor, idxs); return; }
+  else if (kind === 'item') { openBulkItemPop(anchor, idxs); return; }
+  toast(`طُبّق على ${ar(idxs.length)} طالب`);
+}
+// درجة بند واحد لكل المحددين (مثلًا سلوك ٤)
+function openBulkItemPop(anchor, idxs) {
+  closePop();
+  const crit = criteriaLabels();
+  let k = 0;
+  popEl = document.createElement('div');
+  popEl.className = 'edit-pop';
+  popEl.setAttribute('role', 'dialog');
+  const vals = []; for (let x = CONFIG.itemMax * 2; x >= 0; x--) vals.push(x / 2);
+  const paint = () => {
+    popEl.innerHTML = `<div class="pop-head"><b>درجة بند لـ ${ar(idxs.length)} طالب</b><span class="muted">الأسبوع ${ar(ui.week)}</span></div>
+      <div class="pop-tabs">${crit.map((c, j) => `<button type="button" class="ed-btn ${j === k ? 'on' : ''}" data-pk="${j}">${esc(c)}</button>`).join('')}</div>
+      <div class="pop-grid">${vals.map((v) => `<button type="button" class="pv${Number.isInteger(v) ? ' int' : ''}" data-pv="${v}">${ar(v)}</button>`).join('')}</div>
+      <div class="pop-actions"><button type="button" class="btn ghost" data-pv="close">إلغاء</button></div>`;
+  };
+  paint();
+  document.body.appendChild(popEl);
+  const r = anchor.getBoundingClientRect();
+  popEl.style.top = Math.min(window.innerHeight - popEl.offsetHeight - 10, r.bottom + 6) + 'px';
+  popEl.style.left = Math.max(10, Math.min(window.innerWidth - popEl.offsetWidth - 10, r.left)) + 'px';
+  popEl.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-pk]');
+    if (t) { k = Number(t.dataset.pk); paint(); return; }
+    const b = e.target.closest('[data-pv]');
+    if (!b) return;
+    if (b.dataset.pv === 'close') return closePop();
+    const value = Number(b.dataset.pv);
+    idxs.forEach((i) => { if (!absentAt(model.data, ui.week, i)) sendEdit({ kind: 'item', week: ui.week, idx: i, k, value }); });
+    closePop();
+    toast(`${crit[k]} ${ar(value)} لـ ${ar(idxs.length)} طالب`);
+  });
+}
+
 function openNotePop(anchor, i) {
   closePop();
   const w = ui.week;
-  const has = issueAt(model.data, w, i);
-  const name = model.names[i] || `طالب ${ar(i + 1)}`;
+  const list = Array.isArray(i) ? i : [i];
+  const has = list.length === 1 && issueAt(model.data, w, list[0]);
+  const name = list.length === 1 ? (model.names[list[0]] || `طالب ${ar(list[0] + 1)}`) : `${ar(list.length)} طلاب`;
   popEl = document.createElement('div');
   popEl.className = 'edit-pop';
   popEl.setAttribute('role', 'dialog');
@@ -690,8 +741,10 @@ function openNotePop(anchor, i) {
     if (b.dataset.pv === 'close') return closePop();
     const text = popEl.querySelector('.pop-text').value.trim();
     const issue = popEl.querySelector('.pop-issue').checked;
-    if (text || (issue && !has)) sendEdit({ kind: 'note', week: w, idx: i, text, issue });
-    if (has && !issue) sendEdit({ kind: 'issue-off', week: w, idx: i });
+    for (const j of list) {
+      if (text || (issue && !has)) sendEdit({ kind: 'note', week: w, idx: j, text, issue });
+      if (has && !issue) sendEdit({ kind: 'issue-off', week: w, idx: j });
+    }
     closePop();
     toast(issue && !ui.showIssues ? 'حُفظ التنبيه في الجوال — علامة ❗ مخفية عن الشاشة (فعّلها من الجوال: «علامات التنبيه»)' : 'حُفظت الملاحظة في الجوال ✓');
   });
@@ -828,9 +881,19 @@ function renderToolbar() {
   } else { title = 'الدرجات النهائية'; sub = `التقويم البنائي من ${ar(FORM_MAX)} + المشاريع والاختبار العملي = ${ar(TOTAL_MAX)}`; }
   const sorts = [['num', 'الترتيب'], ['name', 'الاسم'], ['total', 'المجموع']];
   const editBtn = canEdit() ? `<button type="button" class="btn ${ui.editing ? 'primary' : ''} edit-toggle" data-edit-toggle aria-pressed="${ui.editing}">${ui.editing ? '✔ إنهاء الرصد' : '✏️ وضع الرصد'}</button>` : '';
+  const bulk = ui.editing && canEdit() && ui.view === 'week' && ui.sel.size ? `<div class="bulk-bar" role="toolbar" aria-label="إجراءات للمحددين">
+      <strong>${ar(ui.sel.size)} محدد</strong>
+      <button type="button" class="ed-btn" data-bulk="full">كامل</button>
+      <button type="button" class="ed-btn" data-bulk="absent">غياب</button>
+      <button type="button" class="ed-btn" data-bulk="present">إلغاء الغياب</button>
+      <button type="button" class="ed-btn star" data-bulk="star">⭐ نجمة</button>
+      <button type="button" class="ed-btn" data-bulk="note">📝 ملاحظة / ❗</button>
+      <button type="button" class="ed-btn" data-bulk="item">درجة بند…</button>
+      <button type="button" class="ed-btn ghost" data-bulk="clear">إلغاء التحديد</button>
+    </div>` : '';
   $('toolbar').innerHTML = `
     <div class="tb-title"><h1>${title}</h1><div class="tb-sub">${sub}</div></div>
-    <span class="pending-ind" id="pending-ind" hidden></span>${editBtn}
+    <span class="pending-ind" id="pending-ind" hidden></span>${editBtn}${bulk}
     <div class="seg" role="group" aria-label="ترتيب الصفوف"><span class="seg-label">ترتيب حسب</span>${sorts.map(([k, l]) => `<button type="button" data-sort="${k}" class="${ui.sort.key === k ? 'active' : ''}" aria-pressed="${ui.sort.key === k}">${l}</button>`).join('')}</div>`;
 }
 
@@ -1075,7 +1138,7 @@ function bind() {
     const v = e.target.closest('[data-view]');
     const w = e.target.closest('[data-week]');
     if (v) { ui.view = v.dataset.view; if (ui.sort.key === 'total') ui.sort.dir = 1; render(); }
-    else if (w) { ui.view = 'week'; ui.week = Number(w.dataset.week); render(); }
+    else if (w) { ui.view = 'week'; ui.week = Number(w.dataset.week); ui.sel.clear(); render(); }
   });
   const onSort = (e) => {
     const b = e.target.closest('[data-sort]');
@@ -1087,7 +1150,10 @@ function bind() {
     return true;
   };
   $('toolbar').addEventListener('click', (e) => {
+    const bk = e.target.closest('[data-bulk]');
+    if (bk) { runBulk(bk.dataset.bulk, bk); return; }
     if (e.target.closest('[data-edit-toggle]')) {
+      ui.sel.clear();
       ui.editing = !ui.editing;
       if (ui.editing && ui.view === 'summary') { ui.view = 'week'; ui.week = ui.week || 1; }
       closePop();
@@ -1096,8 +1162,14 @@ function bind() {
     }
     onSort(e);
   });
+  $('grid-wrap').addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.matches('[data-sel]')) { const i = Number(t.dataset.sel); if (t.checked) ui.sel.add(i); else ui.sel.delete(i); render(); }
+    else if (t.matches('[data-sel-all]')) { ui.sel = t.checked ? new Set(model.names.map((_, i) => i)) : new Set(); render(); }
+  });
   $('grid-wrap').addEventListener('click', (e) => {
     if (onSort(e)) return;
+    if (e.target.closest('.c-sel')) return;
     if (ui.editing && canEdit()) {
       const btn = e.target.closest('[data-ed]');
       const tr = e.target.closest('tr[data-idx]');
