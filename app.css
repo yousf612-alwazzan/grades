@@ -1080,3 +1080,20 @@ b, strong, h1, h2, h3, .btn, .tab { font-weight: 700; }
 .srow.absent { background: var(--card); }
 .srow.absent .srow-name { color: var(--text); }
 .srow-total.abs { font-size: 18px; }
+
+/* ٢.٧.٢ — نافذة الدرجة: أزرار كبيرة، ضغطة واحدة تحفظ وتنتقل */
+.pv-title { display: grid; justify-items: center; gap: 0; margin: 4px 0 10px; text-align: center; }
+.pv-title b { font-size: 17px; font-weight: 700; }
+.pv-title .hint { font-size: 12.5px; }
+.pv-ints { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.pv-halves { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 8px; }
+.pv { min-height: 0; border: 1px solid var(--line) !important; background: var(--card) !important; color: var(--text); font-variant-numeric: tabular-nums; transition: background 120ms, transform 80ms; }
+.pv.int { height: 64px; font-size: 26px; font-weight: 700; border-radius: 16px; }
+.pv.half { height: 46px; font-size: 16px; font-weight: 600; color: var(--muted); border-radius: 12px; background: var(--chip) !important; border-color: transparent !important; }
+.pv:active { transform: scale(.95); }
+.pv.on { background: var(--primary) !important; color: var(--primary-ink) !important; border-color: transparent !important; }
+.picker-actions { grid-template-columns: 1fr 1.6fr !important; margin-top: 16px !important; }
+.picker-tabs button { min-height: 48px; }
+/* نجمة التميّز بجانب الاسم */
+.name-star { display: inline-grid; vertical-align: -3px; margin-inline-start: 6px; color: var(--gold); }
+.name-star svg.i { width: 18px; height: 18px; fill: currentColor; }

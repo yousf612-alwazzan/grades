@@ -622,7 +622,7 @@ function stuRow(c, d, w, i) {
   const star = isStar(d, w, i);
   return `<div class="srow ${done ? 'complete' : ''} ${absent ? 'absent' : ''}" data-stu="${i}">
     <span class="srow-num num">${ar(i + 1)}</span>
-    <button type="button" class="srow-name" data-act="open-student" data-idx="${i}">${issues ? `<span class="issue-mark" title="تنبيه هذا الأسبوع" aria-label="تنبيه">!</span>` : ''}${esc(c.names[i])}</button>
+    <button type="button" class="srow-name" data-act="open-student" data-idx="${i}">${issues ? `<span class="issue-mark" title="تنبيه هذا الأسبوع" aria-label="تنبيه">!</span>` : ''}${esc(c.names[i])}${star ? `<span class="name-star" title="نجمة تميّز">${icon('star')}</span>` : ''}</button>
     <span class="srow-total num ${t === CONFIG.itemMax * ITEMS ? 'full' : ''} ${absent ? 'abs' : ''}" data-total>${t == null ? '' : fmt(t)}</span>
     <div class="boxes" data-inputs>${absent ? absentPill() : rowBoxes(w, i, getItems(d, w, i), c.names[i])}</div>
     <span class="srow-act" data-rowact>${absent ? `<span class="srow-done abs" aria-label="غائب">${icon('xCircle')}</span>` : rowAct(done, i)}</span>
@@ -653,26 +653,25 @@ function openPicker(c, w, i, k0) {
   let k = k0;
   const max = CONFIG.itemMax;
   const s = openSheet('<div data-picker></div>', { label: 'اختيار الدرجة' });
+  const ints = Array.from({ length: max + 1 }, (_, j) => max - j);          // ٥ ٤ ٣ ٢ ١ ٠
+  const halves = Array.from({ length: max }, (_, j) => max - j - 0.5);      // ٤٫٥ … ٠٫٥
+  const btn = (v, cur, cls) => `<button type="button" class="pv ${cls} ${cur === v ? 'on' : ''}" data-pv="${v}" aria-pressed="${cur === v}">${ar(v)}</button>`;
   const paint = () => {
     const vals = getItems(d, w, i);
     const cur = vals[k];
-    const start = cur == null ? max : cur;
-    const ticks = Array.from({ length: max * 2 + 1 }, (_, j) => j / 2);
     s.sheet.querySelector('[data-picker]').innerHTML = `
       <div class="picker-head"><span class="srow-num num">${ar(i + 1)}</span><b>${esc(c.names[i])}</b></div>
       <div class="seg picker-tabs" role="tablist">${CRIT.map((cr, j) => `<button type="button" data-pk="${j}" aria-pressed="${j === k}">${esc(cr.short)} <span class="num">${vals[j] == null ? '—' : ar(vals[j])}</span></button>`).join('')}</div>
-      <div class="slider-box">
-        <div class="slider-label">${esc(CRIT[k].label)}</div>
-        <output class="slider-val num" data-slider-val>${cur == null ? '—' : ar(cur)}</output>
-        <input type="range" class="score-slider" data-slider min="0" max="${max}" step="0.5" value="${start}" aria-label="${esc(CRIT[k].label)}">
-        <div class="slider-ticks" aria-hidden="true">${ticks.map((x) => `<span class="${Number.isInteger(x) ? 'major' : ''}">${Number.isInteger(x) ? ar(x) : ''}</span>`).join('')}</div>
-        <p class="hint" style="text-align:center;margin:4px 0 0">اسحب ثم اترك للحفظ، أو اضغط «تأكيد»</p>
-      </div>
+      <div class="pv-title"><b>${esc(CRIT[k].label)}</b><span class="hint">اضغط الدرجة — تُحفظ وتنتقل للبند التالي</span></div>
+      <div class="pv-ints" role="group" aria-label="${esc(CRIT[k].label)}">${ints.map((v) => btn(v, cur, 'int')).join('')}</div>
+      <div class="pv-halves" role="group" aria-label="أنصاف">${halves.map((v) => btn(v, cur, 'half')).join('')}</div>
       <div class="actions picker-actions">
-        <button type="button" class="btn" data-pv="clear">مسح</button>
-        <button type="button" class="btn success" data-pv="confirm">تأكيد <span class="num" data-confirm-val>${ar(start)}</span></button>
+        <button type="button" class="btn" data-pv="clear" ${cur == null ? 'disabled' : ''}>مسح</button>
         <button type="button" class="btn primary" data-pv="close">تم</button>
       </div>`;
+
+    const f = s.sheet.querySelector('.pv.on') || s.sheet.querySelector('.pv.int');
+    if (f) f.focus({ preventScroll: true });
   };
   const commit = (val) => {
     const { wasDone, nowDone } = changeItem(c, w, i, k, val);
@@ -685,17 +684,8 @@ function openPicker(c, w, i, k0) {
       if (next != null) k = next;
     }
     paint();
-    s.sheet.querySelector('[data-slider]').focus({ preventScroll: true });
   };
   paint();
-  s.sheet.querySelector('[data-slider]').focus({ preventScroll: true });
-  s.sheet.addEventListener('input', (e) => {
-    if (!e.target.matches('[data-slider]')) return;
-    const v = +e.target.value;
-    s.sheet.querySelector('[data-slider-val]').textContent = ar(v);
-    s.sheet.querySelector('[data-confirm-val]').textContent = ar(v);
-  });
-  s.sheet.addEventListener('change', (e) => { if (e.target.matches('[data-slider]')) commit(+e.target.value); });
   s.sheet.addEventListener('click', (e) => {
     const tab = e.target.closest('[data-pk]');
     if (tab) { k = +tab.dataset.pk; paint(); return; }
@@ -704,7 +694,7 @@ function openPicker(c, w, i, k0) {
     const v = b.dataset.pv;
     if (v === 'close') return s.close();
     if (v === 'clear') return commit(null);
-    if (v === 'confirm') return commit(+s.sheet.querySelector('[data-slider]').value);
+    commit(+v);
   });
 }
 
@@ -745,7 +735,7 @@ function weekGrid(c, d, w, idxs) {
     const t = weekTotal(d, w, i);
     return `<tr data-stu="${i}" class="${studentComplete(d, w, i) ? 'complete' : ''}">
       <td class="num">${ar(i + 1)}</td>
-      <td class="name"><button type="button" class="stu-name" data-act="open-student" data-idx="${i}">${esc(c.names[i])}</button></td>
+      <td class="name"><button type="button" class="stu-name" data-act="open-student" data-idx="${i}">${esc(c.names[i])}${isStar(d, w, i) ? `<span class="name-star" title="نجمة تميّز">${icon('star')}</span>` : ''}</button></td>
       ${CRIT.map((cr, k) => `<td><input class="score-input" inputmode="decimal" autocomplete="off" data-score="item" data-idx="${i}" data-k="${k}" value="${vals[k] == null ? '' : ar(vals[k])}" placeholder="—" aria-label="${esc(cr.label)} — ${esc(c.names[i])}"><span class="cell-err" data-err></span></td>`).join('')}
       <td class="total num" data-total>${t == null ? '—' : fmt(t)}</td>
       <td><button type="button" class="btn-full" data-act="full" data-idx="${i}">${icon('check')} كامل</button></td>
@@ -2528,9 +2518,7 @@ async function onScoreAction(act, el, p) {
     markDirty(c.id); livePatchItems(c.id, w, i);
     haptic('success');
     refreshStudent(c, w, i, { rerenderInputs: true });
-    if (prev.some((v) => v != null && v !== CONFIG.itemMax)) {
-      toast(`${c.names[i].split(' ')[0]}: كامل`, { action: { label: 'تراجع', fn: () => { prev.forEach((v, k) => setItem(d, w, i, k, v)); markDirty(c.id); livePatchItems(c.id, w, i); refreshStudent(c, w, i, { rerenderInputs: true }); } } });
-    }
+    toast(`${c.names[i].split(' ')[0]}: كامل`, { ms: 6000, action: { label: 'تراجع', fn: () => { prev.forEach((v, k) => setItem(d, w, i, k, v)); markDirty(c.id); livePatchItems(c.id, w, i); const row = main().querySelector(`[data-stu="${i}"]`); if (row && row.tagName !== 'TR') row.outerHTML = stuRow(c, d, w, i); else refreshStudent(c, w, i, { rerenderInputs: true }); refreshStudent(c, w, i); } } });
     if (!wasDone) { advanceFrom(c, w, i); hideIfMissingOnly(i); }
     return;
   }
