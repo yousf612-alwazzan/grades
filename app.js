@@ -211,7 +211,7 @@ window.addEventListener('popstate', () => {
     if (leaving.name === 'editor' && leaving.p.dirty && !leaving.p.confirmedLeave) {
       // نمنع فقدان التعديلات: نرجع الحالة ونسأل
       history.pushState({ depth: S.stack.length }, '');
-      confirmDialog({ title: 'تجاهل التعديلات؟', text: 'لم تحفظ التغييرات على الشعبة.', ok: 'تجاهل', danger: true }).then((yes) => {
+      confirmDialog({ title: 'تجاهل التعديلات؟', text: 'لم تحفظ التغييرات على الصف.', ok: 'تجاهل', danger: true }).then((yes) => {
         if (yes) { leaving.p.confirmedLeave = true; history.back(); }
       });
       return;
@@ -264,7 +264,7 @@ function renderShareBar() {
 
 function renderNav() {
   const cur = ROOTS.includes(route().name) ? route().name : (S.stack[0] || {}).name;
-  const items = [['home', 'users', 'الشعب'], ['reports', 'sheet', 'التقارير'], ['live', 'monitor', REMOTE ? 'عرض للطلاب' : 'العرض'], ['tools', 'bolt', 'الأدوات'], ['settings', 'gear', 'الإعدادات']];
+  const items = [['home', 'users', 'الصفوف'], ['reports', 'sheet', 'التقارير'], ['live', 'monitor', REMOTE ? 'عرض للطلاب' : 'العرض'], ['tools', 'bolt', 'الأدوات'], ['settings', 'gear', 'الإعدادات']];
   const btns = items.map(([n, ic, label]) => `<button type="button" class="tab" data-act="nav" data-to="${n}" ${cur === n ? 'aria-current="page"' : ''}><span class="tab-ico">${icon(ic)}</span><span>${label}</span></button>`).join('');
   document.getElementById('tabbar').innerHTML = btns;
   document.getElementById('rail').innerHTML = `<div class="brand"><img src="icons/icon-192.png" alt=""><span>${esc(CONFIG.appName)}</span></div>${btns}<div class="rail-foot">الإصدار ${ar(CONFIG.version)}<br>بياناتك على هذا الجهاز فقط</div>`;
@@ -324,18 +324,18 @@ function Home() {
 
   const backupOk = last && !pending && hasAnyGrades()
     ? `<p class="hint" data-testid="backup-ok" style="color:var(--success);font-weight:700">${icon('checkCircle')} نسختك الاحتياطية محدّثة (${days < 1 ? 'اليوم' : `قبل ${ar(Math.floor(days))} يوم`})</p>` : '';
-  const hello = `<div class="hello"><h2>${st.teacher ? `أهلًا أ. ${esc(st.teacher)}` : 'أهلًا بك'}</h2><p>${st.subject ? esc(st.subject) + ' · ' : ''}${S.classes.length ? `${ar(S.classes.length)} ${S.classes.length === 1 ? 'شعبة' : S.classes.length === 2 ? 'شعبتان' : 'شعب'}` : 'لنبدأ'}</p></div>`;
+  const hello = `<div class="hello"><h2>${st.teacher ? `أهلًا أ. ${esc(st.teacher)}` : 'أهلًا بك'}</h2><p>${st.subject ? esc(st.subject) + ' · ' : ''}${S.classes.length ? `${ar(S.classes.length)} ${S.classes.length === 1 ? 'صف' : S.classes.length === 2 ? 'صفّان' : 'صفوف'}` : 'لنبدأ'}</p></div>`;
 
   let body;
   if (!S.classes.length) {
     body = `<div class="empty card">${ART_EMPTY}<h2>ابدأ بثلاث خطوات</h2>
       <ol class="steps">
-        <li><span class="n">${ar(1)}</span><span>أضف شعبة (مثل «العاشر / ٣»)</span></li>
+        <li><span class="n">${ar(1)}</span><span>أضف صفًا (مثل «العاشر / ٣»)</span></li>
         <li><span class="n">${ar(2)}</span><span>الصق أسماء الطلاب أو استوردها من Excel أو PDF</span></li>
         <li><span class="n">${ar(3)}</span><span>ارصد الدرجات ثم صدّر الكشف</span></li>
       </ol>
-      <button type="button" class="btn primary lg block" data-act="new-class">${icon('plus')} إضافة شعبة</button>
-      <button type="button" class="btn lg block" style="margin-top:8px" data-act="import-classes">${icon('upload')} إنشاء الشعب من ملف (Excel أو PDF)</button>
+      <button type="button" class="btn primary lg block" data-act="new-class">${icon('plus')} إضافة صف</button>
+      <button type="button" class="btn lg block" style="margin-top:8px" data-act="import-classes">${icon('upload')} إنشاء الصفوف من ملف (Excel أو PDF)</button>
       <p class="hint" style="margin-top:12px">لديك نسخة احتياطية؟ <button type="button" class="btn ghost sm" data-act="restore">استرجاع نسخة</button></p></div>`;
   } else {
     body = `<div class="home-grid stack">${S.classes.map(classCard).join('')}</div>`;
@@ -347,44 +347,44 @@ function Home() {
     ${backupOk}
     ${alerts.join('')}
     ${body}
-    ${S.classes.length ? `<button type="button" class="btn primary lg fab" data-act="new-class">${icon('plus')} إضافة شعبة</button>` : ''}
+    ${S.classes.length ? `<button type="button" class="btn primary lg fab" data-act="new-class">${icon('plus')} إضافة صف</button>` : ''}
     <p class="hint version-line num" data-testid="app-version">الإصدار ${ar(CONFIG.version)}</p>
   </div>`;
 }
 
 // =====================================================================
-// تبويب «الأدوات»: إنشاء الشعب من ملف، النقل والتسليم، النسخ الاحتياطي
+// تبويب «الأدوات»: إنشاء الصفوف من ملف، النقل والتسليم، النسخ الاحتياطي
 // =====================================================================
 function Tools() {
   const item = (act, ic, t, sub, extra = '') => `<button type="button" class="list-item" data-act="${act}" ${extra}>${icon(ic)}<span class="grow"><strong>${t}</strong><small>${sub}</small></span>${icon('fwd')}</button>`;
   const has = S.classes.length > 0;
   return `${appbar({ title: 'الأدوات', backBtn: false })}
   <div class="wrap stack">
-    <div class="section-title">الشعب</div>
+    <div class="section-title">الصفوف</div>
     <div class="list">
-      ${item('new-class', 'plus', 'إضافة شعبة', 'بإدخال الأسماء أو لصقها')}
-      ${item('import-classes', 'upload', 'إنشاء شعب من ملف', 'كشف Excel أو PDF فيه شعبة أو أكثر — حتى الممسوح ضوئيًا')}
+      ${item('new-class', 'plus', 'إضافة صف', 'بإدخال الأسماء أو لصقها')}
+      ${item('import-classes', 'upload', 'إنشاء صفوف من ملف', 'كشف Excel أو PDF فيه صف أو أكثر — حتى الممسوح ضوئيًا')}
     </div>
     <div class="section-title">النقل بين المعلمين</div>
     <div class="list">
-      ${has ? item('handover-pick', 'send', 'تسليم شعبة كاملة لمعلم آخر', 'كل الطلاب مع الدرجات والغياب والملاحظات في ملف واحد') : ''}
-      ${has ? item('transfer-pick', 'move', 'نقل طلاب', 'طالب أو أكثر لمعلم آخر أو لشعبة أخرى عندك') : ''}
-      ${item('go', 'inbox', 'استقبال شعبة أو طلاب', 'من ملف أرسله معلم آخر', 'data-to="transferIn"')}
+      ${has ? item('handover-pick', 'send', 'تسليم صف كامل لمعلم آخر', 'كل الطلاب مع الدرجات والغياب والملاحظات في ملف واحد') : ''}
+      ${has ? item('transfer-pick', 'move', 'نقل طلاب', 'طالب أو أكثر لمعلم آخر أو لصف آخر عندك') : ''}
+      ${item('go', 'inbox', 'استقبال صف أو طلاب', 'من ملف أرسله معلم آخر', 'data-to="transferIn"')}
     </div>
     ${REMOTE ? `<p class="hint">${icon('shield')} النسخ الاحتياطي والاسترجاع وحذف البيانات تتم من الجوال (البيانات محفوظة فيه).</p>` : `<div class="section-title">النسخ الاحتياطي</div>
     <div class="list">
       <div class="list-item"><span class="grow"><strong>آخر نسخة احتياطية</strong><small class="num">${S.meta.lastBackupAt ? ar(new Date(S.meta.lastBackupAt).toLocaleDateString('en-GB')) : 'لم تُحفظ بعد'}</small></span>${S.meta.persist === 'granted' ? `<span class="status-pill ok">${icon('shield')} التخزين محمي</span>` : ''}</div>
-      ${item('backup', 'download', 'حفظ نسخة احتياطية', 'كل الشعب والدرجات في ملف — على الجوال وفي iCloud')}
+      ${item('backup', 'download', 'حفظ نسخة احتياطية', 'كل الصفوف والدرجات في ملف — على الجوال وفي iCloud')}
       ${item('restore', 'upload', 'استرجاع نسخة', 'من ملف نسخة احتياطية سابق (يستبدل البيانات الحالية)')}
     </div>`}
     ${REMOTE ? '' : `<div class="section-title">منطقة الخطر</div>
     <div class="list">
-      <button type="button" class="list-item" data-act="wipe">${icon('trash')}<span class="grow"><strong style="color:var(--error)">حذف كل البيانات</strong><small>كل الشعب والدرجات من هذا الجهاز — احفظ نسخة أولًا</small></span></button>
+      <button type="button" class="list-item" data-act="wipe">${icon('trash')}<span class="grow"><strong style="color:var(--error)">حذف كل البيانات</strong><small>كل الصفوف والدرجات من هذا الجهاز — احفظ نسخة أولًا</small></span></button>
     </div>`}
   </div>`;
 }
 
-// اختيار شعبة (لتسليمها أو نقل طلاب منها)
+// اختيار صف (لتسليمها أو نقل طلاب منها)
 function pickClass(title) {
   return new Promise((resolve) => {
     let res = null;
@@ -399,7 +399,7 @@ function pickClass(title) {
 // =====================================================================
 function Reports() {
   if (!S.classes.length) {
-    return `${appbar({ title: 'التقارير', backBtn: false })}<div class="wrap"><div class="empty card">${ART_EMPTY}<h2>لا توجد شعب بعد</h2><p>أضف شعبة وارصد الدرجات، ثم اطبع كشوفها من هنا.</p><button type="button" class="btn primary" data-act="new-class">${icon('plus')} إضافة شعبة</button></div></div>`;
+    return `${appbar({ title: 'التقارير', backBtn: false })}<div class="wrap"><div class="empty card">${ART_EMPTY}<h2>لا توجد صفوف بعد</h2><p>أضف صفًا وارصد الدرجات، ثم اطبع كشوفه من هنا.</p><button type="button" class="btn primary" data-act="new-class">${icon('plus')} إضافة صف</button></div></div>`;
   }
   if (!S.ui.reportClass || !cls(S.ui.reportClass)) S.ui.reportClass = S.classes[0].id;
   const c = cls(S.ui.reportClass);
@@ -409,7 +409,7 @@ function Reports() {
   const card = (act, ic, t, sub) => `<button type="button" class="report-card" data-act="${act}" data-id="${c.id}">${icon(ic)}<span><strong>${t}</strong><small>${sub}</small></span></button>`;
   return `${appbar({ title: 'التقارير', backBtn: false })}
   <div class="wrap stack">
-    <button type="button" class="pick-btn" data-act="report-class-pick" aria-haspopup="dialog"><span class="pick-ico">${icon('users')}</span><span class="grow"><small>الشعبة</small><strong>${esc(c.label)}</strong><span class="pick-meta">${students(n)} · رصد ${ar(Math.round(pr.ratio * 100))}٪</span></span><span class="pick-chev" aria-hidden="true">تغيير</span></button>
+    <button type="button" class="pick-btn" data-act="report-class-pick" aria-haspopup="dialog"><span class="pick-ico">${icon('users')}</span><span class="grow"><small>الصف</small><strong>${esc(c.label)}</strong><span class="pick-meta">${students(n)} · رصد ${ar(Math.round(pr.ratio * 100))}٪</span></span><span class="pick-chev" aria-hidden="true">تغيير</span></button>
     <p class="hint">التقارير تُطبع أو تُحفظ PDF من نافذة الطباعة.</p>
     <div class="report-grid">
       ${card('report-grades', 'sheet', 'كشف الدرجات', 'الأسابيع والفترتان والنهائي — PDF منسّق للطباعة')}
@@ -420,13 +420,13 @@ function Reports() {
   </div>`;
 }
 
-// اختيار شعبة من نافذة سفلية بنفس هوية التطبيق (بدل القائمة المنسدلة)
+// اختيار صف من نافذة سفلية بنفس هوية التطبيق (بدل القائمة المنسدلة)
 function pickClassSheet(current, done) {
   const items = S.classes.map((o) => {
     const p = Math.round(progress(dataOf(o.id), o.names.length).ratio * 100);
     return `<button type="button" role="radio" class="cp" aria-checked="${o.id === current}" data-pick="${o.id}"><span class="cp-dot" aria-hidden="true"></span><span class="grow"><strong>${esc(o.label)}</strong><small>${students(o.names.length)} · رصد ${ar(p)}٪</small></span></button>`;
   }).join('');
-  const s = openSheet(`<h2>اختر الشعبة</h2><div class="class-pick" role="radiogroup" aria-label="الشعب">${items}</div>`, { label: 'اختر الشعبة' });
+  const s = openSheet(`<h2>اختر الصف</h2><div class="class-pick" role="radiogroup" aria-label="الصفوف">${items}</div>`, { label: 'اختر الصف' });
   s.sheet.addEventListener('click', (e) => {
     const b = e.target.closest('[data-pick]');
     if (!b) return;
@@ -456,7 +456,7 @@ function classCard(c) {
 }
 
 // =====================================================================
-// الشاشة ٢ — الشعبة (إدخال الدرجات)
+// الشاشة ٢ — الصف (إدخال الدرجات)
 // =====================================================================
 function ClassScreen(p) {
   const c = cls(p.id);
@@ -474,7 +474,7 @@ function ClassScreen(p) {
     ${REMOTE ? `<button type="button" class="btn sm primary" data-act="present" data-id="${c.id}">${icon('monitor')} اعرض للطلاب وارصد</button>` : `<button type="button" class="btn sm" data-act="go-live" data-id="${c.id}">${icon('monitor')} عرض على الكمبيوتر</button>`}
     <button type="button" class="btn sm" data-act="go" data-to="transferOut" data-id="${c.id}">${icon('send')} نقل طلاب</button>
   </div>` : '';
-  const menuBtn = wide ? '' : `<button type="button" class="icon-btn labeled" data-act="class-menu" aria-label="خيارات الشعبة">${icon('more')}</button>`;
+  const menuBtn = wide ? '' : `<button type="button" class="icon-btn labeled" data-act="class-menu" aria-label="خيارات الصف">${icon('more')}</button>`;
   const weekLabel = p.tab === 'fin' ? 'الدرجات النهائية' : `الأسبوع ${ar(p.tab)}`;
   const weekSub = !n ? '' : p.tab === 'fin'
     ? (finalsRemaining(d, n) ? `باقي ${ar(finalsRemaining(d, n))}` : 'مكتملة ✓')
@@ -493,7 +493,7 @@ function ClassScreen(p) {
 
   let body;
   if (!n) {
-    body = `<div class="wrap"><div class="empty card">${ART_USERS}<h2>لا يوجد طلاب في هذه الشعبة</h2><p>أضف الأسماء بلصقها أو استوردها من ملف Excel أو PDF.</p>
+    body = `<div class="wrap"><div class="empty card">${ART_USERS}<h2>لا يوجد طلاب في هذا الصف</h2><p>أضف الأسماء بلصقها أو استوردها من ملف Excel أو PDF.</p>
       <button type="button" class="btn primary lg" data-act="edit-class" data-id="${c.id}">${icon('plus')} أضف الطلاب</button>
       <button type="button" class="btn lg ghost" data-act="go" data-to="transferIn" data-id="${c.id}">${icon('inbox')} استقبال طلاب منقولين</button></div></div>`;
   } else {
@@ -533,7 +533,7 @@ function asideHTML(c, d, p) {
   const avg = totals.length ? totals.reduce((a, b) => a + b, 0) / totals.length : null;
   const pr = progress(d, n);
   return `<div class="card stack">
-    <h3>ملخص الشعبة</h3>
+    <h3>ملخص الصف</h3>
     <div class="kv">
       <div>نسبة الرصد</div><div class="num">${ar(Math.round(pr.ratio * 100))}٪</div>
       <div>اكتمل مجموعهم النهائي</div><div class="num">${ar(totals.length)} / ${ar(n)}</div>
@@ -983,7 +983,7 @@ function StudentScreen(p) {
 }
 
 // =====================================================================
-// الشاشة ٤ — إضافة/تعديل شعبة (مسودة)
+// الشاشة ٤ — إضافة/تعديل صف (مسودة)
 // =====================================================================
 function Editor(p) {
   if (!p.draft) {
@@ -1002,9 +1002,9 @@ function Editor(p) {
       ${has ? '<span class="tag">له درجات</span>' : ''}
       <button type="button" class="icon-btn" data-act="del-row" data-row="${j}" aria-label="حذف الطالب">${icon('x')}</button></div>`;
   }).join('');
-  return `${appbar({ title: p.id ? 'تعديل الشعبة' : 'شعبة جديدة', actions: `<button type="button" class="btn primary sm" data-act="save-class">${p.id ? 'حفظ' : 'إنشاء'}</button>` })}
+  return `${appbar({ title: p.id ? 'تعديل الصف' : 'صف جديد', actions: `<button type="button" class="btn primary sm" data-act="save-class">${p.id ? 'حفظ' : 'إنشاء'}</button>` })}
   <div class="wrap stack">
-    <div class="card"><div class="field"><label for="cls-label">اسم الشعبة</label><input id="cls-label" class="input" data-draft-label value="${esc(dr.label)}" placeholder="مثل: العاشر / ٣" autocomplete="off"></div></div>
+    <div class="card"><div class="field"><label for="cls-label">اسم الصف</label><input id="cls-label" class="input" data-draft-label value="${esc(dr.label)}" placeholder="مثل: العاشر / ٣" autocomplete="off"></div></div>
     <div class="card stack">
       <h3>إضافة طلاب</h3>
       <div class="field"><label for="paste">الصق الأسماء (اسم في كل سطر)</label>
@@ -1022,8 +1022,8 @@ function Editor(p) {
       ${n > 1 ? `<button type="button" class="btn sm" data-act="sort-az">${icon('sort')} ترتيب أبجدي</button>` : ''}
     </div>
     <div class="list" id="name-list">${rows || '<p class="hint" style="padding:16px;text-align:center">لا يوجد طلاب بعد.</p>'}</div>
-    ${p.id ? `<div class="section-title">منطقة الخطر</div><button type="button" class="btn danger-ghost block" data-act="delete-class">${icon('trash')} حذف الشعبة</button>` : ''}
-    <button type="button" class="btn primary lg block" data-act="save-class">${p.id ? 'حفظ التعديلات' : 'إنشاء الشعبة'}</button>
+    ${p.id ? `<div class="section-title">منطقة الخطر</div><button type="button" class="btn danger-ghost block" data-act="delete-class">${icon('trash')} حذف الصف</button>` : ''}
+    <button type="button" class="btn primary lg block" data-act="save-class">${p.id ? 'حفظ التعديلات' : 'إنشاء الصف'}</button>
   </div>`;
 }
 
@@ -1041,7 +1041,7 @@ function addNamesToDraft(p, raw) {
 
 async function saveEditor(p) {
   const label = (p.draft.label || '').trim();
-  if (!label) { toast('اكتب اسم الشعبة أولًا', { err: true }); document.getElementById('cls-label')?.focus(); return; }
+  if (!label) { toast('اكتب اسم الصف أولًا', { err: true }); document.getElementById('cls-label')?.focus(); return; }
   const rows = p.draft.rows.map((r) => ({ ...r, name: r.name.replace(/\s+/g, ' ').trim() })).filter((r) => r.name);
   if (rows.length > MAX_STUDENTS) { toast(`الحد الأقصى ${ar(MAX_STUDENTS)} طالبًا`, { err: true }); return; }
   if (p.id) {
@@ -1052,7 +1052,7 @@ async function saveEditor(p) {
     await saveClassesNow();
     await store.saveGrades(c.id, S.grades[c.id]);
     liveResync(c.id);
-    toast('حُفظت الشعبة ✓');
+    toast('حُفظ الصف ✓');
     p.dirty = false; p.confirmedLeave = true;
     back();
   } else {
@@ -1061,7 +1061,7 @@ async function saveEditor(p) {
     S.grades[c.id] = emptyClassData();
     await saveClassesNow();
     await store.saveGrades(c.id, S.grades[c.id]);
-    toast('أُنشئت الشعبة ✓');
+    toast('أُنشئ الصف ✓');
     p.dirty = false; p.confirmedLeave = true;
     S.stack.pop();
     S.stack.push({ name: 'class', p: { id: c.id } });
@@ -1073,7 +1073,7 @@ async function saveEditor(p) {
 async function deleteClass(id, { skipConfirm = false } = {}) {
   const c = cls(id);
   if (!c) return;
-  const ok = skipConfirm || await confirmDialog({ title: `حذف «${c.label}»؟`, text: `سيُحذف ${students(c.names.length)} وكل درجاتهم من هذا الجهاز.`, ok: 'حذف الشعبة', danger: true });
+  const ok = skipConfirm || await confirmDialog({ title: `حذف «${c.label}»؟`, text: `سيُحذف ${students(c.names.length)} وكل درجاتهم من هذا الجهاز.`, ok: 'حذف الصف', danger: true });
   if (!ok) return;
   const pos = S.classes.indexOf(c);
   const data = dataOf(id);
@@ -1092,7 +1092,7 @@ async function deleteClass(id, { skipConfirm = false } = {}) {
       await saveClassesNow();
       await store.saveGrades(id, data);
       render();
-      toast('أُعيدت الشعبة ✓');
+      toast('أُعيد الصف ✓');
     } },
   });
 }
@@ -1129,15 +1129,15 @@ async function pickAndReadNames() {
 
 const OCR_NOTE = () => `<div class="alert warn">${icon('eye')}<div class="grow"><strong>قُرئت الأسماء من صورة</strong><p style="margin:0">القراءة الآلية قد تخطئ في بعض الحروف؛ راجع الأسماء وصحّحها.</p></div></div>`;
 
-// ملف فيه أكثر من شعبة: يختار المعلم شعبة واحدة، أو ينشئ كل الشعب
+// ملف فيه أكثر من صف: يختار المعلم صفًا واحدًا، أو ينشئ كل الصفوف
 function chooseGroup(res, { allowCreateAll = true } = {}) {
   return new Promise((resolve) => {
     let result = null;
-    const s = openSheet(`<h2>الملف فيه ${ar(res.groups.length)} شعب</h2>
-      <p>اختر الشعبة التي تريد استيراد طلابها${allowCreateAll ? '، أو أنشئ كل الشعب مرة واحدة' : ''}.</p>
+    const s = openSheet(`<h2>الملف فيه ${ar(res.groups.length)} صفوف</h2>
+      <p>اختر الصف الذي تريد استيراد طلابه${allowCreateAll ? '، أو أنشئ كل الصفوف مرة واحدة' : ''}.</p>
       <div class="list">${res.groups.map((g, i) => `<button type="button" class="list-item" data-g="${i}">${icon('users')}<span class="grow"><strong>${esc(g.label)}</strong><small>${students(g.names.length)}</small></span>${icon('fwd')}</button>`).join('')}</div>
-      <div class="actions">${allowCreateAll ? `<button type="button" class="btn primary" data-g="all">${icon('plus')} أنشئ كل الشعب (${ar(res.groups.length)})</button>` : ''}<button type="button" class="btn" data-g="cancel">إلغاء</button></div>`,
-      { label: 'اختيار الشعبة', onClose: () => resolve(result) });
+      <div class="actions">${allowCreateAll ? `<button type="button" class="btn primary" data-g="all">${icon('plus')} أنشئ كل الصفوف (${ar(res.groups.length)})</button>` : ''}<button type="button" class="btn" data-g="cancel">إلغاء</button></div>`,
+      { label: 'اختيار الصف', onClose: () => resolve(result) });
     s.sheet.addEventListener('click', (e) => {
       const b = e.target.closest('[data-g]');
       if (!b) return;
@@ -1148,14 +1148,14 @@ function chooseGroup(res, { allowCreateAll = true } = {}) {
   });
 }
 
-// إنشاء عدة شعب من ملف واحد (من الرئيسية أو من المحرر)
+// إنشاء عدة صفوف من ملف واحد (من الرئيسية أو من المحرر)
 async function createClassesFromGroups(groups, ocr) {
   return new Promise((resolve) => {
-    const s = openSheet(`<h2>إنشاء ${ar(groups.length)} شعب</h2>
-      <p>عدّل اسم أي شعبة أو ألغِ تحديدها. يمكنك مراجعة أسماء الطلاب لاحقًا من «الطلاب» داخل كل شعبة.</p>
+    const s = openSheet(`<h2>إنشاء ${ar(groups.length)} صفوف</h2>
+      <p>عدّل اسم أي صف أو ألغِ تحديده. يمكنك مراجعة أسماء الطلاب لاحقًا من «الطلاب» داخل كل صف.</p>
       ${ocr ? OCR_NOTE() : ''}
-      <div class="list">${groups.map((g, i) => `<div class="pick"><input type="checkbox" data-cg="${i}" checked aria-label="تحديد"><input class="input grow" data-cg-label="${i}" value="${esc(g.label)}" aria-label="اسم الشعبة"><span class="meta num">${students(cleanNames(g.names, [], MAX_STUDENTS).names.length)}</span></div>`).join('')}</div>
-      <div class="actions"><button type="button" class="btn" data-cx="0">إلغاء</button><button type="button" class="btn primary" data-cx="1">إنشاء الشعب</button></div>`, { wide: true, label: 'إنشاء الشعب', onClose: () => resolve(created) });
+      <div class="list">${groups.map((g, i) => `<div class="pick"><input type="checkbox" data-cg="${i}" checked aria-label="تحديد"><input class="input grow" data-cg-label="${i}" value="${esc(g.label)}" aria-label="اسم الصف"><span class="meta num">${students(cleanNames(g.names, [], MAX_STUDENTS).names.length)}</span></div>`).join('')}</div>
+      <div class="actions"><button type="button" class="btn" data-cx="0">إلغاء</button><button type="button" class="btn primary" data-cx="1">إنشاء الصفوف</button></div>`, { wide: true, label: 'إنشاء الصفوف', onClose: () => resolve(created) });
     let created = 0;
     s.sheet.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-cx]');
@@ -1181,13 +1181,13 @@ async function importClassesFromFile() {
   const res = await pickAndReadNames();
   if (!res) return;
   const ocr = res.ocr || /ocr/.test(res.kind || '');
-  const groups = res.groups || [{ label: res.label || res.fileLabel || 'شعبة جديدة', names: res.names }];
+  const groups = res.groups || [{ label: res.label || res.fileLabel || 'صف جديد', names: res.names }];
   const n = await createClassesFromGroups(groups, ocr);
   if (n) {
     S.stack = [{ name: 'home', p: {} }];
     history.replaceState({ depth: 1 }, '');
     render({ scrollTop: true });
-    toast(n === 1 ? 'أُنشئت الشعبة ✓' : `أُنشئت ${ar(n)} شعب ✓`);
+    toast(n === 1 ? 'أُنشئ الصف ✓' : `أُنشئت ${ar(n)} صفوف ✓`);
   }
 }
 
@@ -1200,7 +1200,7 @@ async function importFileToDraft(p) {
     if (!g) return;
     if (g === 'all') {
       const n = await createClassesFromGroups(res.groups, res.ocr || /ocr/.test(res.kind || ''));
-      if (n) { p.dirty = false; p.confirmedLeave = true; S.stack = [{ name: 'home', p: {} }]; history.replaceState({ depth: 1 }, ''); render({ scrollTop: true }); toast(`أُنشئت ${ar(n)} شعب ✓`); }
+      if (n) { p.dirty = false; p.confirmedLeave = true; S.stack = [{ name: 'home', p: {} }]; history.replaceState({ depth: 1 }, ''); render({ scrollTop: true }); toast(`أُنشئت ${ar(n)} صفوف ✓`); }
       return;
     }
     res = { ...res, names: g.names, label: g.label };
@@ -1241,7 +1241,7 @@ async function importFileToDraft(p) {
 }
 
 // =====================================================================
-// نقل الطلاب — إرسال (لمعلم آخر أو لشعبة أخرى على نفس الجهاز)
+// نقل الطلاب — إرسال (لمعلم آخر أو لصف آخر على نفس الجهاز)
 // =====================================================================
 function TransferOut(p) {
   const c = cls(p.id);
@@ -1254,14 +1254,14 @@ function TransferOut(p) {
   const k = p.sel.size;
   return `${appbar({ title: 'نقل طلاب', sub: esc(c.label) })}
   <div class="wrap stack">
-    <div class="alert info">${icon('info')}<div class="grow"><strong>اختر الطلاب المنقولين</strong><p style="margin:0">تنتقل أسماؤهم مع كل درجاتهم الأسبوعية والنهائية. أرسل الملف للمعلم الجديد (واتساب أو بريد) ليستقبله من «استقبال طلاب منقولين»، أو انقلهم لشعبة أخرى عندك.</p></div></div>
+    <div class="alert info">${icon('info')}<div class="grow"><strong>اختر الطلاب المنقولين</strong><p style="margin:0">تنتقل أسماؤهم مع كل درجاتهم الأسبوعية والنهائية. أرسل الملف للمعلم الجديد (واتساب أو بريد) ليستقبله من «استقبال طلاب منقولين»، أو انقلهم لصف آخر عندك.</p></div></div>
     <div class="search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب" value="${esc(q)}" aria-label="بحث"></div>
     <div class="row" style="justify-content:space-between"><span class="count-badge num">${k ? `اخترت ${students(k)}` : 'لم تختر أحدًا'}</span>
       <span><button type="button" class="btn sm ghost" data-act="sel-all" data-v="1">تحديد الكل</button><button type="button" class="btn sm ghost" data-act="sel-all" data-v="0">إلغاء الكل</button></span></div>
     <div class="list">${list.map(({ nm, i }) => `<label class="pick"><input type="checkbox" data-sel="${i}" ${p.sel.has(i) ? 'checked' : ''}><span class="stu-num num">${ar(i + 1)}</span><span class="grow">${esc(nm)}</span>${studentHasGrades(d, i) ? '<span class="meta">له درجات</span>' : ''}</label>`).join('') || '<p class="hint" style="padding:16px">لا نتائج</p>'}</div>
     <div class="card stack" style="position:sticky;bottom:calc(var(--safe-b) + 8px);box-shadow:var(--shadow-lg)">
       <button type="button" class="btn primary block" data-act="transfer-file" ${k ? '' : 'disabled'}>${icon('send')} حفظ ملف النقل وإرساله لمعلم آخر</button>
-      <button type="button" class="btn block" data-act="transfer-move" ${k && S.classes.length > 0 ? '' : 'disabled'}>${icon('move')} نقل إلى شعبة أخرى عندي</button>
+      <button type="button" class="btn block" data-act="transfer-move" ${k && S.classes.length > 0 ? '' : 'disabled'}>${icon('move')} نقل إلى صف آخر عندي</button>
     </div>
   </div>`;
 }
@@ -1274,7 +1274,7 @@ async function doTransferFile(p) {
   try {
     await platform.saveFile(name, new Blob([JSON.stringify(tr)], { type: 'application/json' }), 'application/json');
   } catch { toast('تعذّر حفظ الملف', { err: true }); return; }
-  const remove = await confirmDialog({ title: 'هل انتقل الطلاب فعلًا؟', text: `يمكنك حذف ${students(idxs.length)} من «${c.label}» الآن، أو إبقاؤهم إن كنت أرسلت نسخة فقط.`, ok: 'نعم، احذفهم من شعبتي', cancel: 'أبقهم', danger: true });
+  const remove = await confirmDialog({ title: 'هل انتقل الطلاب فعلًا؟', text: `يمكنك حذف ${students(idxs.length)} من «${c.label}» الآن، أو إبقاؤهم إن كنت أرسلت نسخة فقط.`, ok: 'نعم، احذفهم من صفّي', cancel: 'أبقهم', danger: true });
   if (remove) {
     const keep = c.names.map((_, i) => i).filter((i) => !p.sel.has(i));
     const before = { names: c.names.slice(), data: dataOf(c.id) };
@@ -1284,7 +1284,7 @@ async function doTransferFile(p) {
     liveResync(c.id);
     p.sel = new Set();
     render();
-    toast(`حُذف ${students(idxs.length)} من الشعبة`, { ms: CONFIG.undoDeleteMs, action: { label: 'تراجع', fn: async () => {
+    toast(`حُذف ${students(idxs.length)} من الصف`, { ms: CONFIG.undoDeleteMs, action: { label: 'تراجع', fn: async () => {
       c.names = before.names; S.grades[c.id] = before.data;
       await saveClassesNow(); await store.saveGrades(c.id, before.data); liveResync(c.id); render();
     } } });
@@ -1296,8 +1296,8 @@ function doTransferMove(p) {
   const others = S.classes.filter((x) => x.id !== c.id);
   const s = openSheet(`<h2>نقل ${students(p.sel.size)} إلى…</h2><p>تنتقل الدرجات معهم وتُحذف من «${esc(c.label)}».</p>
     <div class="list">${others.map((o) => `<button type="button" class="list-item" data-to-cls="${o.id}">${icon('users')}<span class="grow"><strong>${esc(o.label)}</strong><small>${students(o.names.length)}</small></span>${icon('fwd')}</button>`).join('')}
-    <button type="button" class="list-item" data-to-cls="__new">${icon('plus')}<span class="grow"><strong>شعبة جديدة</strong><small>أنشئ شعبة بهؤلاء الطلاب</small></span></button></div>
-    <div class="actions"><button type="button" class="btn" data-x>إلغاء</button></div>`, { label: 'نقل إلى شعبة' });
+    <button type="button" class="list-item" data-to-cls="__new">${icon('plus')}<span class="grow"><strong>صف جديد</strong><small>أنشئ صفًا بهؤلاء الطلاب</small></span></button></div>
+    <div class="actions"><button type="button" class="btn" data-x>إلغاء</button></div>`, { label: 'نقل إلى صف' });
   s.sheet.addEventListener('click', async (e) => {
     if (e.target.closest('[data-x]')) return s.close();
     const b = e.target.closest('[data-to-cls]');
@@ -1331,7 +1331,7 @@ function TransferIn(p) {
     <div class="wrap stack">
       <div class="empty card">${ART_USERS}<h2>اختر ملف النقل</h2><p>ملف ينتهي بـ ‎.json أرسله لك معلم آخر من «نقل طلاب». يحوي أسماء الطلاب ودرجاتهم.</p>
         <button type="button" class="btn primary lg" data-act="pick-transfer">${icon('upload')} اختيار الملف</button></div>
-      <p class="hint">${icon('info')} لإضافة أسماء فقط (بدون درجات) من Excel أو PDF استعمل «الطلاب» داخل الشعبة.</p>
+      <p class="hint">${icon('info')} لإضافة أسماء فقط (بدون درجات) من Excel أو PDF استعمل «الطلاب» داخل الصف.</p>
     </div>`;
   }
   const tr = p.tr;
@@ -1343,16 +1343,16 @@ function TransferIn(p) {
   <div class="wrap stack">
     <div class="card"><div class="kv">
       <div>من المعلم</div><div>${esc(tr.from.teacher || '—')}</div>
-      <div>الشعبة الأصلية</div><div>${esc(tr.from.classLabel || '—')}</div>
+      <div>الصف الأصلي</div><div>${esc(tr.from.classLabel || '—')}</div>
       <div>المادة</div><div>${esc(tr.from.subject || '—')}</div>
       <div>تاريخ الملف</div><div class="num">${tr.at ? ar(new Date(tr.at).toLocaleDateString('en-GB')) : '—'}</div>
     </div></div>
     <div class="section-title">أضفهم إلى</div>
     <div class="list">
       ${S.classes.map((o) => `<label class="pick"><input type="radio" name="tgt" data-tgt="${o.id}" ${p.target === o.id ? 'checked' : ''}><span class="grow"><strong>${esc(o.label)}</strong> <small class="muted">${students(o.names.length)}</small></span></label>`).join('')}
-      <label class="pick"><input type="radio" name="tgt" data-tgt="__new" ${p.target === '__new' ? 'checked' : ''}><span class="grow"><strong>شعبة جديدة</strong></span></label>
+      <label class="pick"><input type="radio" name="tgt" data-tgt="__new" ${p.target === '__new' ? 'checked' : ''}><span class="grow"><strong>صف جديد</strong></span></label>
     </div>
-    ${p.target === '__new' ? `<div class="field"><label for="new-label">اسم الشعبة الجديدة</label><input id="new-label" class="input" data-new-label value="${esc(p.newLabel)}" placeholder="مثل: العاشر / ٣"></div>` : ''}
+    ${p.target === '__new' ? `<div class="field"><label for="new-label">اسم الصف الجديد</label><input id="new-label" class="input" data-new-label value="${esc(p.newLabel)}" placeholder="مثل: العاشر / ٣"></div>` : ''}
     <div class="row" style="justify-content:space-between;margin-top:12px"><span class="count-badge num">${ar(p.pick.size)} من ${ar(tr.students.length)}</span>
       <span><button type="button" class="btn sm ghost" data-act="pick-all" data-v="1">تحديد الكل</button><button type="button" class="btn sm ghost" data-act="pick-all" data-v="0">إلغاء الكل</button></span></div>
     <div class="list">${tr.students.map((st, i) => `<label class="pick"><input type="checkbox" data-pick-st="${i}" ${p.pick.has(i) ? 'checked' : ''}><span class="grow">${esc(st.name)}</span><span class="meta">${count(st) ? `${ar(count(st))} درجة` : 'بدون درجات'}</span></label>`).join('')}</div>
@@ -1375,7 +1375,7 @@ async function pickTransfer(p) {
 async function applyTransferUI(p) {
   let target;
   if (p.target === '__new') {
-    const label = (p.newLabel || '').trim() || 'شعبة منقولة';
+    const label = (p.newLabel || '').trim() || 'صف منقول';
     target = { id: uid(), label, names: [] };
     S.classes.push(target); S.grades[target.id] = emptyClassData();
   } else target = cls(p.target);
@@ -1552,7 +1552,7 @@ function showTour() {
 }
 
 // =====================================================================
-// تسليم شعبة كاملة (عهدة) لمعلم آخر
+// تسليم صف كامل (عهدة) لمعلم آخر
 // =====================================================================
 async function doHandover(c) {
   if (!c) return;
@@ -1564,7 +1564,7 @@ async function doHandover(c) {
     const r = await platform.saveFile(name, new Blob([JSON.stringify(file)], { type: 'application/json' }), 'application/json');
     if (r === 'cancelled') return;
   } catch { toast('تعذّر حفظ ملف التسليم', { err: true }); return; }
-  const del = await confirmDialog({ title: `سلّمت «${c.label}»؟`, text: 'أرسل الملف للمعلم الجديد (واتساب أو بريد) ليستقبله من «الأدوات ← استقبال شعبة أو طلاب». هل تحذف الشعبة من جهازك الآن؟ (احتفظ بها إن لم تتأكد من وصول الملف)', ok: 'احذفها من جهازي', cancel: 'أبقها', danger: true });
+  const del = await confirmDialog({ title: `سلّمت «${c.label}»؟`, text: 'أرسل الملف للمعلم الجديد (واتساب أو بريد) ليستقبله من «الأدوات ← استقبال صف أو طلاب». هل تحذف الصف من جهازك الآن؟ (احتفظ به إن لم تتأكد من وصول الملف)', ok: 'احذفها من جهازي', cancel: 'أبقها', danger: true });
   if (del) await deleteClass(c.id, { skipConfirm: true });
   else toast('حُفظ ملف التسليم ✓');
 }
@@ -1664,7 +1664,7 @@ async function doRestore() {
   }
   const date = b.at ? ar(new Date(b.at).toLocaleDateString('en-GB')) : 'غير معروف';
   const nStu = b.classes.reduce((a, c) => a + c.names.length, 0);
-  const ok = await confirmDialog({ title: 'استرجاع النسخة؟', text: `نسخة بتاريخ ${date} فيها ${ar(b.classes.length)} شعبة و${students(nStu)}. ستُستبدل كل البيانات الحالية على هذا الجهاز.`, ok: 'استرجاع واستبدال', danger: true });
+  const ok = await confirmDialog({ title: 'استرجاع النسخة؟', text: `نسخة بتاريخ ${date} فيها ${ar(b.classes.length)} صف و${students(nStu)}. ستُستبدل كل البيانات الحالية على هذا الجهاز.`, ok: 'استرجاع واستبدال', danger: true });
   if (!ok) return;
   await store.replaceAll({ classes: b.classes, settings: b.settings, data: b.data });
   await loadState();
@@ -1676,7 +1676,7 @@ async function doRestore() {
 }
 
 async function doWipe() {
-  const ok = await confirmDialog({ title: 'حذف كل البيانات؟', text: 'ستُحذف كل الشعب والدرجات والإعدادات من هذا الجهاز نهائيًا. احفظ نسخة احتياطية أولًا إن كنت تحتاجها.', ok: 'حذف الكل', danger: true });
+  const ok = await confirmDialog({ title: 'حذف كل البيانات؟', text: 'ستُحذف كل الصفوف والدرجات والإعدادات من هذا الجهاز نهائيًا. احفظ نسخة احتياطية أولًا إن كنت تحتاجها.', ok: 'حذف الكل', danger: true });
   if (!ok) return;
   await store.replaceAll({ classes: [], settings: { ...CONFIG.defaultSettings, tourDone: true }, data: {} });
   await store.setMeta('lastBackupAt', null);
@@ -1734,7 +1734,7 @@ async function liveMod() { return (L.mod ||= await import('./live.js')); }
 
 function Live() {
   if (REMOTE) return RemotePresent();
-  L.scope = { kind: 'class', idx: 0 }; // العرض للشعبة كاملة (تعديل طالب بعينه من داخل الشعبة)
+  L.scope = { kind: 'class', idx: 0 }; // العرض للصف كاملًا (تعديل طالب بعينه من داخل الصف)
   if (!L.classId || !cls(L.classId)) L.classId = (S.classes[0] || {}).id || null;
   const c = L.classId ? cls(L.classId) : null;
   const viewUrl = S.settings.viewUrl || defaultViewUrl();
@@ -1753,19 +1753,19 @@ function Live() {
   if (L.mode === 'manage') {
     step2 = `<section class="live-step"><h3><span class="step-n">${ar(1)}</span> ماذا يظهر على الكمبيوتر؟</h3>
       <ul class="hint manage-points">
-        <li>تظهر شعبك كلها على الكمبيوتر — اختر الشعبة التي تريدها.</li>
+        <li>تظهر صفوفك كلها على الكمبيوتر — اختر الصف الذي تريده.</li>
         <li><b>«اعرض للطلاب وارصد»</b>: جدول الدرجات على الشاشة، وترصد منه الدرجات والغياب والنجوم والملاحظات (طالب أو عدة طلاب معًا).</li>
         <li>تُظهر أو تُخفي النجوم ❗ والأسماء من الشاشة نفسها. نص الملاحظات لا يظهر للطلاب أبدًا.</li>
-        <li>تستطيع أيضًا إنشاء الشعب من ملفات Excel وPDF الموجودة على الكمبيوتر.</li>
+        <li>تستطيع أيضًا إنشاء الصفوف من ملفات Excel وPDF الموجودة على الكمبيوتر.</li>
         <li>كل شيء يُحفظ في <b>جوالك</b> فقط — الكمبيوتر لا يحفظ شيئًا.</li>
       </ul></section>`;
   } else if (!S.classes.length) {
-    step2 = `<section class="live-step"><h3><span class="step-n">${ar(2)}</span> لا توجد شعب بعد</h3>
-      <p class="hint">أضف شعبة أولًا، أو اختر «أدِر التطبيق من الكمبيوتر» لإنشاء الشعب من ملفات الكمبيوتر.</p>
-      <button type="button" class="btn primary" data-act="new-class">${icon('plus')} إضافة شعبة</button></section>`;
+    step2 = `<section class="live-step"><h3><span class="step-n">${ar(2)}</span> لا توجد صفوف بعد</h3>
+      <p class="hint">أضف صفًا أولًا، أو اختر «أدِر التطبيق من الكمبيوتر» لإنشاء الصفوف من ملفات الكمبيوتر.</p>
+      <button type="button" class="btn primary" data-act="new-class">${icon('plus')} إضافة صف</button></section>`;
   } else {
     step2 = `<section class="live-step"><h3><span class="step-n">${ar(2)}</span> ماذا يظهر على الشاشة؟</h3>
-      <div class="field"><label for="lv-class">الشعبة</label><select id="lv-class" class="select" data-live="class">${S.classes.map((o) => `<option value="${o.id}" ${o.id === L.classId ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></div>
+      <div class="field"><label for="lv-class">الصف</label><select id="lv-class" class="select" data-live="class">${S.classes.map((o) => `<option value="${o.id}" ${o.id === L.classId ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></div>
       ${c ? displayOptionsHTML(c) : ''}
     </section>`;
   }
@@ -1795,7 +1795,7 @@ function Live() {
       <button type="button" class="btn ghost block" data-act="live-stop">إلغاء</button>`;
   } else if (L.phase === 'connected') {
     body = L.mode === 'manage'
-      ? `<div class="alert ok">${icon('checkCircle')}<div class="grow"><strong>الكمبيوتر متصل</strong><p style="margin:0">اختر الشعبة من الكمبيوتر واعرضها للطلاب أو ارصد منها. ما تعدّله هناك يُحفظ هنا فورًا. تستطيع الخروج من التطبيق؛ عند رجوعك يعود الاتصال تلقائيًا.</p></div></div>
+      ? `<div class="alert ok">${icon('checkCircle')}<div class="grow"><strong>الكمبيوتر متصل</strong><p style="margin:0">اختر الصف من الكمبيوتر واعرضه للطلاب أو ارصد منها. ما تعدّله هناك يُحفظ هنا فورًا. تستطيع الخروج من التطبيق؛ عند رجوعك يعود الاتصال تلقائيًا.</p></div></div>
         <button type="button" class="btn danger block lg" data-act="live-stop">${icon('power')} إيقاف الاتصال</button>`
       : `<div class="alert ok">${icon('checkCircle')}<div class="grow"><strong>العرض يعمل الآن</strong><p style="margin:0">أي درجة ترصدها تظهر فورًا. تستطيع الخروج للواتساب مثلًا؛ عند رجوعك يعود الاتصال تلقائيًا.</p></div></div>
         ${c ? `<button type="button" class="btn block" data-act="open-class" data-id="${c.id}">${icon('edit')} ارصد «${esc(c.label)}»</button>` : ''}
@@ -1823,16 +1823,16 @@ function Live() {
   <div class="wrap stack live-page">${step1}${step2}${step3}${help}</div>`;
 }
 
-// على الكمبيوتر (وضع الإدارة): اختيار شعبة لعرضها للطلاب على نفس الشاشة
+// على الكمبيوتر (وضع الإدارة): اختيار صف لعرضها للطلاب على نفس الشاشة
 function RemotePresent() {
   if (!S.classes.length) {
-    return `${appbar({ title: 'عرض للطلاب', backBtn: false })}<div class="wrap"><div class="empty card">${ART_EMPTY}<h2>لا توجد شعب بعد</h2><p>أنشئ الشعب من «الأدوات ← إنشاء شعب من ملف».</p></div></div>`;
+    return `${appbar({ title: 'عرض للطلاب', backBtn: false })}<div class="wrap"><div class="empty card">${ART_EMPTY}<h2>لا توجد صفوف بعد</h2><p>أنشئ الصفوف من «الأدوات ← إنشاء صفوف من ملف».</p></div></div>`;
   }
   if (!S.ui.presentPick || !cls(S.ui.presentPick)) S.ui.presentPick = S.classes[0].id;
   const c = cls(S.ui.presentPick);
   return `${appbar({ title: 'عرض للطلاب', backBtn: false })}
   <div class="wrap stack">
-    <div class="field"><label for="pr-class">الشعبة</label><select id="pr-class" class="select" data-present-pick>${S.classes.map((o) => `<option value="${o.id}" ${o.id === c.id ? 'selected' : ''}>${esc(o.label)} — ${students(o.names.length)}</option>`).join('')}</select></div>
+    <div class="field"><label for="pr-class">الصف</label><select id="pr-class" class="select" data-present-pick>${S.classes.map((o) => `<option value="${o.id}" ${o.id === c.id ? 'selected' : ''}>${esc(o.label)} — ${students(o.names.length)}</option>`).join('')}</select></div>
     ${displayOptionsHTML(c)}
     <button type="button" class="btn primary lg block" data-act="present" data-id="${c.id}">${icon('monitor')} اعرض «${esc(c.label)}» للطلاب</button>
     <p class="hint">تتحول هذه الشاشة لعرض الدرجات للطلاب (بدون ملاحظات). للرجوع اضغط «رجوع للإدارة» أسفل الشاشة.</p>
@@ -1864,7 +1864,7 @@ function displayOptionsHTML(c) {
     ${REMOTE || L.mode === 'manage' ? '' : `<label class="list-item"><span class="grow"><strong>✏️ الرصد من الكمبيوتر</strong><small>رصد الدرجات والغياب من شاشة العرض (يُحفظ في الجوال)</small></span><input type="checkbox" class="switch" data-live-opt="liveAllowEdit" ${S.settings.liveAllowEdit !== false ? 'checked' : ''}></label>`}
     <label class="list-item"><span class="grow"><strong>⭐ نجوم التميّز</strong><small>تظهر بجانب اسم الطالب المتميز</small></span><input type="checkbox" class="switch" data-live-opt="liveShowStars" ${o.stars ? 'checked' : ''}></label>
     <label class="list-item"><span class="grow"><strong>❗ علامات التنبيه</strong><small>العلامة فقط — نص الملاحظة لا يظهر أبدًا</small></span><input type="checkbox" class="switch" data-live-opt="liveShowIssues" ${o.issues ? 'checked' : ''}></label>
-    ${o.issues ? `<button type="button" class="list-item" data-act="issue-hide" data-id="${c.id}">${icon('eyeOff')}<span class="grow"><strong>إخفاء ❗ عن طلاب معيّنين</strong><small>${withIssues.length ? `${ar(withIssues.length)} لديهم تنبيه · مخفي عن ${ar(hiddenCount)}` : 'لا توجد تنبيهات في هذه الشعبة'}</small></span>${icon('fwd')}</button>` : ''}
+    ${o.issues ? `<button type="button" class="list-item" data-act="issue-hide" data-id="${c.id}">${icon('eyeOff')}<span class="grow"><strong>إخفاء ❗ عن طلاب معيّنين</strong><small>${withIssues.length ? `${ar(withIssues.length)} لديهم تنبيه · مخفي عن ${ar(hiddenCount)}` : 'لا توجد تنبيهات في هذا الصف'}</small></span>${icon('fwd')}</button>` : ''}
   </div>`;
 }
 
@@ -1926,7 +1926,7 @@ function quickNote(c, w, i) {
 function showIssueHide(c) {
   const d = dataOf(c.id);
   const withIssues = c.names.map((_, i) => i).filter((i) => getNotes(d, i).some((n) => n.issue));
-  if (!withIssues.length) { toast('لا يوجد طلاب عليهم تنبيه في هذه الشعبة'); return; }
+  if (!withIssues.length) { toast('لا يوجد طلاب عليهم تنبيه في هذا الصف'); return; }
   const o = displayOpts(c);
   const s = openSheet(`<h2>إخفاء ❗ عن طلاب معيّنين</h2><p>الطلاب المحددون لن تظهر عندهم علامة التنبيه على الشاشة.</p>
     <div class="list" style="max-height:55vh;overflow:auto">${withIssues.map((i) => `<label class="pick"><input type="checkbox" data-ih="${i}" ${o.hidden.has(i) ? 'checked' : ''}><span class="stu-num num">${ar(i + 1)}</span><span class="grow">${esc(c.names[i])}</span></label>`).join('')}</div>
@@ -1956,7 +1956,7 @@ function setLiveState(st) {
     if (L.mode === 'manage') sendState(); else sendSnapshot();
     if (L.link && L.link.room) L.room = L.link.room;
     const c0 = cls(L.classId);
-    if (platform.sharingStart) platform.sharingStart(L.mode === 'manage' ? 'متصل بالكمبيوتر — اضغط للعودة' : `${c0 ? c0.label : 'الشعبة'} — اضغط للعودة`);
+    if (platform.sharingStart) platform.sharingStart(L.mode === 'manage' ? 'متصل بالكمبيوتر — اضغط للعودة' : `${c0 ? c0.label : 'الصف'} — اضغط للعودة`);
     toast('تم الاتصال بالكمبيوتر ✓');
   } else if (st === 'disconnected' && (L.phase === 'connected' || L.phase === 'answer')) {
     L.phase = 'lost';
@@ -2085,7 +2085,7 @@ function sendSnapshot() {
 function displayEditAllowed() {
   return L.mode === 'display' && S.settings.liveAllowEdit !== false && L.scope.kind === 'class' && !!cls(L.classId);
 }
-// رصد من شاشة العرض: درجة بند، كامل، غياب، نجمة، درجة نهائية — للشعبة المعروضة فقط
+// رصد من شاشة العرض: درجة بند، كامل، غياب، نجمة، درجة نهائية — للصف المعروض فقط
 function applyDisplayEdit(m) {
   if (!displayEditAllowed()) return;
   const c = cls(L.classId);
@@ -2097,7 +2097,7 @@ function applyDisplayEdit(m) {
   else if (res.kind === 'items') livePatchItems(c.id, res.w, res.i, ack);
   softRender();
 }
-// يطبّق تعديلًا واحدًا (درجة/كامل/غياب/نجمة/ملاحظة/نهائي) على بيانات الشعبة. يرجع ما تغيّر أو null
+// يطبّق تعديلًا واحدًا (درجة/كامل/غياب/نجمة/ملاحظة/نهائي) على بيانات الصف. يرجع ما تغيّر أو null
 function applyEditOp(c, m) {
   const d = dataOf(c.id);
   const i = Number(m.idx);
@@ -2233,9 +2233,9 @@ document.addEventListener('click', async (e) => {
     case 'go': go(el.dataset.to, el.dataset.id ? { id: el.dataset.id } : {}); break;
     case 'new-class': go('editor', {}); break;
     case 'import-classes': importClassesFromFile(); break;
-    case 'handover-pick': { const c = await pickClass('أي شعبة تريد تسليمها؟'); if (c) doHandover(c); break; }
+    case 'handover-pick': { const c = await pickClass('أي صف تريد تسليمه؟'); if (c) doHandover(c); break; }
     case 'handover': doHandover(cls(el.dataset.id)); break;
-    case 'transfer-pick': { const c = await pickClass('نقل طلاب من أي شعبة؟'); if (c) go('transferOut', { id: c.id }); break; }
+    case 'transfer-pick': { const c = await pickClass('نقل طلاب من أي صف؟'); if (c) go('transferOut', { id: c.id }); break; }
     case 'report-grades': printReport('grades', cls(el.dataset.id)); break;
     case 'report-attendance': printReport('attendance', cls(el.dataset.id)); break;
     case 'report-student': {
@@ -2496,11 +2496,11 @@ function showClassMenu(p) {
       ${item('edit-class', 'users', 'الطلاب', 'إضافة، تعديل الأسماء، حذف، ترتيب')}
       ${item('export-xlsx', 'sheet', 'تصدير Excel', 'كشف المتابعة الرسمي للطباعة')}
       ${item('go-live', 'monitor', 'عرض على الكمبيوتر', 'اعرض الدرجات على البروجكتر')}
-      ${item('handover', 'send', 'تسليم الشعبة لمعلم آخر', 'كل الطلاب مع الدرجات والغياب والملاحظات')}
-      ${item('go', 'move', 'نقل طلاب', 'طالب أو أكثر لمعلم آخر أو لشعبة أخرى', 'data-to="transferOut"')}
+      ${item('handover', 'send', 'تسليم الصف لمعلم آخر', 'كل الطلاب مع الدرجات والغياب والملاحظات')}
+      ${item('go', 'move', 'نقل طلاب', 'طالب أو أكثر لمعلم آخر أو لصف آخر', 'data-to="transferOut"')}
       ${item('go', 'inbox', 'استقبال طلاب منقولين', 'من ملف أرسله معلم آخر', 'data-to="transferIn"')}
     </div>
-    <div class="actions"><button type="button" class="btn" data-x>إغلاق</button></div>`, { label: 'خيارات الشعبة' });
+    <div class="actions"><button type="button" class="btn" data-x>إغلاق</button></div>`, { label: 'خيارات الصف' });
   s.sheet.addEventListener('click', (e) => { if (e.target.closest('[data-act]') || e.target.closest('[data-x]')) setTimeout(() => s.close(), 0); });
 }
 
