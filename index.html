@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' blob: data:; media-src 'self' blob: mediastream:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>متابعة الدرجات</title>
+  <meta name="description" content="رصد الدرجات الأسبوعية للمعلم بدون إنترنت">
+  <meta name="theme-color" content="#1f6feb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#10141c" media="(prefers-color-scheme: dark)">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="الدرجات">
+  <link rel="stylesheet" href="app.css">
+  <script src="vendor/jszip.min.js" defer></script>
+  <script src="vendor/fflate.min.js" defer></script>
+  <script src="vendor/qrcode.js" defer></script>
+  <script src="vendor/jsQR.js" defer></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <div id="shell" class="shell">
+    <nav id="rail" class="rail" aria-label="التنقل الرئيسي"></nav>
+    <main id="main" class="main" tabindex="-1">
+      <div class="boot" aria-busy="true"><div class="boot-mark"></div><p>جارٍ التحميل…</p></div>
+    </main>
+  </div>
+  <nav id="tabbar" class="tabbar" aria-label="التنقل السفلي"></nav>
+  <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+  <div id="overlay-root"></div>
+  <noscript><p style="padding:24px">يحتاج التطبيق إلى تفعيل JavaScript.</p></noscript>
+</body>
+</html>

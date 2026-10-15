@@ -1,0 +1,18 @@
+{
+  "name": "شاشة العرض — متابعة الدرجات",
+  "short_name": "شاشة العرض",
+  "description": "عرض درجات الشعبة من جوال المعلم على شاشة الكمبيوتر أو البروجكتر",
+  "id": "./view.html",
+  "start_url": "./view.html",
+  "scope": "./",
+  "display": "standalone",
+  "dir": "rtl",
+  "lang": "ar",
+  "theme_color": "#1f6feb",
+  "background_color": "#f4f6fb",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

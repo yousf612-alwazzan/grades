@@ -1,0 +1,20 @@
+{
+  "name": "متابعة الدرجات",
+  "short_name": "الدرجات",
+  "description": "تطبيق المعلم لرصد الدرجات الأسبوعية — يعمل بدون إنترنت",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "dir": "rtl",
+  "lang": "ar",
+  "orientation": "any",
+  "theme_color": "#1f6feb",
+  "background_color": "#f4f6fb",
+  "categories": ["education", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; media-src 'self' blob: mediastream:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex">
+  <title>شاشة العرض — متابعة الدرجات</title>
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="view.webmanifest">
+  <link rel="stylesheet" href="view.css">
+  <script src="vendor/fflate.min.js" defer></script>
+  <script src="vendor/qrcode.js" defer></script>
+  <script type="module" src="view.js"></script>
+</head>
+<body>
+  <div id="app" class="app" data-screen="pair">
+    <!-- شريط علوي -->
+    <header class="topbar" id="topbar">
+      <div class="brand">
+        <span class="logo" aria-hidden="true"></span>
+        <div class="brand-text">
+          <strong>شاشة العرض</strong>
+          <span class="brand-sub" id="brand-sub">متابعة الدرجات</span>
+        </div>
+      </div>
+      <div class="class-info" id="class-info" hidden>
+        <span class="divider" aria-hidden="true"></span>
+        <div>
+          <div class="class-label" id="class-label"></div>
+          <div class="class-meta" id="class-meta"></div>
+        </div>
+      </div>
+      <div class="top-spacer"></div>
+      <span class="pill" id="conn-pill" data-state="idle" role="status" aria-live="polite" hidden>
+        <span class="pill-dot" aria-hidden="true"></span><span id="conn-text"></span>
+      </span>
+      <div class="top-actions">
+        <div class="zoom-group" id="zoom-group" hidden role="group" aria-label="حجم النص">
+          <button class="btn icon-btn" id="zoom-out" type="button" title="تصغير النص (-)" aria-label="تصغير النص">A−</button>
+          <span class="zoom-val" id="zoom-val" aria-live="polite">١٠٠٪</span>
+          <button class="btn icon-btn" id="zoom-in" type="button" title="تكبير النص (+)" aria-label="تكبير النص">A+</button>
+        </div>
+        <button class="btn ghost" id="btn-theme" type="button" title="المظهر"></button>
+        <button class="btn ghost" id="btn-full" type="button" title="ملء الشاشة (F)"></button>
+        <button class="btn danger-ghost" id="btn-disconnect" type="button" hidden></button>
+      </div>
+    </header>
+
+    <!-- شريط تنبيه الانقطاع -->
+    <div class="banner" id="conn-banner" role="alert" hidden>
+      <span class="banner-icon" aria-hidden="true"></span>
+      <div class="banner-text">
+        <strong id="banner-title">انقطع الاتصال بالجوال</strong>
+        <span id="banner-sub">تأكد أن الجوال قريب وأن صفحة العرض ما زالت مفتوحة فيه، ثم أعد الاتصال.</span>
+      </div>
+      <button class="btn primary" id="btn-reconnect" type="button">إعادة الاتصال</button>
+    </div>
+
+    <!-- شاشة الاقتران -->
+    <main class="pair" id="screen-pair">
+      <section class="pair-steps" aria-labelledby="pair-title">
+        <p class="eyebrow">اعرض درجات الصف على الشاشة الكبيرة</p>
+        <h1 id="pair-title">اربط جوالك بهذه الشاشة</h1>
+        <p class="lead">اتصال مباشر بين الجوال وهذا الكمبيوتر، بدون حساب وبدون رفع أي بيانات.</p>
+        <ol class="steps">
+          <li><span class="step-num">١</span><div><strong>افتح «عرض على الكمبيوتر» في الجوال</strong><span>من صفحة الصف في تطبيق متابعة الدرجات.</span></div></li>
+          <li><span class="step-num">٢</span><div><strong>امسح هذا الرمز بكاميرا التطبيق</strong><span>إن ظهر الرمز على أجزاء، أبقِ الجوال موجّهًا حتى تكتمل كلها.</span></div></li>
+          <li><span class="step-num">٣</span><div><strong>اضغط «مسح الرد» ووجّه شاشة الجوال للكاميرا</strong><span>أو انسخ الرد من الجوال واضغط «لصق الرد».</span></div></li>
+        </ol>
+        <details class="help" id="help">
+          <summary><span class="help-icon" aria-hidden="true"></span>مشاكل الاتصال؟</summary>
+          <ul>
+            <li><strong>نفس الشبكة:</strong> وصّل الجوال والكمبيوتر بشبكة الـ Wi‑Fi نفسها.</li>
+            <li><strong>شبكة المدرسة تمنع الاتصال؟</strong> بعض شبكات المدارس تمنع اتصال الأجهزة ببعضها. شغّل «نقطة الاتصال» في الجوال ووصّل الكمبيوتر بها، ثم اضغط «رمز جديد».</li>
+            <li><strong>خادم TURN:</strong> إن استمرت المشكلة يمكن إضافة خادم TURN من إعدادات تطبيق الجوال (العرض الحي).</li>
+            <li><strong>لا توجد كاميرا في الكمبيوتر؟</strong> استخدم «نسخ رمز العرض» وأرسله إلى الجوال، ثم «لصق الرد».</li>
+          </ul>
+        </details>
+        <p class="privacy"><span class="lock-icon" aria-hidden="true"></span>لا يُحفظ أي شيء على هذا الكمبيوتر. تُمسح البيانات فور إغلاق الصفحة أو قطع الاتصال.</p>
+      </section>
+
+      <section class="qr-card card" aria-label="رمز الاقتران">
+        <div class="qr-head">
+          <span class="qr-title">رمز العرض</span>
+          <span class="qr-frame" id="qr-frame" hidden></span>
+        </div>
+        <div class="qr-box" id="qr-box">
+          <canvas id="qr-canvas" width="360" height="360" aria-label="رمز QR للاقتران" role="img"></canvas>
+          <div class="qr-loading" id="qr-loading"><span class="spinner" aria-hidden="true"></span><span>جارٍ تجهيز الرمز…</span></div>
+        </div>
+        <p class="qr-status" id="pair-status" role="status" aria-live="polite">جاهز للمسح</p>
+        <div class="qr-actions">
+          <button class="btn primary big" id="btn-scan" type="button"></button>
+          <button class="btn big" id="btn-paste" type="button"></button>
+        </div>
+        <div class="qr-actions secondary">
+          <button class="btn ghost" id="btn-copy" type="button"></button>
+          <button class="btn ghost" id="btn-new" type="button"></button>
+        </div>
+      </section>
+    </main>
+
+    <!-- شاشة العرض المتصل -->
+    <div class="workspace" id="screen-live" hidden>
+      <aside class="sidebar" id="sidebar" aria-label="ملخص ووضع العرض">
+        <div class="stats" id="stats"></div>
+        <nav class="views" id="views" aria-label="وضع العرض"></nav>
+      </aside>
+      <main class="content" id="content">
+        <div class="toolbar" id="toolbar"></div>
+        <div class="grid-wrap" id="grid-wrap" tabindex="0"></div>
+      </main>
+    </div>
+
+    <!-- بطاقة طالب واحد بملء الصفحة -->
+    <main class="solo" id="screen-solo" hidden></main>
+  </div>
+
+  <!-- لوحة تفاصيل الطالب -->
+  <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+  <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden></aside>
+
+  <!-- نافذة مسح الرد -->
+  <div class="modal-backdrop" id="modal-scan" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="scan-title">
+      <div class="modal-head">
+        <h2 id="scan-title">مسح الرد من الجوال</h2>
+        <button class="btn ghost icon-only" type="button" data-close aria-label="إغلاق"></button>
+      </div>
+      <div class="scan-body">
+        <div class="video-box">
+          <video id="scan-video" playsinline muted></video>
+          <div class="scan-frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <div class="scan-error" id="scan-error" hidden></div>
+        </div>
+        <div class="scan-side">
+          <ol class="mini-steps">
+            <li>في الجوال، بعد مسح رمز العرض سيظهر «رمز الرد».</li>
+            <li>وجّه شاشة الجوال نحو كاميرا هذا الكمبيوتر على بُعد ٢٠–٤٠ سم.</li>
+            <li>ارفع سطوع الجوال وأبقه ثابتًا حتى يكتمل المسح.</li>
+          </ol>
+          <div class="scan-progress" id="scan-progress" role="status" aria-live="polite">بانتظار الرمز…</div>
+          <button class="btn" type="button" id="scan-to-paste">لا توجد كاميرا؟ الصق الرد بدلًا من ذلك</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- نافذة لصق الرد -->
+  <div class="modal-backdrop" id="modal-paste" hidden>
+    <div class="modal narrow" role="dialog" aria-modal="true" aria-labelledby="paste-title">
+      <div class="modal-head">
+        <h2 id="paste-title">لصق رمز الرد</h2>
+        <button class="btn ghost icon-only" type="button" data-close aria-label="إغلاق"></button>
+      </div>
+      <p class="muted">انسخ «رمز الرد» من الجوال (عبر الرسائل أو البريد) والصقه هنا.</p>
+      <textarea id="paste-input" rows="5" dir="ltr" spellcheck="false" autocomplete="off" placeholder="الصق الرمز هنا…" aria-label="رمز الرد"></textarea>
+      <p class="field-error" id="paste-error" role="alert" hidden></p>
+      <div class="modal-actions">
+        <button class="btn primary big" type="button" id="paste-submit">اتصال</button>
+        <button class="btn big" type="button" data-close>إلغاء</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- إخفاء مؤقت -->
+  <div class="blank" id="blank" hidden>
+    <div class="blank-inner">
+      <span class="blank-icon" aria-hidden="true"></span>
+      <strong>العرض مخفي مؤقتًا</strong>
+      <span>سيظهر مجددًا عندما يعيد المعلم إظهاره من الجوال.</span>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <noscript><p style="padding:24px">تحتاج شاشة العرض إلى تفعيل JavaScript.</p></noscript>
+</body>
+</html>
