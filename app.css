@@ -839,3 +839,19 @@ table.tbl tr.sum td { background: var(--chip); }
 }
 .tbl-wrap { background: var(--card); border-radius: var(--r-card); box-shadow: var(--shadow); padding: 4px 10px; }
 .edit-toggle svg { width: 18px; height: 18px; }
+
+/* ٢.٦.٢ — بطاقة الترحيب بلون واحد (بلا تدرّج)، واختيار الشعبة في التقارير */
+.hello::after { content: none; display: none; }
+.hello { background: var(--ink); }
+.class-pick { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.cp { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 10px 14px; border: 0; border-radius: 14px; background: var(--card); box-shadow: var(--shadow); text-align: start; color: var(--text); transition: box-shadow var(--dur), background var(--dur); }
+.cp strong { display: block; font-weight: 800; font-size: 15.5px; }
+.cp small { display: block; color: var(--muted); font-size: 12.5px; font-weight: 600; }
+.cp-dot { width: 20px; height: 20px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 2px var(--border); transition: box-shadow var(--dur); }
+.cp[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--primary); background: color-mix(in srgb, var(--primary-soft) 55%, var(--card)); }
+.cp[aria-checked="true"] .cp-dot { box-shadow: inset 0 0 0 6px var(--primary); }
+.label { display: block; margin-bottom: -4px; }
+/* القوائم المنسدلة بنفس الهوية بدل شكل النظام */
+.select { -webkit-appearance: none; appearance: none; padding-inline-end: 40px; font-weight: 700; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235d626d' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-size: 18px; background-position: left 14px center; }

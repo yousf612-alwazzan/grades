@@ -409,8 +409,9 @@ function Reports() {
   const card = (act, ic, t, sub) => `<button type="button" class="report-card" data-act="${act}" data-id="${c.id}">${icon(ic)}<span><strong>${t}</strong><small>${sub}</small></span></button>`;
   return `${appbar({ title: 'التقارير', backBtn: false })}
   <div class="wrap stack">
-    <div class="field"><label for="rep-class">الشعبة</label><select id="rep-class" class="select" data-report-class>${S.classes.map((o) => `<option value="${o.id}" ${o.id === c.id ? 'selected' : ''}>${esc(o.label)} — ${students(o.names.length)}</option>`).join('')}</select></div>
-    <p class="hint">نسبة الرصد في هذه الشعبة ${ar(Math.round(pr.ratio * 100))}٪. التقارير تُطبع أو تُحفظ PDF من نافذة الطباعة.</p>
+    <div class="label" id="rep-class-l">اختر الشعبة</div>
+    <div class="class-pick" role="radiogroup" aria-labelledby="rep-class-l">${S.classes.map((o) => { const p = Math.round(progress(dataOf(o.id), o.names.length).ratio * 100); const on = o.id === c.id; return `<button type="button" role="radio" class="cp" aria-checked="${on}" data-act="report-class" data-id="${o.id}"><span class="cp-dot" aria-hidden="true"></span><span class="grow"><strong>${esc(o.label)}</strong><small>${students(o.names.length)} · رصد ${ar(p)}٪</small></span></button>`; }).join('')}</div>
+    <p class="hint">التقارير تُطبع أو تُحفظ PDF من نافذة الطباعة.</p>
     <div class="report-grid">
       ${card('report-grades', 'sheet', 'كشف الدرجات', 'الأسابيع والفترتان والنهائي — PDF منسّق للطباعة')}
       ${card('report-attendance', 'calendar', 'كشف الحضور والغياب', 'غياب كل طالب في كل أسبوع — PDF')}
@@ -2348,6 +2349,7 @@ document.addEventListener('click', async (e) => {
     case 'wipe': doWipe(); break;
     case 'tour': showTour(); break;
     case 'update-check': checkForUpdate(); break;
+    case 'report-class': S.ui.reportClass = el.dataset.id; render(); break;
     case 'update-now': if (UPD.worker) UPD.worker.postMessage({ type: 'skip-waiting' }); else location.reload(); break;
     case 'dismiss-guide': try { sessionStorage.setItem('iosGuideSeen', '1'); } catch { /* */ } go('home'); break;
     case 'set': {
