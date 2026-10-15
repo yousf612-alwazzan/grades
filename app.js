@@ -2696,13 +2696,28 @@ function registerSW() {
   if (platform.isNative || !('serviceWorker' in navigator) || !window.isSecureContext) return;
   const hadController = !!navigator.serviceWorker.controller; // أول زيارة: لا نعيد التحميل
   fetch('version.txt', { cache: 'no-store' }).then((r) => (r.ok ? r.text() : '')).then((t) => { UPD.build = t.trim().slice(0, 7); paintUpdate(); }).catch(() => {});
+  const bootAt = Date.now();
+  let hiddenAt = 0;
+  // التحديث تلقائيًا في لحظة آمنة: عند فتح التطبيق، أو الرجوع له بعد غياب — إن لم يكن هناك حفظ معلّق أو اتصال بالكمبيوتر
+  const safeToApply = () => !S.dirty.size && !['connected', 'resuming'].includes(L.phase) && !document.querySelector('.sheet');
   navigator.serviceWorker.register('sw.js').then((reg) => {
-    const ask = (w) => { UPD.state = 'ready'; UPD.worker = w; paintUpdate(); toast('تحديث متوفر، أعد التشغيل', { ms: 0, action: { label: 'أعد التشغيل', fn: () => w.postMessage({ type: 'skip-waiting' }) } }); };
+    const ask = (w) => {
+      if (Date.now() - bootAt < 20000 && safeToApply()) { w.postMessage({ type: 'skip-waiting' }); return; }
+      UPD.state = 'ready'; UPD.worker = w; paintUpdate();
+      toast('تحديث متوفر، أعد التشغيل', { ms: 0, action: { label: 'أعد التشغيل', fn: () => w.postMessage({ type: 'skip-waiting' }) } });
+    };
     if (reg.waiting && hadController) ask(reg.waiting);
     reg.addEventListener('updatefound', () => {
       const w = reg.installing;
       if (!w) return;
       w.addEventListener('statechange', () => { if (w.state === 'installed' && hadController) ask(w); });
+    });
+    // آيفون يُبقي التطبيق معلّقًا في الخلفية: نفحص التحديث كلما رجع المعلم للتطبيق
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+      const away = hiddenAt && Date.now() - hiddenAt > 60 * 1000;
+      if (reg.waiting && hadController && away && safeToApply()) { reg.waiting.postMessage({ type: 'skip-waiting' }); return; }
+      reg.update().catch(() => {});
     });
     setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
   }).catch(() => {});
