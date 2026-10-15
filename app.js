@@ -409,7 +409,7 @@ function Reports() {
   const card = (act, ic, t, sub) => `<button type="button" class="report-card" data-act="${act}" data-id="${c.id}">${icon(ic)}<span><strong>${t}</strong><small>${sub}</small></span></button>`;
   return `${appbar({ title: 'التقارير', backBtn: false })}
   <div class="wrap stack">
-    <button type="button" class="pick-btn" data-act="report-class-pick" aria-haspopup="dialog"><span class="pick-ico">${icon('users')}</span><span class="grow"><small>الشعبة</small><strong>${esc(c.label)}</strong><span class="pick-meta">${students(n)} · رصد ${ar(Math.round(pr.ratio * 100))}٪</span></span><span class="pick-chev" aria-hidden="true">▾</span></button>
+    <button type="button" class="pick-btn" data-act="report-class-pick" aria-haspopup="dialog"><span class="pick-ico">${icon('users')}</span><span class="grow"><small>الشعبة</small><strong>${esc(c.label)}</strong><span class="pick-meta">${students(n)} · رصد ${ar(Math.round(pr.ratio * 100))}٪</span></span><span class="pick-chev" aria-hidden="true">تغيير</span></button>
     <p class="hint">التقارير تُطبع أو تُحفظ PDF من نافذة الطباعة.</p>
     <div class="report-grid">
       ${card('report-grades', 'sheet', 'كشف الدرجات', 'الأسابيع والفترتان والنهائي — PDF منسّق للطباعة')}

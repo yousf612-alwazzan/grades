@@ -888,3 +888,19 @@ table.tbl tr.sum td { background: var(--chip); }
   .srow { grid-template-columns: 28px minmax(0, 1fr) auto auto auto; grid-template-areas: "num name boxes total act" "num flags flags flags flags"; }
   .srow .boxes { min-width: 240px; }
 }
+
+/* زر اختيار الشعبة (يفتح نافذة) */
+.pick-btn { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 68px; padding: 10px 14px; border: 0; border-radius: 16px; background: var(--card); box-shadow: var(--shadow); text-align: start; color: var(--text); font: inherit; cursor: pointer; transition: box-shadow var(--dur); }
+.pick-btn:hover { box-shadow: var(--shadow-md); }
+.pick-btn:active { transform: scale(.99); }
+.pick-btn .grow { display: block; min-width: 0; }
+.pick-btn small { display: block; font-size: 12px; font-weight: 700; color: var(--muted); line-height: 1.3; }
+.pick-btn strong { display: block; font-size: 17px; font-weight: 800; line-height: 1.35; }
+.pick-meta { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); line-height: 1.4; }
+.pick-ico { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 13px; background: var(--ink); color: #fff; flex: none; }
+.pick-ico svg.i { width: 22px; height: 22px; }
+.pick-chev { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 99px; background: var(--chip); color: var(--muted); font-size: 13px; flex: none; }
+.sheet .class-pick { grid-template-columns: 1fr; margin-top: 8px; }
+:root[data-theme="dark"] .pick-ico { background: var(--primary-soft); color: var(--primary); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pick-ico { background: var(--primary-soft); color: var(--primary); } }
+.pick-chev { width: auto; height: 34px; padding: 0 14px; font-size: 13px; font-weight: 800; color: var(--primary); background: var(--primary-soft); }

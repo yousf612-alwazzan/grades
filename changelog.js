@@ -1,6 +1,13 @@
 // «ما الجديد» — يكتبه scripts/bump-version.mjs تلقائيًا (أحدث إصدار أولًا)
 export const CHANGELOG = [
   {
+    "version": "2.6.4",
+    "date": "2026-10-15",
+    "items": [
+      "تصحيح شكل زر اختيار الشعبة في التقارير"
+    ]
+  },
+  {
     "version": "2.6.3",
     "date": "2026-10-15",
     "items": [
