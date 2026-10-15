@@ -720,7 +720,7 @@ export class PhoneLink extends BaseLink {
 
 const VIEW_TYPES = new Set(['hello', 'snapshot', 'patch', 'blank', 'bye', 'state', 'put-classes', 'put-grades', 'del-grades', 'put-settings']);
 // ما يقبله الجوال من الكمبيوتر في وضع الإدارة فقط
-export const MANAGE_TYPES = new Set(['put-classes', 'put-grades', 'del-grades', 'put-settings']);
+export const MANAGE_TYPES = new Set(['put-classes', 'put-grades', 'del-grades', 'put-settings', 'edit']);
 
 /** يجلب أحدث «رمز عرض» نشره الكمبيوتر في الغرفة (مشفّرًا) ولم يُستعمل بعد. يحاول حتى timeoutMs. */
 export async function fetchLatestOffer(room, used = new Set(), { timeoutMs = 20000, signal } = {}) {

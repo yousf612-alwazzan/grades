@@ -9,7 +9,7 @@ import {
   studentComplete, weekRemaining, weekComplete, finalsRemaining, firstIncompleteWeek, progress,
   studentCardText, cleanNames, arCompare, remapData, nameKey,
   isAbsent, setAbsent, absenceCount, getNotes, addNote, deleteNote,
-  isStar, setStar, starCount, weekIssues,
+  isStar, setStar, starCount, weekIssues, clearWeekIssues,
 } from './grades-core.js';
 import * as localStore from './store.js';
 import { buildTransfer, transferFileName, parseTransfer, applyTransfer, moveStudents } from './transfer.js';
@@ -599,6 +599,7 @@ function stuRow(c, d, w, i) {
     <span class="srow-num num">${ar(i + 1)}</span>
     <button type="button" class="srow-name" data-act="open-student" data-idx="${i}">${issues ? `<span class="issue-mark" title="مشكلة مسجّلة هذا الأسبوع">❗</span>` : ''}${esc(c.names[i])}${notes ? `<span class="note-dot" title="ملاحظات">${icon('edit')}${ar(notes)}</span>` : ''}</button>
     <span class="row-flags">
+      <button type="button" class="star-btn note-btn ${issues ? 'issue' : ''}" data-act="quick-note" data-idx="${i}" aria-label="ملاحظة أو تنبيه">${issues ? '❗' : '📝'}</button>
       <button type="button" class="star-btn ${star ? 'on' : ''}" data-act="star" data-idx="${i}" aria-pressed="${star}" aria-label="نجمة تميّز هذا الأسبوع">${star ? '★' : '☆'}</button>
       <button type="button" class="abs-btn ${absent ? 'on' : ''}" data-act="absent" data-idx="${i}" aria-pressed="${absent}">${absent ? 'غائب ✓' : 'غياب'}</button>
     </span>
@@ -1835,6 +1836,7 @@ function displayOptionsHTML(c) {
   const hiddenCount = withIssues.filter((i) => o.hidden.has(i)).length;
   return `<div class="list opts-list">
     <label class="list-item"><span class="grow"><strong>إخفاء الأسماء</strong><small>أرقام الطلاب فقط</small></span><input type="checkbox" class="switch" data-live="hide" ${L.hideNames ? 'checked' : ''}></label>
+    <label class="list-item"><span class="grow"><strong>✏️ الرصد من الكمبيوتر</strong><small>رصد الدرجات والغياب من شاشة العرض (يُحفظ في الجوال)</small></span><input type="checkbox" class="switch" data-live-opt="liveAllowEdit" ${S.settings.liveAllowEdit !== false ? 'checked' : ''}></label>
     <label class="list-item"><span class="grow"><strong>⭐ نجوم التميّز</strong><small>تظهر بجانب اسم الطالب المتميز</small></span><input type="checkbox" class="switch" data-live-opt="liveShowStars" ${o.stars ? 'checked' : ''}></label>
     <label class="list-item"><span class="grow"><strong>❗ علامات التنبيه</strong><small>العلامة فقط — نص الملاحظة لا يظهر أبدًا</small></span><input type="checkbox" class="switch" data-live-opt="liveShowIssues" ${o.issues ? 'checked' : ''}></label>
     ${o.issues ? `<button type="button" class="list-item" data-act="issue-hide" data-id="${c.id}">${icon('eyeOff')}<span class="grow"><strong>إخفاء ❗ عن طلاب معيّنين</strong><small>${withIssues.length ? `${ar(withIssues.length)} لديهم تنبيه · مخفي عن ${ar(hiddenCount)}` : 'لا توجد تنبيهات في هذه الشعبة'}</small></span>${icon('fwd')}</button>` : ''}
@@ -1862,6 +1864,37 @@ function displayData(c, only = null) {
 }
 function displayNames(c, hide, only = null) {
   return c.names.map((nm, i) => (only != null && i !== only ? '' : hide ? `طالب ${ar(i + 1)}` : nm));
+}
+
+// ملاحظة سريعة من صف الطالب، مع خيار «❗ تنبيه هذا الأسبوع»
+function quickNote(c, w, i) {
+  const d = dataOf(c.id);
+  const has = w ? weekIssues(d, w, i).length : 0;
+  const s = openSheet(`<h2>${icon('edit')} ملاحظة على ${esc(c.names[i])}</h2>
+    <p>الملاحظات خاصة بك ولا تظهر في بطاقة ولي الأمر ولا على شاشة الطلاب.</p>
+    <textarea class="textarea" style="min-height:100px" data-qn-text maxlength="500" placeholder="مثال: لم يُحضر أدواته، تحدّث أثناء الشرح، مستواه تحسّن…" autofocus></textarea>
+    ${w ? `<label class="list-item" style="border:1px solid var(--border);border-radius:14px;margin-top:8px"><span class="grow"><strong>❗ تنبيه في الأسبوع ${ar(w)}</strong><small>تظهر علامة ❗ عند اسمه في هذا الأسبوع</small></span><input type="checkbox" class="switch" data-qn-issue ${has ? 'checked' : ''}></label>` : ''}
+    ${getNotes(d, i).length ? `<p class="hint" style="margin-top:8px">لديه ${ar(getNotes(d, i).length)} ملاحظة سابقة — <button type="button" class="link-btn" data-qn="open">اعرضها في بطاقته</button></p>` : ''}
+    <div class="actions"><button type="button" class="btn" data-qn="cancel">إلغاء</button><button type="button" class="btn primary" data-qn="save">حفظ</button></div>`, { label: 'ملاحظة' });
+  s.sheet.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-qn]');
+    if (!b) return;
+    const act = b.dataset.qn;
+    if (act === 'cancel') return s.close();
+    if (act === 'open') { s.close(); go('student', { id: c.id, idx: i, week: w }); return; }
+    const text = s.sheet.querySelector('[data-qn-text]').value.trim();
+    const issueBox = s.sheet.querySelector('[data-qn-issue]');
+    const issue = !!(issueBox && issueBox.checked);
+    if (!text && !issue && !has) { toast('اكتب الملاحظة أولًا', { err: true }); return; }
+    if (text || (issue && !has)) addNote(d, i, text || 'تنبيه', new Date(), w ? { week: w, issue } : {});
+    if (has && !issue) clearWeekIssues(d, w, i);
+    markDirty(c.id);
+    if (w) livePatchItems(c.id, w, i);
+    s.close();
+    const row = main().querySelector(`[data-stu="${i}"]`);
+    if (row && row.classList.contains('srow') && w) row.outerHTML = stuRow(c, d, w, i); else softRender();
+    toast(issue ? '❗ حُفظ التنبيه' : 'حُفظت الملاحظة ✓');
+  });
 }
 
 // اختيار الطلاب الذين نُخفي عنهم ❗
@@ -1941,8 +1974,13 @@ async function startLiveFromCode(code) {
       iceServers: m.iceServersFrom(S.settings), onState: setLiveState,
       onWant: () => { sendHello(); if (L.mode === 'manage') sendState(); else sendSnapshot(); },
       // يقبل الجوال تعديلات الكمبيوتر فقط في وضع الإدارة الذي اختاره المعلم بنفسه
-      acceptData: () => L.mode === 'manage' && L.state === 'connected',
-      onData: (msg) => { applyRemoteOp(msg); },
+      // وضع الإدارة: كل التعديلات. وضع العرض: الرصد فقط (درجات/غياب/نجمة) إن سمح المعلم
+      acceptData: () => L.state === 'connected' && (L.mode === 'manage' || displayEditAllowed()),
+      onData: (msg) => {
+        if (msg.type === 'edit' && L.mode === 'display') applyDisplayEdit(msg);
+        else if (msg.type !== 'edit' && L.mode === 'manage') applyRemoteOp(msg);
+        else if (L.link) L.link.droppedCount++; // نوع غير مسموح في هذا الوضع: يُرفض
+      },
     });
     L.state = 'connecting';
     L.usedOffers.add(code);
@@ -2009,7 +2047,7 @@ function liveSend(msg) {
 }
 function sendHello() {
   const c = cls(L.classId);
-  liveSend({ type: 'hello', mode: L.mode, teacher: S.settings.teacher, subject: S.settings.subject, classLabel: L.mode === 'manage' ? '' : (c ? c.label : ''), criteria: CRIT.map((x) => x.label), finals: FINS.map((f) => ({ label: f.label, max: f.max })) });
+  liveSend({ type: 'hello', mode: L.mode, allowEdit: displayEditAllowed(), showIssues: !!S.settings.liveShowIssues, teacher: S.settings.teacher, subject: S.settings.subject, classLabel: L.mode === 'manage' ? '' : (c ? c.label : ''), criteria: CRIT.map((x) => x.label), finals: FINS.map((f) => ({ label: f.label, max: f.max })) });
 }
 function sendSnapshot() {
   if (L.mode === 'manage') return;
@@ -2018,6 +2056,55 @@ function sendSnapshot() {
   const only = L.scope.kind === 'student' ? L.scope.idx : null;
   liveSend({ type: 'snapshot', scope: { ...L.scope }, hideNames: L.hideNames, names: displayNames(c, L.hideNames, only), data: displayData(c, only) });
 }
+// وضع العرض: هل يُسمح للمعلم بالرصد من شاشة الكمبيوتر؟
+function displayEditAllowed() {
+  return L.mode === 'display' && S.settings.liveAllowEdit !== false && L.scope.kind === 'class' && !!cls(L.classId);
+}
+// رصد من شاشة العرض: درجة بند، كامل، غياب، نجمة، درجة نهائية — للشعبة المعروضة فقط
+function applyDisplayEdit(m) {
+  if (!displayEditAllowed()) return;
+  const c = cls(L.classId); const d = dataOf(c.id);
+  const i = Number(m.idx);
+  if (!Number.isInteger(i) || i < 0 || i >= c.names.length) return;
+  const w = Number(m.week);
+  const okWeek = Number.isInteger(w) && w >= 1 && w <= WEEKS;
+  const ack = typeof m.oid === 'number' || typeof m.oid === 'string' ? String(m.oid).slice(0, 20) : undefined;
+  if (m.kind === 'item' && okWeek) {
+    const k = Number(m.k);
+    if (!(k >= 0 && k < ITEMS)) return;
+    const res = m.value == null ? { ok: true, value: null } : parseScore(String(m.value), CONFIG.itemMax);
+    if (!res.ok) return;
+    setItem(d, w, i, k, res.value);
+  } else if (m.kind === 'full' && okWeek) {
+    for (let k = 0; k < ITEMS; k++) setItem(d, w, i, k, CONFIG.itemMax);
+  } else if (m.kind === 'absent' && okWeek) {
+    setAbsent(d, w, i, m.on === true);
+  } else if (m.kind === 'star' && okWeek) {
+    setStar(d, w, i, m.on === true);
+  } else if (m.kind === 'note') {
+    const text = typeof m.text === 'string' ? m.text.trim().slice(0, 500) : '';
+    const issue = m.issue === true && okWeek;
+    if (!text && !issue) return;
+    addNote(d, i, text || 'تنبيه', new Date(), okWeek ? { week: w, issue } : {});
+    if (!okWeek) { markDirty(c.id); softRender(); return; }
+  } else if (m.kind === 'issue-off' && okWeek) {
+    clearWeekIssues(d, w, i);
+  } else if (m.kind === 'fin') {
+    const k = Number(m.k);
+    if (!(k >= 0 && k < FINS.length)) return;
+    const res = m.value == null ? { ok: true, value: null } : parseScore(String(m.value), FINS[k].max);
+    if (!res.ok) return;
+    setFin(d, i, k, res.value);
+    markDirty(c.id);
+    livePatchFin(c.id, i, ack);
+    softRender();
+    return;
+  } else return;
+  markDirty(c.id);
+  livePatchItems(c.id, w, i, ack);
+  softRender();
+}
+
 // وضع الإدارة: نسخة كاملة لتطبيق الكمبيوتر (في ذاكرته فقط)
 function sendState() {
   if (S.dirty.size) flushSave();
@@ -2053,16 +2140,16 @@ async function applyRemoteOp(m) {
     if (route().name !== 'live') softRender();
   } finally { L.applyingRemote = false; }
 }
-function livePatchItems(classId, w, i) {
+function livePatchItems(classId, w, i, ack) {
   if (L.mode === 'manage' || L.classId !== classId || L.state !== 'connected') return;
   if (L.scope.kind === 'student' && L.scope.idx !== i) return;
   const c = cls(classId); const o = displayOpts(c); const d = dataOf(classId);
-  liveSend({ type: 'patch', kind: 'items', week: w, idx: i, values: getItems(d, w, i), absent: isAbsent(d, w, i), star: o.stars && isStar(d, w, i), issue: o.issues && !o.hidden.has(i) && weekIssues(d, w, i).length > 0 });
+  liveSend({ type: 'patch', kind: 'items', week: w, idx: i, values: getItems(d, w, i), absent: isAbsent(d, w, i), star: o.stars && isStar(d, w, i), starRaw: isStar(d, w, i), issue: o.issues && !o.hidden.has(i) && weekIssues(d, w, i).length > 0, ack });
 }
-function livePatchFin(classId, i) {
+function livePatchFin(classId, i, ack) {
   if (L.mode === 'manage' || L.classId !== classId || L.state !== 'connected') return;
   if (L.scope.kind === 'student' && L.scope.idx !== i) return;
-  liveSend({ type: 'patch', kind: 'fin', idx: i, values: getFin(dataOf(classId), i) });
+  liveSend({ type: 'patch', kind: 'fin', idx: i, values: getFin(dataOf(classId), i), ack });
 }
 function livePatchMeta(classId, w) {
   if (L.mode === 'manage' || L.classId !== classId || L.state !== 'connected') return;
@@ -2131,6 +2218,7 @@ document.addEventListener('click', async (e) => {
     }
     case 'missing': S.ui.missingOnly = el.checked; rerenderList(); break;
     case 'undo-bulk': if (S.ui.undo) S.ui.undo.fn(); break;
+    case 'quick-note': quickNote(cls(p.id), typeof p.tab === 'number' ? p.tab : null, +el.dataset.idx); break;
     case 'star': {
       const c = cls(p.id); const w = p.tab; const i = +el.dataset.idx; const d = dataOf(c.id);
       const on = !isStar(d, w, i);
@@ -2277,7 +2365,7 @@ document.addEventListener('click', async (e) => {
     case 'live-mode': if (L.phase === 'setup' || L.phase === 'lost') { L.mode = el.dataset.v; render(); } break;
     case 'issue-hide': showIssueHide(cls(el.dataset.id)); break;
     case 'present': presentClass(el.dataset.id); break;
-    case 'live-scope': L.scope = { kind: el.dataset.v, idx: L.scope.idx || 0 }; sendSnapshot(); render(); break;
+    case 'live-scope': L.scope = { kind: el.dataset.v, idx: L.scope.idx || 0 }; if (L.state === 'connected') sendHello(); sendSnapshot(); render(); break;
     case 'live-scan': L.phase = 'scan'; render(); break;
     case 'live-cancel': stopScanner(); L.phase = 'setup'; render(); break;
     case 'live-paste': {
@@ -2339,7 +2427,13 @@ function showWeekTools(p) {
         <div class="fill-grid">${CRIT.map((cr, k) => `<button type="button" class="btn soft" data-act="fill" data-k="${k}">${esc(cr.label)} ${ar(CONFIG.itemMax)}</button>`).join('')}
         <button type="button" class="btn success" data-act="fill" data-k="all">${icon('check')} الكل ${ar(CONFIG.itemMax)}</button></div></div>
     </div>
-    <div class="actions"><button type="button" class="btn primary" data-x autofocus>تم</button></div>`, { label: 'أدوات الأسبوع', onClose: () => { if (route().name === 'class') rerenderList(); } });
+    <div class="actions"><button type="button" class="btn primary" data-x autofocus>تم</button></div>`, { label: 'أدوات الأسبوع', onClose: () => {
+    // نحفظ قيم الحقول عند الإغلاق أيضًا (لو أُغلقت النافذة قبل وصول حدث الكتابة)
+    let changed = false;
+    s.sheet.querySelectorAll('[data-meta]').forEach((inp) => { if (getWeekMeta(d, p.tab)[inp.dataset.meta] !== inp.value) { setWeekMeta(d, p.tab, inp.dataset.meta, inp.value); changed = true; } });
+    if (changed) { markDirty(c.id); livePatchMeta(c.id, p.tab); }
+    if (route().name === 'class') rerenderList();
+  } });
   s.sheet.addEventListener('click', (e) => {
     if (e.target.closest('[data-x]') || e.target.closest('[data-act="fill"]')) setTimeout(() => s.close(), 0);
   });
@@ -2479,6 +2573,7 @@ document.addEventListener('change', async (e) => {
   if (t.matches('[data-live-opt]')) {
     S.settings[t.dataset.liveOpt] = t.checked;
     await saveSettingsNow();
+    if (L.state === 'connected' && L.mode === 'display') sendHello();
     sendSnapshot(); if (S.ui.presenting) presentClass(S.ui.presenting);
     render();
     return;

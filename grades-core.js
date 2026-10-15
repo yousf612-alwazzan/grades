@@ -168,6 +168,16 @@ export function weekIssues(data, week, idx) {
   return getNotes(data, idx).filter((n) => n.issue && n.w === Number(week));
 }
 
+/** يزيل علامة ❗ لهذا الأسبوع (الملاحظات تبقى نصًا عاديًا). يرجع عدد ما أُزيل. */
+export function clearWeekIssues(data, week, idx) {
+  const list = data?.notes?.[idx];
+  if (!Array.isArray(list)) return 0;
+  let n = 0;
+  for (const x of list) if (x.issue === true && Number(x.w) === Number(week)) { delete x.issue; n++; }
+  if (n) data.t = Date.now();
+  return n;
+}
+
 // ----- نجمة التميّز (لكل أسبوع؛ تظهر على شاشة العرض) -----
 export function isStar(data, week, idx) {
   return data?.weeks?.[String(week)]?.star?.[idx] === true;

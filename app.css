@@ -643,3 +643,6 @@ body.remote .appbar { top: 38px; }
 .share-txt { flex: 1; border: 0; background: none; color: inherit; font-weight: 800; text-align: start; min-height: 36px; padding: 0; }
 .share-stop { border: 0; border-radius: 99px; background: var(--error); color: #fff; font-weight: 800; min-height: 36px; padding: 0 14px; }
 body:has(.share-bar) .appbar { top: 0; }
+
+.note-btn { font-size: 18px; }
+.note-btn.issue { border-color: color-mix(in srgb, var(--error) 45%, var(--border)); background: var(--error-soft); }

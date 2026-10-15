@@ -294,6 +294,7 @@ let presenting = false;
 function wipe() {
   model = null; hello = null;
   mirror = null; presenting = false;
+  pending.clear(); ui.editing = false; closePop();
   if ($('soft-pause')) setSoftPause(false);
   if (manageFrame) { manageFrame.remove(); manageFrame = null; }
   $('screen-manage').innerHTML = '';
@@ -389,6 +390,9 @@ function onMessage(m) {
     }
     case 'hello': {
       ui.mode = m.mode === 'manage' ? 'manage' : 'display';
+      ui.allowEdit = m.allowEdit === true;
+      ui.showIssues = m.showIssues === true;
+      if (!ui.allowEdit) ui.editing = false;
       hello = {
         teacher: String(m.teacher || '').slice(0, 120),
         subject: String(m.subject || '').slice(0, 120),
@@ -406,6 +410,7 @@ function onMessage(m) {
         ? { kind: 'student', idx: Number(m.scope.idx) } : { kind: 'class' };
       const changedClass = !model || model.names.length !== names.length || model.scope.kind !== scope.kind || model.scope.idx !== scope.idx;
       model = { names, data: sanitizeData(m.data), scope, hideNames: !!m.hideNames };
+      resendPending();
       if (changedClass) { prevCells = null; closeDrawer(); }
       if (ui.screen !== 'pair' || ui.connState === 'connected') {
         setScreen(isSolo() ? 'solo' : 'live');
@@ -439,6 +444,7 @@ function onMessage(m) {
 }
 
 function applyPatch(m) {
+  if (m.ack != null && pending.delete(String(m.ack))) updatePending();
   const d = model.data;
   const n = model.names.length;
   const idx = Number(m.idx);
@@ -555,13 +561,15 @@ function renderGrid() {
   } else if (ui.view === 'week') {
     const w = ui.week;
     head = `<tr>${numTh}${nameTh}${crit.map((c) => `<th scope="col" class="c-crit">${headSub(esc(c), '/' + ar(CONFIG.itemMax))}</th>`).join('')}
-      <th scope="col" class="c-total">${sortHeader('total', headSub('المجموع', '/' + ar(WEEK_MAX)))}</th></tr>`;
+      <th scope="col" class="c-total">${sortHeader('total', headSub('المجموع', '/' + ar(WEEK_MAX)))}</th>${ui.editing && canEdit() ? '<th scope="col" class="c-tools">رصد</th>' : ''}</tr>`;
     for (const i of order) {
       const items = getItems(d, w, i);
       const t = weekTotal(d, w, i);
+      const ed = ui.editing && canEdit();
+      const tools = ed ? `<td class="c-tools"><button type="button" class="ed-btn" data-ed="full">كامل</button><button type="button" class="ed-btn ${absentAt(d, w, i) ? 'on abs' : ''}" data-ed="absent">${absentAt(d, w, i) ? 'غائب ✓' : 'غياب'}</button><button type="button" class="ed-btn star ${starAt(d, w, i) ? 'on' : ''}" data-ed="star" aria-label="نجمة">${starAt(d, w, i) ? '★' : '☆'}</button><button type="button" class="ed-btn" data-ed="note" aria-label="ملاحظة أو تنبيه">${issueAt(d, w, i) ? '❗' : '📝'}</button></td>` : '';
       body += absentAt(d, w, i)
-        ? `<tr data-idx="${i}" class="row-absent">${nameCell(i)}<td class="c-absent" colspan="${items.length}" data-k="ab">غائب</td>${totalCell(t, 'wt', WEEK_MAX)}</tr>`
-        : `<tr data-idx="${i}">${nameCell(i)}${items.map((v, k) => cell(v, CONFIG.itemMax, ' c-crit" data-k="i' + k)).join('')}${totalCell(t, 'wt', WEEK_MAX)}</tr>`;
+        ? `<tr data-idx="${i}" class="row-absent">${nameCell(i)}<td class="c-absent" colspan="${items.length}" data-k="ab">غائب</td>${totalCell(t, 'wt', WEEK_MAX)}${tools}</tr>`
+        : `<tr data-idx="${i}">${nameCell(i)}${items.map((v, k) => cell(v, CONFIG.itemMax, ' c-crit' + (ed ? ' editable' : '') + '" data-k="i' + k)).join('')}${totalCell(t, 'wt', WEEK_MAX)}${tools}</tr>`;
     }
   } else {
     head = `<tr>${numTh}${nameTh}
@@ -573,7 +581,7 @@ function renderGrid() {
     for (const i of order) {
       const fin = getFin(d, i);
       body += `<tr data-idx="${i}">${nameCell(i)}${cell(periodScore(d, i, 1), WEEK_MAX, '" data-k="p1')}${cell(periodScore(d, i, 2), WEEK_MAX, '" data-k="p2')}
-        ${cell(formative(d, i), FORM_MAX, ' c-strong" data-k="fo')}${fin.map((v, k) => cell(v, FIN_MAX[k], (k === 0 ? ' c-sep' : '') + '" data-k="f' + k)).join('')}${totalCell(finalTotal(d, i), 'tt')}</tr>`;
+        ${cell(formative(d, i), FORM_MAX, ' c-strong" data-k="fo')}${fin.map((v, k) => cell(v, FIN_MAX[k], (k === 0 ? ' c-sep' : '') + (ui.editing && canEdit() ? ' editable' : '') + '" data-k="f' + k)).join('')}${totalCell(finalTotal(d, i), 'tt')}</tr>`;
     }
   }
   if (!n) body = `<tr><td class="empty-row" colspan="30">لا يوجد طلاب في هذا الصف بعد.</td></tr>`;
@@ -582,6 +590,114 @@ function renderGrid() {
 
 function issueAt(d, w, i) { return !!(d.weeks[String(w)] && d.weeks[String(w)].issue && d.weeks[String(w)].issue[i]); }
 function starAt(d, w, i) { return !!(d.weeks[String(w)] && d.weeks[String(w)].star && d.weeks[String(w)].star[i]); }
+// ===== الرصد من شاشة العرض (يقبله الجوال إن سمح المعلم) =====
+const pending = new Map(); // oid → تعديل لم يؤكد الجوال استلامه بعد (في الذاكرة فقط)
+let editSeq = 0;
+function canEdit() {
+  return !!(ui.allowEdit && ui.mode !== 'manage' && model && model.scope.kind === 'class' && !presenting);
+}
+function sendEdit(op) {
+  const oid = String(++editSeq) + '-' + Date.now().toString(36);
+  pending.set(oid, op);
+  if (link && ui.connState === 'connected') link.sendOp({ type: 'edit', oid, ...op });
+  updatePending();
+}
+function resendPending() {
+  if (!link || !pending.size) return;
+  for (const [oid, op] of pending) link.sendOp({ type: 'edit', oid, ...op });
+}
+function updatePending() {
+  const el = $('pending-ind');
+  if (!el) return;
+  el.hidden = !pending.size;
+  el.textContent = pending.size ? `⏳ ${ar(pending.size)} ${pending.size === 1 ? 'تعديل' : 'تعديلات'} بانتظار الجوال` : '';
+}
+setInterval(() => { if (pending.size && ui.connState === 'connected') resendPending(); }, 4000);
+
+let popEl = null;
+function closePop() { if (popEl) { popEl.remove(); popEl = null; } }
+function openPop(td, i) {
+  closePop();
+  const k = td.dataset.k;
+  const isFin = k.startsWith('f');
+  const idx = Number(k.slice(1));
+  const max = isFin ? FIN_MAX[idx] : CONFIG.itemMax;
+  const label = isFin ? (finalsMeta()[idx]?.label || '') : (criteriaLabels()[idx] || '');
+  popEl = document.createElement('div');
+  popEl.className = 'edit-pop';
+  popEl.setAttribute('role', 'dialog');
+  const name = model.names[i] || `طالب ${ar(i + 1)}`;
+  if (isFin) {
+    popEl.innerHTML = `<div class="pop-head"><b>${esc(label)}</b><span class="muted">${esc(name)} — من ${ar(max)}</span></div>
+      <input class="pop-input" type="text" inputmode="decimal" autocomplete="off" aria-label="${esc(label)}">
+      <span class="pop-err" hidden></span>
+      <div class="pop-actions"><button type="button" class="btn primary" data-pv="save">حفظ</button><button type="button" class="btn" data-pv="clear">مسح</button><button type="button" class="btn ghost" data-pv="close">إلغاء</button></div>`;
+  } else {
+    const vals = []; for (let x = max * 2; x >= 0; x--) vals.push(x / 2);
+    popEl.innerHTML = `<div class="pop-head"><b>${esc(label)}</b><span class="muted">${esc(name)} — الأسبوع ${ar(ui.week)}</span></div>
+      <div class="pop-grid">${vals.map((v) => `<button type="button" class="pv${Number.isInteger(v) ? ' int' : ''}" data-pv="${v}">${ar(v)}</button>`).join('')}</div>
+      <div class="pop-actions"><button type="button" class="btn" data-pv="clear">مسح</button><button type="button" class="btn ghost" data-pv="close">إلغاء</button></div>`;
+  }
+  document.body.appendChild(popEl);
+  const r = td.getBoundingClientRect();
+  const pw = popEl.offsetWidth; const ph = popEl.offsetHeight;
+  popEl.style.top = Math.min(window.innerHeight - ph - 10, r.bottom + 6) + 'px';
+  popEl.style.left = Math.max(10, Math.min(window.innerWidth - pw - 10, r.left + r.width / 2 - pw / 2)) + 'px';
+  const inp = popEl.querySelector('.pop-input');
+  if (inp) inp.focus(); else popEl.querySelector('.pv')?.focus();
+  const submit = (raw) => {
+    let value = null;
+    if (raw != null) {
+      const n = Number(String(raw).replace(/[٠-٩]/g, (c) => '٠١٢٣٤٥٦٧٨٩'.indexOf(c)).replace(/[،٫,]/g, '.'));
+      if (!Number.isFinite(n) || n < 0 || n > max) { const e = popEl.querySelector('.pop-err'); if (e) { e.hidden = false; e.textContent = n > max ? `أكبر من ${ar(max)}` : 'ليست رقمًا'; } return; }
+      value = n;
+    }
+    if (isFin) sendEdit({ kind: 'fin', idx: i, k: idx, value });
+    else sendEdit({ kind: 'item', week: ui.week, idx: i, k: idx, value });
+    closePop();
+  };
+  popEl.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-pv]');
+    if (!b) return;
+    const v = b.dataset.pv;
+    if (v === 'close') return closePop();
+    if (v === 'clear') return submit(null);
+    if (v === 'save') return submit(inp.value.trim() || null);
+    submit(v);
+  });
+  if (inp) inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(inp.value.trim() || null); if (e.key === 'Escape') closePop(); });
+}
+function openNotePop(anchor, i) {
+  closePop();
+  const w = ui.week;
+  const has = issueAt(model.data, w, i);
+  const name = model.names[i] || `طالب ${ar(i + 1)}`;
+  popEl = document.createElement('div');
+  popEl.className = 'edit-pop';
+  popEl.setAttribute('role', 'dialog');
+  popEl.innerHTML = `<div class="pop-head"><b>ملاحظة على ${esc(name)}</b><span class="muted">تُحفظ في جوال المعلم — لا تظهر على هذه الشاشة</span></div>
+    <textarea class="pop-text" maxlength="500" rows="3" placeholder="اكتب الملاحظة…"></textarea>
+    <label class="pop-check"><input type="checkbox" class="pop-issue" ${has ? 'checked' : ''}> ❗ تنبيه في الأسبوع ${ar(w)}</label>
+    <div class="pop-actions"><button type="button" class="btn primary" data-pv="save">حفظ</button><button type="button" class="btn ghost" data-pv="close">إلغاء</button></div>`;
+  document.body.appendChild(popEl);
+  const r = anchor.getBoundingClientRect();
+  popEl.style.top = Math.min(window.innerHeight - popEl.offsetHeight - 10, r.bottom + 6) + 'px';
+  popEl.style.left = Math.max(10, Math.min(window.innerWidth - popEl.offsetWidth - 10, r.left - popEl.offsetWidth / 2)) + 'px';
+  popEl.querySelector('.pop-text').focus();
+  popEl.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-pv]');
+    if (!b) return;
+    if (b.dataset.pv === 'close') return closePop();
+    const text = popEl.querySelector('.pop-text').value.trim();
+    const issue = popEl.querySelector('.pop-issue').checked;
+    if (text || (issue && !has)) sendEdit({ kind: 'note', week: w, idx: i, text, issue });
+    if (has && !issue) sendEdit({ kind: 'issue-off', week: w, idx: i });
+    closePop();
+    toast(issue && !ui.showIssues ? 'حُفظ التنبيه في الجوال — علامة ❗ مخفية عن الشاشة (فعّلها من الجوال: «علامات التنبيه»)' : 'حُفظت الملاحظة في الجوال ✓');
+  });
+}
+document.addEventListener('mousedown', (e) => { if (popEl && !popEl.contains(e.target) && !e.target.closest('td.editable') && !e.target.closest('[data-ed="note"]')) closePop(); });
+
 // ===== الرجوع التلقائي =====
 function setSoftPause(on) {
   ui.paused = on;
@@ -711,8 +827,10 @@ function renderToolbar() {
     sub = [meta.date ? `<span class="tb-chip">${I.calendar}<span data-meta="date">${esc(fmtDate(meta.date))}</span></span>` : '', meta.lesson ? `<span class="tb-lesson" data-meta="lesson">${esc(meta.lesson)}</span>` : ''].filter(Boolean).join('') || '<span class="muted">لم يُحدَّد التاريخ أو الدرس بعد</span>';
   } else { title = 'الدرجات النهائية'; sub = `التقويم البنائي من ${ar(FORM_MAX)} + المشاريع والاختبار العملي = ${ar(TOTAL_MAX)}`; }
   const sorts = [['num', 'الترتيب'], ['name', 'الاسم'], ['total', 'المجموع']];
+  const editBtn = canEdit() ? `<button type="button" class="btn ${ui.editing ? 'primary' : ''} edit-toggle" data-edit-toggle aria-pressed="${ui.editing}">${ui.editing ? '✔ إنهاء الرصد' : '✏️ وضع الرصد'}</button>` : '';
   $('toolbar').innerHTML = `
     <div class="tb-title"><h1>${title}</h1><div class="tb-sub">${sub}</div></div>
+    <span class="pending-ind" id="pending-ind" hidden></span>${editBtn}
     <div class="seg" role="group" aria-label="ترتيب الصفوف"><span class="seg-label">ترتيب حسب</span>${sorts.map(([k, l]) => `<button type="button" data-sort="${k}" class="${ui.sort.key === k ? 'active' : ''}" aria-pressed="${ui.sort.key === k}">${l}</button>`).join('')}</div>`;
 }
 
@@ -968,9 +1086,33 @@ function bind() {
     render();
     return true;
   };
-  $('toolbar').addEventListener('click', onSort);
+  $('toolbar').addEventListener('click', (e) => {
+    if (e.target.closest('[data-edit-toggle]')) {
+      ui.editing = !ui.editing;
+      if (ui.editing && ui.view === 'summary') { ui.view = 'week'; ui.week = ui.week || 1; }
+      closePop();
+      render();
+      return;
+    }
+    onSort(e);
+  });
   $('grid-wrap').addEventListener('click', (e) => {
     if (onSort(e)) return;
+    if (ui.editing && canEdit()) {
+      const btn = e.target.closest('[data-ed]');
+      const tr = e.target.closest('tr[data-idx]');
+      if (btn && tr) {
+        const i = Number(tr.dataset.idx); const w = ui.week; const d = model.data;
+        const kind = btn.dataset.ed;
+        if (kind === 'full') sendEdit({ kind: 'full', week: w, idx: i });
+        else if (kind === 'absent') sendEdit({ kind: 'absent', week: w, idx: i, on: !absentAt(d, w, i) });
+        else if (kind === 'star') sendEdit({ kind: 'star', week: w, idx: i, on: !starAt(d, w, i) });
+        else if (kind === 'note') openNotePop(btn, i);
+        return;
+      }
+      const td = e.target.closest('td.editable');
+      if (td && tr) { openPop(td, Number(tr.dataset.idx)); return; }
+    }
     const tr = e.target.closest('tr[data-idx]');
     if (tr) openDrawer(Number(tr.dataset.idx));
   });
@@ -1018,5 +1160,18 @@ newOffer();
 
 // تخزين ملفات الصفحة فقط (بدون أي بيانات) حتى تفتح بدون إنترنت، وتثبيتها من Chrome كتطبيق مستقل
 if ('serviceWorker' in navigator && window.isSecureContext && !E2E) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    // نسخة جديدة من صفحة العرض: قبل الاتصال نحدّث فورًا، وأثناء الاتصال نعرض زر «تحديث»
+    const ready = (w) => {
+      if (!hadController) return;
+      if (ui.screen === 'pair' && ui.connState !== 'connected') { w.postMessage({ type: 'skip-waiting' }); return; }
+      const b = $('btn-update'); if (b) { b.hidden = false; b.onclick = () => w.postMessage({ type: 'skip-waiting' }); }
+    };
+    if (reg.waiting) ready(reg.waiting);
+    reg.addEventListener('updatefound', () => { const w = reg.installing; if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') ready(w); }); });
+    setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
+  }).catch(() => {});
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
 }

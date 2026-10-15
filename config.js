@@ -4,7 +4,7 @@
 
 export const CONFIG = {
   appName: 'متابعة الدرجات',
-  version: '2.2.0',
+  version: '2.3.0',
   releaseDate: '2026-10-15',
 
   // قواعد الدرجات
@@ -46,7 +46,7 @@ export const CONFIG = {
     turnUrl: '', turnUser: '', turnPass: '',
     viewUrl: '', tourDone: false,
     // ما يظهر على شاشة العرض للطلاب: نجوم التميّز (نعم)، علامات التنبيه ❗ (لا)، وطلاب تُخفى عنهم ❗ لكل شعبة
-    liveShowStars: true, liveShowIssues: false, liveIssueHidden: {},
+    liveShowStars: true, liveShowIssues: false, liveIssueHidden: {}, liveAllowEdit: true,
   },
 };
 
