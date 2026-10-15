@@ -47,7 +47,16 @@ const haptic = (t) => { if (S.settings.haptics) platform.haptic(t); };
 
 // ===================== الحفظ =====================
 let saveTimer = null;
+// يسجّل أن هناك درجات/تعديلات لم تدخل في نسخة احتياطية بعد
+function noteChange() {
+  S.sessionChanged = true;
+  if (!S.meta.changedSinceBackup) {
+    S.meta.changedSinceBackup = new Date().toISOString();
+    store.setMeta('changedSinceBackup', S.meta.changedSinceBackup).catch(() => {});
+  }
+}
 function markDirty(classId) {
+  noteChange();
   S.dirty.add(classId);
   setSaveState('saving');
   clearTimeout(saveTimer);
@@ -73,7 +82,7 @@ function paintSave(el) {
   el.className = 'save-state' + (st === 'saved' ? ' ok' : '');
   el.innerHTML = st === 'saving' ? 'جارٍ الحفظ…' : st === 'error' ? `${icon('warn')} لم يُحفظ` : st === 'saved' ? `${icon('check')} محفوظ` : '';
 }
-async function saveClassesNow() { await store.saveClasses(S.classes); }
+async function saveClassesNow() { noteChange(); await store.saveClasses(S.classes); }
 async function saveSettingsNow() { await store.saveSettings(S.settings); }
 window.addEventListener('pagehide', () => { if (S.dirty.size) flushSave(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && S.dirty.size) flushSave(); });
@@ -119,6 +128,10 @@ window.addEventListener('popstate', () => {
     S.stack.pop();
     S.ui.search = '';
     render({ scrollTop: true });
+    if (leaving.name === 'class' && S.sessionChanged && S.meta.changedSinceBackup) {
+      S.sessionChanged = false;
+      toast('الدرجات محفوظة على الجهاز. احفظ نسخة احتياطية؟', { ms: 7000, action: { label: 'احفظ نسخة', fn: doBackup } });
+    }
   }
 });
 platform.onBack(() => {
@@ -199,10 +212,15 @@ function Home() {
   }
   const last = S.meta.lastBackupAt ? new Date(S.meta.lastBackupAt) : null;
   const days = last ? (Date.now() - last.getTime()) / 86400000 : Infinity;
+  const pending = !!S.meta.changedSinceBackup && hasAnyGrades();
   if (hasAnyGrades() && days > CONFIG.backupReminderDays) {
     alerts.push(`<div class="alert warn" data-testid="backup-reminder">${icon('shield')}<div class="grow"><strong>احفظ نسخة احتياطية</strong><p>${last ? `آخر نسخة قبل ${ar(Math.floor(days))} يومًا.` : 'لم تحفظ أي نسخة بعد.'} احفظها في «الملفات» أو أرسلها لنفسك.</p><button type="button" class="btn sm primary" data-act="backup">احفظ نسخة الآن</button></div></div>`);
+  } else if (pending) {
+    alerts.push(`<div class="alert info" data-testid="backup-nudge">${icon('shield')}<div class="grow"><strong>عندك درجات جديدة بدون نسخة احتياطية</strong><p>ضغطة واحدة تحفظها في iCloud Drive أو ترسلها لنفسك، فلا تضيع لو ضاع الجوال.</p><button type="button" class="btn sm primary" data-act="backup">${icon('download')} احفظ نسخة الآن</button></div></div>`);
   }
 
+  const backupOk = last && !pending && hasAnyGrades()
+    ? `<p class="hint" data-testid="backup-ok" style="color:var(--success);font-weight:700">${icon('checkCircle')} نسختك الاحتياطية محدّثة (${days < 1 ? 'اليوم' : `قبل ${ar(Math.floor(days))} يوم`})</p>` : '';
   const hello = `<div class="hello"><h2>${st.teacher ? `أهلًا أ. ${esc(st.teacher)}` : 'أهلًا بك'}</h2><p>${st.subject ? esc(st.subject) + ' · ' : ''}${S.classes.length ? `${ar(S.classes.length)} ${S.classes.length === 1 ? 'شعبة' : S.classes.length === 2 ? 'شعبتان' : 'شعب'}` : 'لنبدأ'}</p></div>`;
 
   let body;
@@ -222,6 +240,7 @@ function Home() {
   return `${appbar({ title: CONFIG.appName, backBtn: false, save: true })}
   <div class="wrap stack home-wrap">
     ${hello}
+    ${backupOk}
     ${alerts.join('')}
     ${body}
     ${S.classes.length ? `<button type="button" class="btn primary lg fab" data-act="new-class">${icon('plus')} إضافة شعبة</button>` : ''}
@@ -265,11 +284,23 @@ function ClassScreen(p) {
   if (p.tab == null) p.tab = S.ui.tab[c.id] ?? (n ? firstIncompleteWeek(d, n) : 1);
   S.ui.tab[c.id] = p.tab;
 
-  const tools = `<div class="toolbar wrap" style="padding-top:0;padding-bottom:0">
+  const wide = WIDE.matches;
+  // على الكمبيوتر: الأزرار ظاهرة. على الجوال: قائمة «⋯» واحدة حتى تبقى الشاشة للرصد فقط
+  const tools = wide ? `<div class="toolbar wrap" style="padding-top:0;padding-bottom:0">
     <button type="button" class="btn sm" data-act="edit-class" data-id="${c.id}">${icon('users')} الطلاب</button>
     <button type="button" class="btn sm" data-act="export-xlsx" data-id="${c.id}">${icon('sheet')} تصدير Excel</button>
     <button type="button" class="btn sm" data-act="go-live" data-id="${c.id}">${icon('monitor')} عرض على الكمبيوتر</button>
     <button type="button" class="btn sm" data-act="go" data-to="transferOut" data-id="${c.id}">${icon('send')} نقل طلاب</button>
+  </div>` : '';
+  const menuBtn = wide ? '' : `<button type="button" class="icon-btn labeled" data-act="class-menu" aria-label="خيارات الشعبة">${icon('more')}</button>`;
+  const weekLabel = p.tab === 'fin' ? 'الدرجات النهائية' : `الأسبوع ${ar(p.tab)}`;
+  const weekSub = !n ? '' : p.tab === 'fin'
+    ? (finalsRemaining(d, n) ? `باقي ${ar(finalsRemaining(d, n))}` : 'مكتملة ✓')
+    : (weekComplete(d, p.tab, n) ? 'مكتمل ✓' : `باقي ${ar(weekRemaining(d, p.tab, n))} من ${ar(n)}`);
+  const weekbar = `<div class="weekbar">
+    <button type="button" class="icon-btn" data-act="week-step" data-dir="-1" aria-label="الأسبوع السابق" ${p.tab === 1 ? 'disabled' : ''}>${icon('prev')}</button>
+    <button type="button" class="week-btn" data-act="week-pick" aria-label="اختر الأسبوع"><b>${weekLabel} ▾</b><small id="week-sub">${weekSub}</small></button>
+    <button type="button" class="icon-btn" data-act="week-step" data-dir="1" aria-label="الأسبوع التالي" ${p.tab === 'fin' ? 'disabled' : ''}>${icon('next')}</button>
   </div>`;
 
   const chips = `<div class="chips" role="tablist" aria-label="الأسابيع">${Array.from({ length: WEEKS }, (_, i) => {
@@ -290,7 +321,7 @@ function ClassScreen(p) {
     </div></div>`;
   }
 
-  return `<div class="cls-head">${appbar({ title: c.label, sub: students(n), save: true })}${tools}${n ? chips : ''}</div>${body}`;
+  return `<div class="cls-head">${appbar({ title: c.label, sub: students(n), save: true, actions: menuBtn })}${tools}${n ? (wide ? chips : weekbar) : ''}</div>${body}`;
 }
 afterRender.class = (p) => {
   if (!p.painted) {
@@ -347,8 +378,27 @@ function weekTab(c, d, w) {
   const idxs = c.names.map((_, i) => i).filter((i) => !qk || nameKey(c.names[i]).includes(qk) || String(i + 1) === q);
   const visible = idxs.filter((i) => !S.ui.missingOnly || !studentComplete(d, w, i));
   const useGrid = WIDE.matches;
+  if (!useGrid) {
+    // الجوال: شريط إجراءات صغير + صف مختصر لكل طالب
+    const metaLine = meta.date || meta.lesson
+      ? `<button type="button" class="meta-line" data-act="week-tools">${icon('calendar')} ${esc([meta.date, meta.lesson].filter(Boolean).join(' · '))}</button>`
+      : `<button type="button" class="meta-line muted" data-act="week-tools">${icon('calendar')} أضف التاريخ وعنوان الدرس</button>`;
+    const rows = visible.map((i) => stuRow(c, d, w, i)).join('');
+    return `<div class="stack">
+      <div class="action-row">
+        <button type="button" class="btn success" data-act="fill" data-k="all">${icon('check')} الكل ${ar(CONFIG.itemMax)}</button>
+        <button type="button" class="btn ${S.ui.missingOnly ? 'primary' : ''}" data-act="missing-toggle" aria-pressed="${S.ui.missingOnly}">الناقص فقط</button>
+        <button type="button" class="btn" data-act="week-tools">${icon('edit')} أدوات</button>
+      </div>
+      ${metaLine}
+      <span id="week-status" hidden>${weekStatusHTML(d, w, n)}</span>
+      ${n > 12 ? `<div class="search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب أو رقمه" value="${esc(q)}" aria-label="بحث"></div>` : ''}
+      <div id="stu-list" class="slist">${rows || `<p class="hint" style="text-align:center;padding:24px">${S.ui.missingOnly && !q ? '🎉 كل الطلاب مكتملون في هذا الأسبوع' : 'لا نتائج'}</p>`}</div>
+      <p class="hint" style="text-align:center">${icon('info')} اضغط أي مربع لاختيار الدرجة، أو «كامل» لوضع ${ar(CONFIG.itemMax)} في الأربعة.</p>
+    </div>`;
+  }
 
-  const list = useGrid ? weekGrid(c, d, w, visible) : visible.map((i) => stuCard(c, d, w, i)).join('');
+  const list = weekGrid(c, d, w, visible);
   return `<div class="stack">
     <div class="card"><div class="meta-grid">
       <div class="field"><label for="wdate">التاريخ</label><div class="row"><input id="wdate" class="input" data-meta="date" value="${esc(meta.date)}" placeholder="مثال: ١٢/١٠" autocomplete="off"></div></div>
@@ -377,6 +427,72 @@ function weekStatusHTML(d, w, n) {
 function totalBadge(t, max) {
   const full = t != null && t === max;
   return `<span class="stu-total num ${full ? 'full' : ''}" data-total>${t == null ? '—' : fmt(t)} <span class="of">/ ${ar(max)}</span></span>`;
+}
+
+// ----- صف الطالب المختصر (الجوال) -----
+function stuRow(c, d, w, i) {
+  const done = studentComplete(d, w, i);
+  const t = weekTotal(d, w, i);
+  return `<div class="srow ${done ? 'complete' : ''}" data-stu="${i}">
+    <span class="srow-num num">${ar(i + 1)}</span>
+    <button type="button" class="srow-name" data-act="open-student" data-idx="${i}">${esc(c.names[i])}</button>
+    <div class="boxes" data-inputs>${rowBoxes(w, i, getItems(d, w, i), c.names[i])}</div>
+    <span class="srow-total num ${t === CONFIG.itemMax * ITEMS ? 'full' : ''}" data-total>${t == null ? '' : fmt(t)}</span>
+    <span class="srow-act" data-rowact>${rowAct(done, i)}</span>
+  </div>`;
+}
+function rowAct(done, i) {
+  return done ? `<span class="srow-done" aria-label="مكتمل">${icon('checkCircle')}</span>`
+    : `<button type="button" class="btn-full" data-act="full" data-idx="${i}" aria-label="كامل: ${ar(CONFIG.itemMax)} في كل البنود">كامل</button>`;
+}
+function rowBoxes(w, i, vals, name) {
+  if (S.settings.inputMode === 'fields') {
+    return CRIT.map((cr, k) => `<label class="box field"><small>${esc(cr.short)}</small><input class="score-input" inputmode="decimal" enterkeyhint="next" autocomplete="off" data-score="item" data-idx="${i}" data-k="${k}" value="${vals[k] == null ? '' : ar(vals[k])}" placeholder="" aria-label="${esc(cr.label)} — ${esc(name)}"><span class="cell-err" data-err></span></label>`).join('');
+  }
+  return CRIT.map((cr, k) => `<button type="button" class="box ${vals[k] == null ? '' : 'filled'}" data-act="box" data-idx="${i}" data-k="${k}" aria-label="${esc(cr.label)}: ${vals[k] == null ? 'فارغ' : ar(vals[k])}"><small>${esc(cr.short)}</small><b class="num">${vals[k] == null ? '' : ar(vals[k])}</b></button>`).join('');
+}
+
+// نافذة اختيار الدرجة: تبقى مفتوحة وتنتقل للبند التالي حتى يكتمل الطالب
+function openPicker(c, w, i, k0) {
+  const d = dataOf(c.id);
+  let k = k0;
+  const s = openSheet('<div data-picker></div>', { label: 'اختيار الدرجة' });
+  const paint = () => {
+    const vals = getItems(d, w, i);
+    s.sheet.querySelector('[data-picker]').innerHTML = `
+      <div class="picker-head"><span class="srow-num num">${ar(i + 1)}</span><b>${esc(c.names[i])}</b></div>
+      <div class="seg picker-tabs" role="tablist">${CRIT.map((cr, j) => `<button type="button" data-pk="${j}" aria-pressed="${j === k}">${esc(cr.short)} <span class="num">${vals[j] == null ? '—' : ar(vals[j])}</span></button>`).join('')}</div>
+      <div class="picker-grid">${CONFIG.chipValues.map((x) => `<button type="button" class="pv ${vals[k] === x ? 'on' : ''}" data-pv="${x}">${ar(x)}</button>`).join('')}
+        <button type="button" class="pv other" data-pv="other">رقم آخر</button></div>
+      <div class="actions"><button type="button" class="btn" data-pv="clear">مسح</button><button type="button" class="btn primary" data-pv="close">تم</button></div>`;
+  };
+  paint();
+  (s.sheet.querySelector('.pv.on') || s.sheet.querySelector('.pv')).focus({ preventScroll: true });
+  s.sheet.addEventListener('click', async (e) => {
+    const tab = e.target.closest('[data-pk]');
+    if (tab) { k = +tab.dataset.pk; paint(); return; }
+    const b = e.target.closest('[data-pv]');
+    if (!b) return;
+    const v = b.dataset.pv;
+    if (v === 'close') return s.close();
+    let val;
+    if (v === 'clear') val = null;
+    else if (v === 'other') {
+      const res = await keypad({ title: `${CRIT[k].label} — ${c.names[i]}`, max: CONFIG.itemMax, value: getItems(d, w, i)[k] });
+      if (!res) return;
+      val = res.value;
+    } else val = +v;
+    const { wasDone, nowDone } = changeItem(c, w, i, k, val);
+    haptic('light');
+    refreshStudent(c, w, i, { rerenderInputs: true });
+    if (!wasDone && nowDone) { s.close(); advanceFrom(c, w, i); hideIfMissingOnly(i); return; }
+    if (val != null) {
+      const vals = getItems(d, w, i);
+      const next = [...Array(ITEMS).keys()].map((j) => (k + 1 + j) % ITEMS).find((j) => vals[j] == null);
+      if (next != null) k = next;
+    }
+    paint();
+  });
 }
 
 function stuCard(c, d, w, i) {
@@ -450,9 +566,33 @@ function finTab(c, d) {
         <td class="total num" data-total>${fmt(finalTotal(d, i))}</td></tr>`; }).join('')}
       </tbody></table></div>`;
   } else {
-    list = idxs.map((i) => finCard(c, d, i)).join('');
+    const rows = idxs.map((i) => finRow(c, d, i)).join('');
+    return `<div class="stack">
+      <div class="action-row">
+        <button type="button" class="btn ${S.ui.missingOnly ? 'primary' : ''}" data-act="missing-toggle" aria-pressed="${S.ui.missingOnly}">الناقص فقط</button>
+      </div>
+      <span id="week-status" hidden></span>
+      <p class="hint">${FINS.map((f) => `${esc(f.label)} من ${ar(f.max)}`).join(' · ')}. المجموع من ${ar(100)} يظهر عند اكتمال كل شيء.</p>
+      ${n > 12 ? search : ''}
+      <div id="stu-list" class="slist">${rows || '<p class="hint" style="text-align:center;padding:24px">لا نتائج</p>'}</div>
+    </div>`;
   }
   return `<div class="stack">${intro}${status}${search}<div id="stu-list" class="stack">${list || '<p class="hint" style="text-align:center;padding:24px">لا نتائج</p>'}</div></div>`;
+}
+
+function finRow(c, d, i) {
+  const fin = getFin(d, i);
+  const t = finalTotal(d, i);
+  const boxes = S.settings.inputMode === 'fields'
+    ? FINS.map((f, k) => `<label class="box field"><small>${esc(f.short || f.label)} /${ar(f.max)}</small><input class="score-input" inputmode="decimal" enterkeyhint="next" autocomplete="off" data-score="fin" data-idx="${i}" data-k="${k}" value="${fin[k] == null ? '' : ar(fin[k])}" placeholder="" aria-label="${esc(f.label)} — ${esc(c.names[i])}"><span class="cell-err" data-err></span></label>`).join('')
+    : FINS.map((f, k) => `<button type="button" class="box ${fin[k] == null ? '' : 'filled'}" data-act="fin-box" data-idx="${i}" data-k="${k}" aria-label="${esc(f.label)}: ${fin[k] == null ? 'فارغ' : ar(fin[k])}"><small>${esc(f.short || f.label)} /${ar(f.max)}</small><b class="num">${fin[k] == null ? '' : ar(fin[k])}</b></button>`).join('');
+  return `<div class="srow fin ${t != null ? 'complete' : ''}" data-stu="${i}">
+    <span class="srow-num num">${ar(i + 1)}</span>
+    <button type="button" class="srow-name" data-act="open-student" data-idx="${i}">${esc(c.names[i])}<small class="muted">البنائي <span data-form>${fmt(formative(d, i))}</span> / ${ar(40)}</small></button>
+    <div class="boxes" data-inputs>${boxes}</div>
+    <span class="srow-total num ${t != null ? 'full' : ''}" data-total>${t == null ? '' : fmt(t)}</span>
+    <span class="srow-act"></span>
+  </div>`;
 }
 
 function finCard(c, d, i) {
@@ -475,7 +615,22 @@ function refreshStudent(c, w, i, { rerenderInputs = false } = {}) {
   const d = dataOf(c.id);
   const n = c.names.length;
   const el = main().querySelector(`[data-stu="${i}"]`);
-  if (el) {
+  if (el && el.classList.contains('srow')) {
+    // صف الجوال المختصر
+    const isFin = w === 'fin';
+    const t = isFin ? finalTotal(d, i) : weekTotal(d, w, i);
+    const done = isFin ? t != null : studentComplete(d, w, i);
+    const tot = el.querySelector('[data-total]');
+    tot.textContent = t == null ? '' : fmt(t);
+    tot.classList.toggle('full', isFin ? t != null : t === CONFIG.itemMax * ITEMS);
+    el.classList.toggle('complete', done);
+    if (!isFin) el.querySelector('[data-rowact]').innerHTML = rowAct(done, i);
+    if (isFin) { const f = el.querySelector('[data-form]'); if (f) f.textContent = fmt(formative(d, i)); }
+    if (rerenderInputs || S.settings.inputMode !== 'fields') {
+      if (isFin) { const tmp = document.createElement('div'); tmp.innerHTML = finRow(cls(c.id), d, i); el.querySelector('[data-inputs]').innerHTML = tmp.querySelector('[data-inputs]').innerHTML; }
+      else el.querySelector('[data-inputs]').innerHTML = rowBoxes(w, i, getItems(d, w, i), c.names[i]);
+    }
+  } else if (el) {
     if (w === 'fin') {
       const t = finalTotal(d, i);
       const tot = el.querySelector('[data-total]');
@@ -505,6 +660,10 @@ function refreshStudent(c, w, i, { rerenderInputs = false } = {}) {
   if (st) st.innerHTML = w === 'fin'
     ? (finalsRemaining(d, n) ? `<span class="status-pill">${icon('warn')} باقي ${ar(finalsRemaining(d, n))} من ${ar(n)} طالب</span>` : `<span class="status-pill ok">${icon('checkCircle')} اكتملت الدرجات النهائية</span>`)
     : weekStatusHTML(d, w, n);
+  const sub = document.getElementById('week-sub');
+  if (sub) sub.textContent = w === 'fin'
+    ? (finalsRemaining(d, n) ? `باقي ${ar(finalsRemaining(d, n))}` : 'مكتملة ✓')
+    : (weekComplete(d, w, n) ? 'مكتمل ✓' : `باقي ${ar(weekRemaining(d, w, n))} من ${ar(n)}`);
   refreshChip(c, w);
   if (S.ui.selected && S.ui.selected.idx === i) refreshAside(); else if (!S.ui.selected) refreshAside();
 }
@@ -1049,15 +1208,48 @@ function showTour() {
 // =====================================================================
 // النسخ الاحتياطي والاسترجاع
 // =====================================================================
+function backupTip() {
+  const where = platform.isIOS
+    ? `<p>نحفظ <b>نسختين</b> حتى تكون درجاتك بأمان:</p>
+       <ol class="steps"><li><span class="n">${ar(1)}</span><span><b>على الجوال:</b> «حفظ في الملفات» ← <b>«على الآيفون»</b> ← «حفظ»</span></li>
+       <li><span class="n">${ar(2)}</span><span><b>في iCloud:</b> «حفظ في الملفات» ← <b>«iCloud Drive»</b> ← «حفظ»</span></li></ol>
+       <p class="hint">نسخة الجوال لا تخرج منه أبدًا. ونسخة iCloud في حسابك الشخصي فقط (لا يراها أحد غيرك)، وتبقى لو ضاع الجوال. إن ظهر «استبدال» فاضغطه.</p>`
+    : platform.isNative
+      ? `<p>تُحفظ النسخة تلقائيًا في الجوال: <b>المستندات ← متابعة الدرجات</b>. ثم تظهر قائمة المشاركة: أرسلها أيضًا إلى <b>Google Drive</b> أو لنفسك على واتساب حتى تبقى لو ضاع الجوال.</p>`
+      : `<p>سيُحفظ ملف النسخة في مجلد التنزيلات أو تظهر قائمة المشاركة. احفظه في مكان آمن خاص بك (مثل iCloud Drive أو Google Drive) أو أرسله لنفسك.</p>`;
+  return new Promise((resolve) => {
+    let go = false;
+    const s = openSheet(`<h2>${icon('shield')} أين تُحفظ النسخة؟</h2>${where}
+      <div class="actions"><button type="button" class="btn" data-x="0">لاحقًا</button><button type="button" class="btn primary" data-x="1" autofocus>فهمت، احفظ</button></div>`, { label: 'النسخة الاحتياطية', onClose: () => resolve(go) });
+    s.sheet.addEventListener('click', (e) => { const b = e.target.closest('[data-x]'); if (!b) return; go = b.dataset.x === '1'; s.close(); });
+  });
+}
+
 async function doBackup() {
+  // شرح مكان الحفظ أول مرة على الجوال فقط (على الكمبيوتر يُنزَّل الملف مباشرة)
+  if (!S.meta.backupTipSeen && (platform.isIOS || platform.isAndroid)) {
+    if (!(await backupTip())) return;
+    S.meta.backupTipSeen = true;
+    store.setMeta('backupTipSeen', true).catch(() => {});
+  }
   if (S.dirty.size) await flushSave();
   const b = store.buildBackup({ classes: S.classes, settings: S.settings, data: S.grades });
   const blob = new Blob([JSON.stringify(b)], { type: 'application/json' });
   try {
     const r = await platform.saveFile(store.backupFileName(), blob, 'application/json');
     if (r === 'cancelled') return;
+    if (platform.isIOS && !platform.isNative && r === 'shared') {
+      // النسخة الثانية تحتاج ضغطة جديدة (قيود آبل على المشاركة)
+      const second = await confirmDialog({ title: `النسخة ١ ✓ — الآن النسخة ٢ في iCloud`, text: 'اضغط «احفظ في iCloud» ثم اختر «حفظ في الملفات» ← «iCloud Drive» ← «حفظ».', ok: 'احفظ في iCloud', cancel: 'تخطَّ' });
+      if (second) {
+        const r2 = await platform.shareFile(blob, store.backupFileName(), 'application/json');
+        if (r2 === 'shared') { S.meta.lastCloudBackupAt = new Date().toISOString(); await store.setMeta('lastCloudBackupAt', S.meta.lastCloudBackupAt); }
+      }
+    }
     S.meta.lastBackupAt = new Date().toISOString();
     await store.setMeta('lastBackupAt', S.meta.lastBackupAt);
+    S.meta.changedSinceBackup = null;
+    await store.setMeta('changedSinceBackup', null);
     toast('حُفظت النسخة الاحتياطية ✓');
     if (['home', 'settings'].includes(route().name)) render();
   } catch { toast('تعذّر حفظ النسخة', { err: true }); }
@@ -1146,7 +1338,8 @@ function Live() {
   if (!S.classes.length) {
     return `${appbar({ title: 'العرض على الكمبيوتر', backBtn: false })}<div class="wrap"><div class="empty card">${ART_EMPTY}<h2>أضف شعبة أولًا</h2><p>بعدها تستطيع عرض درجاتها على شاشة الكمبيوتر أو البروجكتر.</p><button type="button" class="btn primary" data-act="new-class">${icon('plus')} إضافة شعبة</button></div></div>`;
   }
-  const scopeCtl = `<div class="card stack">
+  const backToClass = c ? `<button type="button" class="btn block" data-act="open-class" data-id="${c.id}">${icon('edit')} ارجع لرصد «${esc(c.label)}»</button>` : '';
+  const scopeCtl = `${backToClass}<div class="card stack">
     <div class="field"><label for="lv-class">الشعبة</label><select id="lv-class" class="select" data-live="class">${S.classes.map((o) => `<option value="${o.id}" ${o.id === L.classId ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></div>
     <div class="field"><span class="label">ماذا يظهر على الشاشة؟</span><div class="seg" role="group">
       <button type="button" data-act="live-scope" data-v="class" aria-pressed="${L.scope.kind === 'class'}">الشعبة كاملة</button>
@@ -1175,8 +1368,9 @@ function Live() {
     body = `<div class="card stack" style="text-align:center"><div class="skel" style="height:220px"></div><p class="hint">جارٍ تجهيز رمز الرد…</p></div>`;
   } else if (L.phase === 'answer') {
     body = `<div class="card stack" style="text-align:center"><h3>${icon('qr')} الخطوة ٣: اعرض هذا الرمز للكمبيوتر</h3>
-      <p class="hint">اضغط «مسح الرد» على الكمبيوتر ووجّه شاشة الجوال إلى كاميرته.</p>
-      <div class="qr-box"><canvas data-answer-qr width="300" height="300" aria-label="رمز الرد"></canvas></div>
+      <p class="hint">اضغط «مسح الرد» على الكمبيوتر، ثم قرّب شاشة الجوال من كاميرته (٢٠–٣٠ سم) وثبّتها حتى تُقرأ كل الأجزاء.</p>
+      <button type="button" class="qr-box qr-tap" data-act="qr-full" aria-label="تكبير الرمز"><canvas data-answer-qr width="300" height="300" aria-label="رمز الرد"></canvas></button>
+      <p class="hint">${icon('info')} ارفع سطوع الشاشة. اضغط الرمز لتكبيره.</p>
       <p class="hint" data-frame-label></p>
       <button type="button" class="btn block" data-act="live-copy">${icon('copy')} نسخ الرمز (للصق على الكمبيوتر)</button>
       <button type="button" class="btn ghost block" data-act="live-stop">إلغاء</button></div>`;
@@ -1184,7 +1378,6 @@ function Live() {
     body = `<div class="card stack">
       <div class="alert ok">${icon('checkCircle')}<div class="grow"><strong>العرض يعمل الآن</strong><p style="margin:0">أي درجة ترصدها تظهر فورًا على الشاشة. أبقِ شاشة الجوال مفتوحة أثناء العرض.</p></div></div>
       <button type="button" class="btn ${L.blank ? 'primary' : 'soft'} lg block" data-act="live-blank">${icon(L.blank ? 'eye' : 'eyeOff')} ${L.blank ? 'إظهار الدرجات' : 'إخفاء الدرجات مؤقتًا'}</button>
-      ${c ? `<button type="button" class="btn block" data-act="open-class" data-id="${c.id}">${icon('edit')} ارصد درجات «${esc(c.label)}»</button>` : ''}
       <button type="button" class="btn danger block" data-act="live-stop">${icon('power')} إيقاف العرض</button></div>`;
   } else if (L.phase === 'lost') {
     body = `<div class="card stack"><div class="alert err">${icon('warn')}<div class="grow"><strong>انقطع الاتصال بالكمبيوتر</strong><p style="margin:0">قد يكون الجوال قُفل أو تغيّرت الشبكة. أعد الاتصال بمسح رمز جديد من الكمبيوتر (اضغط «إعادة الاتصال» هناك).</p></div></div>
@@ -1235,7 +1428,8 @@ async function startLiveFromCode(code) {
     L.link = new m.PhoneLink({ iceServers: m.iceServersFrom(S.settings), onState: setLiveState });
     L.state = 'connecting';
     L.answer = await L.link.acceptOffer(code);
-    L.frames = m.splitFrames(L.answer);
+    // رموز صغيرة متتابعة بمربعات كبيرة: أسهل بكثير لكاميرا الكمبيوتر من رمز واحد كثيف
+    L.frames = m.splitFrames(L.answer, 110);
     L.phase = 'answer';
   } catch (e) {
     L.phase = 'setup'; L.state = 'idle';
@@ -1281,12 +1475,12 @@ async function paintAnswerQR() {
   const paint = () => {
     const cv = main().querySelector('[data-answer-qr]');
     if (!cv) return stopFrames();
-    m.renderQR(cv, L.frames[i], { size: 600 });
+    m.renderQR(cv, L.frames[i], { size: 720, ec: 'L' });
     if (label) label.textContent = L.frames.length > 1 ? `جزء ${ar(i + 1)} من ${ar(L.frames.length)} — يتبدّل تلقائيًا` : '';
     i = (i + 1) % L.frames.length;
   };
   paint();
-  if (L.frames.length > 1) L.frameTimer = setInterval(paint, 900);
+  if (L.frames.length > 1) L.frameTimer = setInterval(paint, 1100);
 }
 function stopFrames() { clearInterval(L.frameTimer); L.frameTimer = null; }
 
@@ -1379,6 +1573,26 @@ document.addEventListener('click', async (e) => {
       break;
     }
     case 'missing': S.ui.missingOnly = el.checked; rerenderList(); break;
+    case 'missing-toggle': S.ui.missingOnly = !S.ui.missingOnly; rerenderList(); break;
+    case 'box': openPicker(cls(p.id), p.tab, +el.dataset.idx, +el.dataset.k); break;
+    case 'fin-box': {
+      const c = cls(p.id); const i = +el.dataset.idx; const k = +el.dataset.k;
+      const res = await keypad({ title: `${FINS[k].label} — ${c.names[i]}`, max: FINS[k].max, value: getFin(dataOf(c.id), i)[k] });
+      if (!res) break;
+      setFin(dataOf(c.id), i, k, res.value);
+      markDirty(c.id); livePatchFin(c.id, i); haptic('light');
+      refreshStudent(c, 'fin', i, { rerenderInputs: true });
+      break;
+    }
+    case 'week-step': {
+      const order = [...Array(WEEKS).keys()].map((x) => x + 1).concat(['fin']);
+      const j = order.indexOf(p.tab) + +el.dataset.dir;
+      if (j >= 0 && j < order.length) { p.tab = order[j]; S.ui.tab[p.id] = p.tab; S.ui.search = ''; p.painted = true; render({ scrollTop: true }); }
+      break;
+    }
+    case 'week-pick': showWeekPicker(p); break;
+    case 'week-tools': showWeekTools(p); break;
+    case 'class-menu': showClassMenu(p); break;
     case 'open-student': {
       const idx = +el.dataset.idx;
       if (ASIDE.matches && r.name === 'class') { S.ui.selected = { id: p.id, idx }; refreshAside(); }
@@ -1394,7 +1608,7 @@ document.addEventListener('click', async (e) => {
       const d = new Date();
       const v = ar(`${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`);
       setWeekMeta(dataOf(p.id), p.tab, 'date', v);
-      const inp = main().querySelector('[data-meta="date"]'); if (inp) inp.value = v;
+      const inp = document.querySelector('[data-meta="date"]'); if (inp) inp.value = v;
       markDirty(p.id); livePatchMeta(p.id, p.tab); haptic('light');
       toast('أُضيف تاريخ اليوم');
       break;
@@ -1468,6 +1682,11 @@ document.addEventListener('click', async (e) => {
       });
       break;
     }
+    case 'qr-full': {
+      const box = el; box.classList.toggle('full');
+      document.body.classList.toggle('qr-fullscreen', box.classList.contains('full'));
+      break;
+    }
     case 'live-copy': if (await platform.copyText(L.answer || '')) toast('نُسخ الرمز ✓ الصقه في صفحة العرض («لصق الرد»)'); break;
     case 'copy-view': if (await platform.copyText(S.settings.viewUrl || defaultViewUrl())) toast('نُسخ الرابط ✓'); break;
     case 'live-blank': L.blank = !L.blank; liveSend({ type: 'blank', on: L.blank }); haptic('light'); render(); break;
@@ -1476,6 +1695,57 @@ document.addEventListener('click', async (e) => {
     default: break;
   }
 });
+
+// ----- نوافذ شاشة الرصد (الجوال) -----
+function showWeekPicker(p) {
+  const c = cls(p.id); const d = dataOf(c.id); const n = c.names.length;
+  const cell = (w) => {
+    const done = weekComplete(d, w, n);
+    const rem = weekRemaining(d, w, n);
+    const started = rem < n;
+    const meta = getWeekMeta(d, w);
+    return `<button type="button" class="wk ${done ? 'done' : ''} ${p.tab === w ? 'on' : ''}" data-act="tab" data-tab="${w}">
+      <b>أسبوع ${ar(w)}</b><small>${done ? '✓ مكتمل' : started ? `باقي ${ar(rem)}` : 'لم يبدأ'}${meta.date ? ` · ${esc(meta.date)}` : ''}</small></button>`;
+  };
+  const finDone = !finalsRemaining(d, n);
+  const s = openSheet(`<h2>اختر الأسبوع</h2>
+    <div class="wk-grid">${[...Array(WEEKS).keys()].map((x) => cell(x + 1)).join('')}</div>
+    <button type="button" class="wk wide ${finDone ? 'done' : ''} ${p.tab === 'fin' ? 'on' : ''}" data-act="tab" data-tab="fin"><b>الدرجات النهائية</b><small>${finDone ? '✓ مكتملة' : `باقي ${ar(finalsRemaining(d, n))}`}</small></button>`, { label: 'اختر الأسبوع' });
+  s.sheet.addEventListener('click', (e) => { if (e.target.closest('[data-act="tab"]')) setTimeout(() => s.close(), 0); });
+}
+
+function showWeekTools(p) {
+  const c = cls(p.id); const d = dataOf(c.id);
+  if (p.tab === 'fin') return;
+  const meta = getWeekMeta(d, p.tab);
+  const s = openSheet(`<h2>أدوات الأسبوع ${ar(p.tab)}</h2>
+    <div class="stack">
+      <div class="field"><label for="wdate">التاريخ</label><div class="row"><input id="wdate" class="input grow" data-meta="date" value="${esc(meta.date)}" placeholder="مثال: ١٢/١٠" autocomplete="off"><button type="button" class="btn" data-act="today">${icon('calendar')} اليوم</button></div></div>
+      <div class="field"><label for="wlesson">عنوان الدرس</label><input id="wlesson" class="input" data-meta="lesson" value="${esc(meta.lesson)}" placeholder="اكتب عنوان الدرس" autocomplete="off"></div>
+      <div class="field"><span class="label">تعبئة سريعة (الخانات الفارغة فقط)</span>
+        <div class="fill-grid">${CRIT.map((cr, k) => `<button type="button" class="btn soft" data-act="fill" data-k="${k}">${esc(cr.label)} ${ar(CONFIG.itemMax)}</button>`).join('')}
+        <button type="button" class="btn success" data-act="fill" data-k="all">${icon('check')} الكل ${ar(CONFIG.itemMax)}</button></div></div>
+    </div>
+    <div class="actions"><button type="button" class="btn primary" data-x autofocus>تم</button></div>`, { label: 'أدوات الأسبوع', onClose: () => { if (route().name === 'class') rerenderList(); } });
+  s.sheet.addEventListener('click', (e) => {
+    if (e.target.closest('[data-x]') || e.target.closest('[data-act="fill"]')) setTimeout(() => s.close(), 0);
+  });
+}
+
+function showClassMenu(p) {
+  const c = cls(p.id);
+  const item = (act, ic, t, sub, extra = '') => `<button type="button" class="list-item" data-act="${act}" data-id="${c.id}" ${extra}>${icon(ic)}<span class="grow"><strong>${t}</strong><small>${sub}</small></span></button>`;
+  const s = openSheet(`<h2>${esc(c.label)}</h2>
+    <div class="list">
+      ${item('edit-class', 'users', 'الطلاب', 'إضافة، تعديل الأسماء، حذف، ترتيب')}
+      ${item('export-xlsx', 'sheet', 'تصدير Excel', 'كشف المتابعة الرسمي للطباعة')}
+      ${item('go-live', 'monitor', 'عرض على الكمبيوتر', 'اعرض الدرجات على البروجكتر')}
+      ${item('go', 'send', 'نقل طلاب', 'لمعلم آخر أو لشعبة أخرى', 'data-to="transferOut"')}
+      ${item('go', 'inbox', 'استقبال طلاب منقولين', 'من ملف أرسله معلم آخر', 'data-to="transferIn"')}
+    </div>
+    <div class="actions"><button type="button" class="btn" data-x>إغلاق</button></div>`, { label: 'خيارات الشعبة' });
+  s.sheet.addEventListener('click', (e) => { if (e.target.closest('[data-act]') || e.target.closest('[data-x]')) setTimeout(() => s.close(), 0); });
+}
 
 function rerenderList() {
   const r = route();
@@ -1487,6 +1757,9 @@ function rerenderList() {
   const pos = active ? document.activeElement.selectionStart : null;
   box.innerHTML = r.p.tab === 'fin' ? finTab(c, dataOf(c.id)) : weekTab(c, dataOf(c.id), r.p.tab);
   if (active) { const s = box.querySelector('[data-search]'); s.focus(); try { s.setSelectionRange(pos, pos); } catch { /* */ } }
+  const sub = document.getElementById('week-sub');
+  if (sub) { const d = dataOf(c.id); const n = c.names.length; const w = r.p.tab;
+    sub.textContent = w === 'fin' ? (finalsRemaining(d, n) ? `باقي ${ar(finalsRemaining(d, n))}` : 'مكتملة ✓') : (weekComplete(d, w, n) ? 'مكتمل ✓' : `باقي ${ar(weekRemaining(d, w, n))} من ${ar(n)}`); }
 }
 
 async function onScoreAction(act, el, p) {
@@ -1645,6 +1918,19 @@ async function loadState() {
   S.meta = all.meta || {};
 }
 
+function maybeNagBackup() {
+  if (!S.meta.changedSinceBackup) return;
+  const days = (Date.now() - new Date(S.meta.changedSinceBackup).getTime()) / 86400000;
+  const today = new Date().toDateString();
+  if (!hasAnyGrades() || days <= CONFIG.backupReminderDays || S.meta.nagDay === today) return;
+  S.meta.nagDay = today;
+  store.setMeta('nagDay', today).catch(() => {});
+  setTimeout(async () => {
+    const ok = await confirmDialog({ title: 'مرّ أكثر من أسبوع بدون نسخة احتياطية', text: 'درجاتك محفوظة على هذا الجوال فقط. احفظ نسخة الآن (ضغطة واحدة) حتى لا تضيع إن ضاع الجوال أو حُذف التطبيق.', ok: 'احفظ نسخة الآن', cancel: 'لاحقًا' });
+    if (ok) doBackup();
+  }, 600);
+}
+
 function registerSW() {
   if (platform.isNative || !('serviceWorker' in navigator) || !window.isSecureContext) return;
   const hadController = !!navigator.serviceWorker.controller; // أول زيارة: لا نعيد التحميل
@@ -1685,6 +1971,7 @@ async function boot() {
   render();
   setSaveState(S.classes.length ? 'saved' : '');
   if (!S.settings.tourDone) setTimeout(showTour, 400);
+  else maybeNagBackup();
   registerSW();
 }
 

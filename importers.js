@@ -54,6 +54,8 @@ export async function readNamesFromFile(file, opts = {}) {
   }
 
   const ocr = kind === 'pdf-ocr' || kind === 'image-ocr';
+  // ترويسة/تذييل يتكرر في كل صفحة (اسم المدرسة، المعلم…) ليس طالبًا
+  if (kind === 'pdf' || kind === 'pdf-ocr') rows = dropRepeatedLines(rows);
   const pick = ocr ? pickOcrNames(rows) : pickNameColumn(rows);
   if (!pick.names.length) throw new Error(kind === 'pdf-ocr' ? ERR_SCANNED : kind === 'image-ocr' ? ERR_IMAGE : ERR_EMPTY);
   const out = { names: pick.names, kind };
@@ -364,6 +366,14 @@ function looksReversed(strs) {
 // ---------- اختيار عمود الأسماء ----------
 
 const LEAD_NUM = /^[\s([]*[0-9٠-٩۰-۹]+[\s).:\-ـ/\]]*/;
+
+// صف يتكرر نصه ٣ مرات أو أكثر في ملف PDF = ترويسة أو تذييل صفحة، لا اسم طالب
+export function dropRepeatedLines(rows) {
+  const key = (r) => (Array.isArray(r) ? r : [r]).map((c) => String(c ?? '').trim()).filter(Boolean).join(' ').replace(/\s+/g, ' ');
+  const counts = new Map();
+  for (const r of rows || []) { const k = key(r); if (k) counts.set(k, (counts.get(k) || 0) + 1); }
+  return (rows || []).filter((r) => (counts.get(key(r)) || 0) < 3);
+}
 
 export function pickNameColumn(rows) {
   const clean = (rows || []).map(r => (Array.isArray(r) ? r : [r]).map(c => String(c ?? '').trim()));

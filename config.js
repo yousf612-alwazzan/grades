@@ -16,11 +16,11 @@ export const CONFIG = {
   ],
   itemMax: 5,
   finals: [
-    { key: 'p1', label: 'المشروع الأول', max: 10 },
-    { key: 'p2', label: 'المشروع الثاني', max: 20 },
-    { key: 'pr', label: 'الاختبار العملي', max: 30 },
+    { key: 'p1', label: 'المشروع الأول', short: 'مشروع ١', max: 10 },
+    { key: 'p2', label: 'المشروع الثاني', short: 'مشروع ٢', max: 20 },
+    { key: 'pr', label: 'الاختبار العملي', short: 'العملي', max: 30 },
   ],
-  maxStudents: 46,
+  maxStudents: 60,
 
   // أزرار الإدخال السريع (نمط الأزرار)
   chipValues: [5, 4.5, 4, 3, 2, 1, 0],

@@ -1,6 +1,6 @@
 // Service Worker: يخزّن كل ملفات التطبيق ليعمل بدون إنترنت (cache-first بنسخة ثابتة).
 // CACHE_VERSION وقائمة الملفات يكتبهما سكربت البناء scripts/build-web.mjs.
-const CACHE_VERSION = '8500916a0729';
+const CACHE_VERSION = 'ccc6b656adb2';
 const CACHE = 'grades-' + CACHE_VERSION;
 const PRECACHE = ["./","./app.css","./app.js","./config.js","./fonts/cairo-arabic-400-normal.woff2","./fonts/cairo-arabic-600-normal.woff2","./fonts/cairo-arabic-800-normal.woff2","./fonts/cairo-latin-400-normal.woff2","./fonts/cairo-latin-600-normal.woff2","./fonts/cairo-latin-800-normal.woff2","./grades-core.js","./icons/apple-touch-icon.png","./icons/favicon.svg","./icons/icon-192.png","./icons/icon-512.png","./icons/maskable-512.png","./importers.js","./index.html","./live.js","./manifest.webmanifest","./platform.js","./store.js","./transfer.js","./ui.js","./vendor/fflate.min.js","./vendor/jsQR.js","./vendor/jszip.min.js","./vendor/pdfjs/pdf.min.mjs","./vendor/pdfjs/pdf.worker.min.mjs","./vendor/qrcode.js","./vendor/tesseract/LICENSE.txt","./vendor/tesseract/core/tesseract-core-lstm.wasm.js","./vendor/tesseract/core/tesseract-core-simd-lstm.wasm.js","./vendor/tesseract/lang/ara.traineddata.gz","./vendor/tesseract/tesseract.min.js","./vendor/tesseract/worker.min.js","./view.css","./view.html","./view.js","./view.webmanifest","./xlsx-export.js"];
 
@@ -32,6 +32,7 @@ self.addEventListener('message', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  if (CACHE_VERSION.startsWith('__')) return; // وضع التطوير (web/src بدون بناء): بلا تخزين مؤقت
   const req = event.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);

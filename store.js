@@ -85,7 +85,8 @@ export async function loadAll() {
     classes: list,
     settings: { ...CONFIG.defaultSettings, ...(settings || {}) },
     grades,
-    meta: { lastBackupAt: meta.lastBackupAt ?? null, schema: SCHEMA, persist: meta.persist ?? 'unsupported' },
+    // persist = null حتى يُطلب التخزين الدائم أول مرة
+    meta: { ...meta, lastBackupAt: meta.lastBackupAt ?? null, schema: SCHEMA, persist: meta.persist ?? null },
   };
 }
 

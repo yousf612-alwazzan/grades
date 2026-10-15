@@ -262,8 +262,8 @@ export class FrameCollector {
 }
 
 // ---------- رسم QR ----------
-export function renderQR(canvas, text, { size = 320, dark = '#000000', light = '#ffffff' } = {}) {
-  const qr = window.qrcode(0, 'M');
+export function renderQR(canvas, text, { size = 320, dark = '#000000', light = '#ffffff', ec = 'M' } = {}) {
+  const qr = window.qrcode(0, ec);
   qr.addData(String(text), 'Byte');
   qr.make();
   const count = qr.getModuleCount();
@@ -285,6 +285,22 @@ export function renderQR(canvas, text, { size = 320, dark = '#000000', light = '
 }
 
 // ---------- ماسح QR بالكاميرا ----------
+/** يقرأ QR من صورة/فيديو. mode: 0 = الصورة كاملة، 1 = وسطها ٦٠٪، 2 = وسطها ٤٠٪ (تكبير لرمز صغير بعيد). */
+export function scanImage(src, vw, vh, mode = 0, canvas = document.createElement('canvas')) {
+  const frac = mode === 0 ? 1 : mode === 1 ? 0.6 : 0.4;
+  const sw = Math.round(vw * frac); const sh = Math.round(vh * frac);
+  const sx = Math.round((vw - sw) / 2); const sy = Math.round((vh - sh) / 2);
+  const scale = Math.min(1, 960 / Math.max(sw, sh));
+  const w = Math.round(sw * scale); const h = Math.round(sh * scale);
+  if (canvas.width !== w) canvas.width = w;
+  if (canvas.height !== h) canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(src, sx, sy, sw, sh, 0, 0, w, h);
+  const img = ctx.getImageData(0, 0, w, h);
+  const r = window.jsQR(img.data, w, h, { inversionAttempts: mode === 0 ? 'attemptBoth' : 'dontInvert' });
+  return r && r.data ? r.data : null;
+}
+
 function scanError(code, msg) { const e = new Error(msg); e.code = code; return e; }
 
 export class QrScanner {
@@ -311,7 +327,7 @@ export class QrScanner {
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1080 } },
       });
     } catch (e) {
       const n = e && e.name;
@@ -342,7 +358,7 @@ export class QrScanner {
     this.timer = setTimeout(async () => {
       try { await this.tick(); } catch { /* إطار غير صالح */ }
       this.loop();
-    }, 125); // ≈ 8 إطارات في الثانية
+    }, 90); // ≈ ١٠ محاولات في الثانية
   }
 
   async tick() {
@@ -353,18 +369,10 @@ export class QrScanner {
       const codes = await this.detector.detect(v);
       if (codes && codes.length) text = codes[0].rawValue;
     } else if (window.jsQR) {
-      const scale = Math.min(1, 640 / Math.max(v.videoWidth, v.videoHeight));
-      const w = Math.round(v.videoWidth * scale);
-      const h = Math.round(v.videoHeight * scale);
+      // نتناوب بين: الصورة كاملة بدقة جيدة، ووسط الصورة مكبّرًا (رمز جوال بعيد عن كاميرا الكمبيوتر يكون صغيرًا)
+      this.mode = ((this.mode || 0) + 1) % 3;
       if (!this.canvas) this.canvas = document.createElement('canvas');
-      const c = this.canvas;
-      if (c.width !== w) c.width = w;
-      if (c.height !== h) c.height = h;
-      const ctx = c.getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(v, 0, 0, w, h);
-      const img = ctx.getImageData(0, 0, w, h);
-      const r = window.jsQR(img.data, w, h, { inversionAttempts: 'attemptBoth' });
-      if (r && r.data) text = r.data;
+      text = scanImage(v, v.videoWidth, v.videoHeight, this.mode, this.canvas);
     }
     if (text && this.running) {
       const now = Date.now();
