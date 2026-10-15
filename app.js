@@ -232,6 +232,7 @@ function Home() {
         <li><span class="n">${ar(3)}</span><span>ارصد الدرجات ثم صدّر الكشف</span></li>
       </ol>
       <button type="button" class="btn primary lg block" data-act="new-class">${icon('plus')} إضافة شعبة</button>
+      <button type="button" class="btn lg block" style="margin-top:8px" data-act="import-classes">${icon('upload')} إنشاء الشعب من ملف (Excel أو PDF)</button>
       <p class="hint" style="margin-top:12px">لديك نسخة احتياطية؟ <button type="button" class="btn ghost sm" data-act="restore">استرجاع نسخة</button></p></div>`;
   } else {
     body = `<div class="home-grid stack">${S.classes.map(classCard).join('')}</div>`;
@@ -246,6 +247,7 @@ function Home() {
     ${S.classes.length ? `<button type="button" class="btn primary lg fab" data-act="new-class">${icon('plus')} إضافة شعبة</button>` : ''}
     <div class="section-title">أدوات</div>
     <div class="list">
+      <button type="button" class="list-item" data-act="import-classes">${icon('upload')}<span class="grow"><strong>إنشاء شعب من ملف</strong><small>كشف Excel أو PDF فيه شعبة أو أكثر</small></span></button>
       <button type="button" class="list-item" data-act="backup">${icon('download')}<span class="grow"><strong>نسخة احتياطية</strong><small>احفظ كل الشعب والدرجات في ملف</small></span></button>
       <button type="button" class="list-item" data-act="restore">${icon('upload')}<span class="grow"><strong>استرجاع نسخة</strong><small>من ملف نسخة احتياطية سابق</small></span></button>
       <button type="button" class="list-item" data-act="go" data-to="transferIn">${icon('inbox')}<span class="grow"><strong>استقبال طلاب منقولين</strong><small>من ملف نقل أرسله معلم آخر</small></span></button>
@@ -870,11 +872,13 @@ async function deleteClass(id) {
 }
 
 // معاينة الأسماء المستوردة من ملف قبل الإضافة
-async function importFileToDraft(p) {
-  const file = await platform.pickFile('.xlsx,.xls,.csv,.txt,.pdf,.jpg,.jpeg,.png,application/pdf,text/csv,text/plain,image/*,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  if (!file) return;
+const IMPORT_ACCEPT = '.xlsx,.xls,.csv,.txt,.pdf,.jpg,.jpeg,.png,application/pdf,text/csv,text/plain,image/*,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+// يختار ملفًا ويقرأ الأسماء منه (مع تقدّم القراءة الضوئية). يرجع null عند الإلغاء أو الخطأ.
+async function pickAndReadNames() {
+  const file = await platform.pickFile(IMPORT_ACCEPT);
+  if (!file) return null;
   let close = toast('جارٍ قراءة الملف…', { ms: 0 });
-  let res;
   let lastPct = -1;
   const onProgress = (pr) => {
     if (!pr || pr.stage !== 'ocr') return;
@@ -886,13 +890,96 @@ async function importFileToDraft(p) {
   };
   try {
     const { readNamesFromFile } = await import('./importers.js');
-    res = await readNamesFromFile(file, { onProgress });
+    const res = await readNamesFromFile(file, { onProgress });
+    close();
+    res.fileLabel = String(file.name || '').replace(/\.[^.]+$/, '');
+    return res;
   } catch (e) {
     close();
-    toast(e && e.message && /[؀-ۿ]/.test(e.message) ? e.message : 'تعذّرت قراءة الملف. جرّب حفظه بصيغة xlsx أو انسخ الأسماء والصقها.', { err: true, ms: 6000 });
-    return;
+    toast(e && e.message && /[\u0600-\u06FF]/.test(e.message) ? e.message : 'تعذّرت قراءة الملف. جرّب حفظه بصيغة xlsx أو انسخ الأسماء والصقها.', { err: true, ms: 6000 });
+    return null;
   }
-  close();
+}
+
+const OCR_NOTE = () => `<div class="alert warn">${icon('eye')}<div class="grow"><strong>قُرئت الأسماء من صورة</strong><p style="margin:0">القراءة الآلية قد تخطئ في بعض الحروف؛ راجع الأسماء وصحّحها.</p></div></div>`;
+
+// ملف فيه أكثر من شعبة: يختار المعلم شعبة واحدة، أو ينشئ كل الشعب
+function chooseGroup(res, { allowCreateAll = true } = {}) {
+  return new Promise((resolve) => {
+    let result = null;
+    const s = openSheet(`<h2>الملف فيه ${ar(res.groups.length)} شعب</h2>
+      <p>اختر الشعبة التي تريد استيراد طلابها${allowCreateAll ? '، أو أنشئ كل الشعب مرة واحدة' : ''}.</p>
+      <div class="list">${res.groups.map((g, i) => `<button type="button" class="list-item" data-g="${i}">${icon('users')}<span class="grow"><strong>${esc(g.label)}</strong><small>${students(g.names.length)}</small></span>${icon('fwd')}</button>`).join('')}</div>
+      <div class="actions">${allowCreateAll ? `<button type="button" class="btn primary" data-g="all">${icon('plus')} أنشئ كل الشعب (${ar(res.groups.length)})</button>` : ''}<button type="button" class="btn" data-g="cancel">إلغاء</button></div>`,
+      { label: 'اختيار الشعبة', onClose: () => resolve(result) });
+    s.sheet.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-g]');
+      if (!b) return;
+      const v = b.dataset.g;
+      result = v === 'cancel' ? null : v === 'all' ? 'all' : res.groups[+v];
+      s.close();
+    });
+  });
+}
+
+// إنشاء عدة شعب من ملف واحد (من الرئيسية أو من المحرر)
+async function createClassesFromGroups(groups, ocr) {
+  return new Promise((resolve) => {
+    const s = openSheet(`<h2>إنشاء ${ar(groups.length)} شعب</h2>
+      <p>عدّل اسم أي شعبة أو ألغِ تحديدها. يمكنك مراجعة أسماء الطلاب لاحقًا من «الطلاب» داخل كل شعبة.</p>
+      ${ocr ? OCR_NOTE() : ''}
+      <div class="list">${groups.map((g, i) => `<div class="pick"><input type="checkbox" data-cg="${i}" checked aria-label="تحديد"><input class="input grow" data-cg-label="${i}" value="${esc(g.label)}" aria-label="اسم الشعبة"><span class="meta num">${students(cleanNames(g.names, [], MAX_STUDENTS).names.length)}</span></div>`).join('')}</div>
+      <div class="actions"><button type="button" class="btn" data-cx="0">إلغاء</button><button type="button" class="btn primary" data-cx="1">إنشاء الشعب</button></div>`, { wide: true, label: 'إنشاء الشعب', onClose: () => resolve(created) });
+    let created = 0;
+    s.sheet.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-cx]');
+      if (!b) return;
+      if (b.dataset.cx === '1') {
+        for (const x of s.sheet.querySelectorAll('[data-cg]:checked')) {
+          const i = +x.dataset.cg;
+          const label = s.sheet.querySelector(`[data-cg-label="${i}"]`).value.trim() || groups[i].label;
+          const c = { id: uid(), label, names: cleanNames(groups[i].names, [], MAX_STUDENTS).names };
+          S.classes.push(c);
+          S.grades[c.id] = emptyClassData();
+          await store.saveGrades(c.id, S.grades[c.id]);
+          created++;
+        }
+        if (created) await saveClassesNow();
+      }
+      s.close();
+    });
+  });
+}
+
+async function importClassesFromFile() {
+  const res = await pickAndReadNames();
+  if (!res) return;
+  const ocr = res.ocr || /ocr/.test(res.kind || '');
+  const groups = res.groups || [{ label: res.label || res.fileLabel || 'شعبة جديدة', names: res.names }];
+  const n = await createClassesFromGroups(groups, ocr);
+  if (n) {
+    S.stack = [{ name: 'home', p: {} }];
+    history.replaceState({ depth: 1 }, '');
+    render({ scrollTop: true });
+    toast(n === 1 ? 'أُنشئت الشعبة ✓' : `أُنشئت ${ar(n)} شعب ✓`);
+  }
+}
+
+async function importFileToDraft(p) {
+  const res0 = await pickAndReadNames();
+  if (!res0) return;
+  let res = res0;
+  if (res.groups) {
+    const g = await chooseGroup(res, { allowCreateAll: !p.id && !p.draft.rows.length });
+    if (!g) return;
+    if (g === 'all') {
+      const n = await createClassesFromGroups(res.groups, res.ocr || /ocr/.test(res.kind || ''));
+      if (n) { p.dirty = false; p.confirmedLeave = true; S.stack = [{ name: 'home', p: {} }]; history.replaceState({ depth: 1 }, ''); render({ scrollTop: true }); toast(`أُنشئت ${ar(n)} شعب ✓`); }
+      return;
+    }
+    res = { ...res, names: g.names, label: g.label };
+  }
+  if (res.label && !p.draft.label) { p.draft.label = res.label; const inp = document.getElementById('cls-label'); if (inp) inp.value = res.label; }
   const existing = p.draft.rows.map((r) => r.name);
   const cleaned = cleanNames(res.names, existing, 999);
   if (!cleaned.names.length) {
@@ -1554,6 +1641,7 @@ document.addEventListener('click', async (e) => {
     case 'back': back(); break;
     case 'go': go(el.dataset.to, el.dataset.id ? { id: el.dataset.id } : {}); break;
     case 'new-class': go('editor', {}); break;
+    case 'import-classes': importClassesFromFile(); break;
     case 'open-class': S.ui.selected = null; S.ui.missingOnly = false; go('class', { id: el.dataset.id }); break;
     case 'resume': {
       e.stopPropagation();

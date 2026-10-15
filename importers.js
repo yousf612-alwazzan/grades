@@ -26,11 +26,12 @@ export async function readNamesFromFile(file, opts = {}) {
   const isPng = head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4E && head[3] === 0x47;
   const isJpg = head[0] === 0xFF && head[1] === 0xD8 && head[2] === 0xFF;
 
-  let kind, rows;
+  let kind, rows, sheets = null;
   if (name.endsWith('.xls') || isOle) throw new Error(ERR_XLS);
   if (name.endsWith('.xlsx') || name.endsWith('.xlsm') || (isZip && !name.endsWith('.pdf'))) {
     kind = 'xlsx';
-    rows = await rowsFromXlsx(buf);
+    sheets = await sheetsFromXlsx(buf);
+    rows = sheets.flatMap(s => s.rows);
   } else if (name.endsWith('.pdf') || isPdf) {
     ({ kind, rows } = await readPdf(buf, onProgress, ocrOpts));
   } else if (isPng || isJpg || /\.(png|jpe?g)$/.test(name)) {
@@ -54,12 +55,35 @@ export async function readNamesFromFile(file, opts = {}) {
   }
 
   const ocr = kind === 'pdf-ocr' || kind === 'image-ocr';
+  const picker = ocr ? pickOcrNames : pickNameColumn;
   // ترويسة/تذييل يتكرر في كل صفحة (اسم المدرسة، المعلم…) ليس طالبًا
-  if (kind === 'pdf' || kind === 'pdf-ocr') rows = dropRepeatedLines(rows);
-  const pick = ocr ? pickOcrNames(rows) : pickNameColumn(rows);
-  if (!pick.names.length) throw new Error(kind === 'pdf-ocr' ? ERR_SCANNED : kind === 'image-ocr' ? ERR_IMAGE : ERR_EMPTY);
-  const out = { names: pick.names, kind };
-  if (pick.header) out.column = pick.header;
+  const repeated = (kind === 'pdf' || kind === 'pdf-ocr') ? repeatedKeys(rows) : new Set();
+  const keep = (rs) => rs.filter(r => !repeated.has(rowKey(r)));
+
+  // تقسيم إلى شعب: لكل ورقة Excel، ثم حسب عناوين «الصف … / رقم» داخل الورقة أو ملف PDF
+  const parts = [];
+  for (const src of sheets || [{ name: '', rows }]) {
+    const secs = splitSections(src.rows);
+    for (const sec of secs) parts.push({ label: sec.label || (secs.length === 1 ? src.name : ''), rows: sec.rows });
+  }
+  const groups = [];
+  for (const part of parts) {
+    const pk = picker(keep(part.rows));
+    if (!pk.names.length) continue;
+    const label = part.label || '';
+    const same = groups.find(g => g.label && g.label === label);
+    if (same) same.names.push(...pk.names); else groups.push({ label, names: pk.names, header: pk.header });
+  }
+  // ورقة ملاحظات أو قسم فيه اسم أو اسمان بجانب شعب حقيقية = ليس شعبة
+  if (groups.some(g => g.names.length >= 5)) for (let i = groups.length - 1; i >= 0; i--) if (groups[i].names.length < 3) groups.splice(i, 1);
+  const names = groups.flatMap(g => g.names);
+  if (!names.length) throw new Error(kind === 'pdf-ocr' ? ERR_SCANNED : kind === 'image-ocr' ? ERR_IMAGE : ERR_EMPTY);
+  const out = { names, kind };
+  const header = groups.find(g => g.header)?.header;
+  if (header) out.column = header;
+  if (groups.length === 1 && groups[0].label) out.label = groups[0].label;
+  // أكثر من شعبة: نعيدها منفصلة ليختار المعلم (الأقسام بلا اسم تأخذ رقمًا)
+  if (groups.length > 1) out.groups = groups.map((g, i) => ({ label: g.label || ('شعبة ' + (i + 1)), names: g.names }));
   if (ocr) out.ocr = true;
   return out;
 }
@@ -136,6 +160,92 @@ function colIndex(ref) {
   let n = 0;
   for (const ch of m[1].toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64);
   return n - 1;
+}
+
+// كل أوراق المصنف بالترتيب: [{name, rows}]
+export async function sheetsFromXlsx(arrayBuffer) {
+  const JSZip = globalThis.JSZip;
+  if (!JSZip) throw new Error(ERR_XLSX);
+  let zip;
+  try { zip = await JSZip.loadAsync(arrayBuffer); } catch { throw new Error(ERR_XLSX); }
+  const read = async p => { const f = zip.file(p); return f ? f.async('string') : null; };
+  const wb = await read('xl/workbook.xml');
+  const rels = await read('xl/_rels/workbook.xml.rels');
+  const list = [];
+  if (wb && rels) {
+    const relEls = byTag(xmlDoc(rels), 'Relationship');
+    for (const sh of byTag(xmlDoc(wb), 'sheet')) {
+      const rid = sh.getAttribute('r:id') || sh.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+      const rel = relEls.find(x => x.getAttribute('Id') === rid);
+      if (!rel) continue;
+      const target = rel.getAttribute('Target');
+      const p = target.startsWith('/') ? target.slice(1) : 'xl/' + target.replace(/^\.\//, '');
+      if (zip.file(p)) list.push({ name: sh.getAttribute('name') || '', path: p });
+    }
+  }
+  if (!list.length) for (const p of Object.keys(zip.files).filter(p => /^xl\/worksheets\/[^/]+\.xml$/.test(p)).sort()) list.push({ name: '', path: p });
+  if (!list.length) throw new Error(ERR_XLSX);
+  const shared = [];
+  const ss = await read('xl/sharedStrings.xml');
+  if (ss) for (const si of byTag(xmlDoc(ss), 'si')) shared.push(richText(si));
+  const out = [];
+  for (const sh of list) out.push({ name: sh.name, rows: parseSheetRows(xmlDoc(await read(sh.path)), shared) });
+  return out;
+}
+
+function parseSheetRows(sheet, shared) {
+  const rows = [];
+  byTag(sheet, 'row').forEach((rowEl, ri) => {
+    const r = Number(rowEl.getAttribute('r')) - 1;
+    const rowIdx = Number.isInteger(r) && r >= 0 ? r : ri;
+    const cells = [];
+    let next = 0;
+    for (const c of byTag(rowEl, 'c')) {
+      let ci = colIndex(c.getAttribute('r'));
+      if (ci < 0) ci = next;
+      next = ci + 1;
+      const t = c.getAttribute('t');
+      const v = byTag(c, 'v')[0]?.textContent ?? '';
+      let val;
+      if (t === 's') val = shared[Number(v)] ?? '';
+      else if (t === 'inlineStr') { const is = byTag(c, 'is')[0]; val = is ? richText(is) : ''; }
+      else val = v;
+      cells[ci] = String(val).trim();
+    }
+    rows[rowIdx] = Array.from(cells, x => x ?? '');
+  });
+  return Array.from(rows, r => r || []).filter(r => r.some(c => c !== ''));
+}
+
+// ---------- تقسيم الملف إلى شعب ----------
+// يستخرج اسم الشعبة من عنوان مثل «كشف أسماء طلبة الصف العاشر / ٣ — العام الدراسي…» أو «الفصل: ١٠-٢».
+// لا يُعد عنوانًا إلا إذا احتوى رقمًا (حتى لا يُخلط بـ «الفصل الدراسي الأول»).
+export function classLabelFrom(text) {
+  const t = String(text ?? '').replace(/\s+/g, ' ').trim();
+  const m = /(?:^|\s)(?:الصف|الفصل|الشعبة|شعبة|فصل)\s*[:：]?\s*((?:[^\s\d٠-٩—–(،:\/\\-]+\s*){0,3}[\/\\\-–]?\s*[\d٠-٩]+(?:\s*[\/\\\-–]\s*[\d٠-٩]+)?)/.exec(t);
+  if (!m) return null;
+  const label = m[1].replace(/\s*([\/\\\-–])\s*/g, ' $1 ').replace(/\s+/g, ' ').replace(/^[\/\\\-–]\s*/, '').trim();
+  if (/^(الدراسي|الأول|الثاني)/.test(label)) return null;
+  return /[\d٠-٩]/.test(label) ? label : null;
+}
+
+// يقسم الصفوف عند كل عنوان شعبة؛ يدمج الأقسام ذات الاسم نفسه (صفحة «تابع»).
+export function splitSections(rows) {
+  const secs = [];
+  let cur = null;
+  for (const row of rows || []) {
+    const line = (Array.isArray(row) ? row : [row]).join(' ');
+    const label = line.length < 160 ? classLabelFrom(line) : null;
+    if (label) {
+      const key = label.replace(/\s/g, '');
+      cur = secs.find(x => x.key === key);
+      if (!cur) { cur = { key, label, rows: [] }; secs.push(cur); }
+      continue;
+    }
+    if (!cur) { cur = { key: '', label: '', rows: [] }; secs.push(cur); }
+    cur.rows.push(row);
+  }
+  return secs.map(({ label, rows }) => ({ label, rows }));
 }
 
 export async function rowsFromXlsx(arrayBuffer) {
@@ -368,6 +478,13 @@ function looksReversed(strs) {
 const LEAD_NUM = /^[\s([]*[0-9٠-٩۰-۹]+[\s).:\-ـ/\]]*/;
 
 // صف يتكرر نصه ٣ مرات أو أكثر في ملف PDF = ترويسة أو تذييل صفحة، لا اسم طالب
+function rowKey(r) { return (Array.isArray(r) ? r : [r]).map((c) => String(c ?? '').trim()).filter(Boolean).join(' ').replace(/\s+/g, ' '); }
+function repeatedKeys(rows) {
+  const counts = new Map();
+  for (const r of rows || []) { const k = rowKey(r); if (k) counts.set(k, (counts.get(k) || 0) + 1); }
+  return new Set([...counts].filter(([, n]) => n >= 3).map(([k]) => k));
+}
+
 export function dropRepeatedLines(rows) {
   const key = (r) => (Array.isArray(r) ? r : [r]).map((c) => String(c ?? '').trim()).filter(Boolean).join(' ').replace(/\s+/g, ' ');
   const counts = new Map();
