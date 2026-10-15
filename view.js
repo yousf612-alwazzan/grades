@@ -34,6 +34,9 @@ const FRAME_MAX = 480; // أقصى طول لإطار QR الواحد على ال
 // ---------- أيقونات (SVG مضمّن) ----------
 const svg = (p, extra = '') => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${p}</svg>`;
 const I = {
+  edit: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
+  star: svg('<path d="M12 3.2l2.7 5.5 6 .9-4.35 4.25 1.03 6-5.38-2.83-5.38 2.83 1.03-6L3.3 9.6l6-.9z"/>'),
+  note: svg('<path d="M15.5 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z"/><path d="M15 3v5h5M8 13h8M8 17h5"/>'),
   paste: svg('<rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/><path d="M9 13h6M9 17h4"/>'),
   copy: svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>'),
   refresh: svg('<path d="M20 11a8 8 0 0 0-14.9-3.9L4 9"/><path d="M4 4v5h5"/><path d="M4 13a8 8 0 0 0 14.9 3.9L20 15"/><path d="M20 20v-5h-5"/>'),
@@ -537,10 +540,10 @@ function renderGrid() {
   const numTh = `<th class="col-num sticky-a" scope="col">${sortHeader('num', 'م')}</th>`;
   const nameTh = `<th class="col-name sticky-b" scope="col">${sortHeader('name', 'الاسم')}</th>`;
   const stars = (i) => {
-    if (ui.view === 'week') return (issueAt(d, ui.week, i) ? '<span class="issue-badge" title="تنبيه">❗</span>' : '') + (starAt(d, ui.week, i) ? '<span class="star-badge" title="نجمة تميّز">⭐</span>' : '');
+    if (ui.view === 'week') return (issueAt(d, ui.week, i) ? '<span class="issue-badge" title="تنبيه">!</span>' : '') + (starAt(d, ui.week, i) ? '<span class="star-badge" title="نجمة تميّز">${I.star}</span>' : '');
     let n = 0; for (let w = 1; w <= WEEKS; w++) if (starAt(d, w, i)) n++;
     let k = 0; for (let w = 1; w <= WEEKS; w++) if (issueAt(d, w, i)) k++;
-    return (k ? '<span class="issue-badge" title="تنبيه">❗</span>' : '') + (n ? `<span class="star-badge" title="نجوم التميّز">⭐${n > 1 ? `<small>${ar(n)}</small>` : ''}</span>` : '');
+    return (k ? '<span class="issue-badge" title="تنبيه">!</span>' : '') + (n ? `<span class="star-badge" title="نجوم التميّز">${I.star}${n > 1 ? `<small>${ar(n)}</small>` : ''}</span>` : '');
   };
   const nameCell = (i) => `<td class="col-num sticky-a">${ar(i + 1)}</td><th class="col-name sticky-b" scope="row"><span class="name">${esc(model.names[i]) || '<span class="muted">—</span>'}</span>${stars(i)}</th>`;
 
@@ -570,7 +573,7 @@ function renderGrid() {
       const t = weekTotal(d, w, i);
       const ed = ui.editing && canEdit();
       const selTd = ed ? `<td class="c-sel"><input type="checkbox" data-sel="${i}" ${ui.sel.has(i) ? 'checked' : ''} aria-label="تحديد ${esc(model.names[i] || '')}"></td>` : '';
-      const tools = ed ? `<td class="c-tools"><button type="button" class="ed-btn" data-ed="full">كامل</button><button type="button" class="ed-btn ${absentAt(d, w, i) ? 'on abs' : ''}" data-ed="absent">${absentAt(d, w, i) ? 'غائب ✓' : 'غياب'}</button><button type="button" class="ed-btn star ${starAt(d, w, i) ? 'on' : ''}" data-ed="star" aria-label="نجمة">${starAt(d, w, i) ? '★' : '☆'}</button><button type="button" class="ed-btn" data-ed="note" aria-label="ملاحظة أو تنبيه">${issueAt(d, w, i) ? '❗' : '📝'}</button></td>` : '';
+      const tools = ed ? `<td class="c-tools"><button type="button" class="ed-btn" data-ed="full">كامل</button><button type="button" class="ed-btn ${absentAt(d, w, i) ? 'on abs' : ''}" data-ed="absent">${absentAt(d, w, i) ? 'غائب ✓' : 'غياب'}</button><button type="button" class="ed-btn star ${starAt(d, w, i) ? 'on' : ''}" data-ed="star" aria-label="نجمة">${I.star}</button><button type="button" class="ed-btn note ${issueAt(d, w, i) ? 'issue' : ''}" data-ed="note" aria-label="ملاحظة أو تنبيه">${issueAt(d, w, i) ? '<b>!</b>' : I.note}</button></td>` : '';
       body += absentAt(d, w, i)
         ? `<tr data-idx="${i}" class="row-absent ${ui.sel.has(i) ? 'row-sel' : ''}">${selTd}${nameCell(i)}<td class="c-absent" colspan="${items.length}" data-k="ab">غائب</td>${totalCell(t, 'wt', WEEK_MAX)}${tools}</tr>`
         : `<tr data-idx="${i}" class="${ui.sel.has(i) ? 'row-sel' : ''}">${selTd}${nameCell(i)}${items.map((v, k) => cell(v, CONFIG.itemMax, ' c-crit' + (ed ? ' editable' : '') + '" data-k="i' + k)).join('')}${totalCell(t, 'wt', WEEK_MAX)}${tools}</tr>`;
@@ -750,7 +753,7 @@ function openNotePop(anchor, i) {
       if (has && !issue) sendEdit({ kind: 'issue-off', week: w, idx: j });
     }
     closePop();
-    toast(issue && !ui.showIssues ? `حُفظ التنبيه في الجوال — علامة ❗ مخفية عن الشاشة (فعّلها من ${presenting ? 'زر «❗ التنبيهات» أعلاه' : 'الجوال: «علامات التنبيه»'})` : 'حُفظت الملاحظة في الجوال ✓');
+    toast(issue && !ui.showIssues ? `حُفظ التنبيه في الجوال — علامة ❗ مخفية عن الشاشة (فعّلها من ${presenting ? 'زر «التنبيهات» أعلاه' : 'الجوال: «علامات التنبيه»'})` : 'حُفظت الملاحظة في الجوال ✓');
   });
 }
 document.addEventListener('mousedown', (e) => { if (popEl && !popEl.contains(e.target) && !e.target.closest('td.editable') && !e.target.closest('[data-ed="note"]')) closePop(); });
@@ -893,20 +896,20 @@ function renderToolbar() {
     sub = [meta.date ? `<span class="tb-chip">${I.calendar}<span data-meta="date">${esc(fmtDate(meta.date))}</span></span>` : '', meta.lesson ? `<span class="tb-lesson" data-meta="lesson">${esc(meta.lesson)}</span>` : ''].filter(Boolean).join('') || '<span class="muted">لم يُحدَّد التاريخ أو الدرس بعد</span>';
   } else { title = 'الدرجات النهائية'; sub = `التقويم البنائي من ${ar(FORM_MAX)} + المشاريع والاختبار العملي = ${ar(TOTAL_MAX)}`; }
   const sorts = [['num', 'الترتيب'], ['name', 'الاسم'], ['total', 'المجموع']];
-  const editBtn = canEdit() ? `<button type="button" class="btn ${ui.editing ? 'primary' : ''} edit-toggle" data-edit-toggle aria-pressed="${ui.editing}">${ui.editing ? '✔ إنهاء الرصد' : '✏️ وضع الرصد'}</button>` : '';
+  const editBtn = canEdit() ? `<button type="button" class="btn ${ui.editing ? 'primary' : ''} edit-toggle" data-edit-toggle aria-pressed="${ui.editing}">${ui.editing ? I.check + ' إنهاء الرصد' : I.edit + ' وضع الرصد'}</button>` : '';
   const bulk = ui.editing && canEdit() && ui.view === 'week' && ui.sel.size ? `<div class="bulk-bar" role="toolbar" aria-label="إجراءات للمحددين">
       <strong>${ar(ui.sel.size)} محدد</strong>
       <button type="button" class="ed-btn" data-bulk="full">كامل</button>
       <button type="button" class="ed-btn" data-bulk="absent">غياب</button>
       <button type="button" class="ed-btn" data-bulk="present">إلغاء الغياب</button>
-      <button type="button" class="ed-btn star" data-bulk="star">⭐ نجمة</button>
-      <button type="button" class="ed-btn" data-bulk="note">📝 ملاحظة / ❗</button>
+      <button type="button" class="ed-btn star" data-bulk="star">${I.star} نجمة</button>
+      <button type="button" class="ed-btn" data-bulk="note">${I.note} ملاحظة / تنبيه</button>
       <button type="button" class="ed-btn" data-bulk="item">درجة بند…</button>
       <button type="button" class="ed-btn ghost" data-bulk="clear">إلغاء التحديد</button>
     </div>` : '';
   const po = ui.popts || {};
   const optBtn = (key, on, txt) => `<button type="button" class="ed-btn opt-btn ${on ? 'on' : ''}" data-popt="${key}" aria-pressed="${on}">${txt}</button>`;
-  const opts = presenting ? `<div class="present-opts" role="group" aria-label="ما يظهر للطلاب">${optBtn('liveShowStars', po.stars, '⭐ النجوم')}${optBtn('liveShowIssues', po.issues, '❗ التنبيهات')}${optBtn('hide', po.hide, 'إخفاء الأسماء')}</div>` : '';
+  const opts = presenting ? `<div class="present-opts" role="group" aria-label="ما يظهر للطلاب">${optBtn('liveShowStars', po.stars, I.star + ' النجوم')}${optBtn('liveShowIssues', po.issues, '<b class="ex">!</b> التنبيهات')}${optBtn('hide', po.hide, 'إخفاء الأسماء')}</div>` : '';
   $('toolbar').innerHTML = `
     <div class="tb-title"><h1>${title}</h1><div class="tb-sub">${sub}</div></div>
     <span class="pending-ind" id="pending-ind" hidden></span>${opts}${editBtn}${bulk}

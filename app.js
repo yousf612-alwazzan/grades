@@ -435,7 +435,7 @@ function classCard(c) {
     <div><div class="row" style="justify-content:space-between"><span class="meta">نسبة الرصد</span><b class="num">${ar(pct)}٪</b></div>
       <div class="progress ${pct === 100 ? 'done' : ''}" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div></div>
     <div class="class-actions">
-      ${n ? `<button type="button" class="btn primary" data-act="resume" data-id="${c.id}">${icon('bolt')} تابع من حيث وقفت</button>` : `<button type="button" class="btn soft" data-act="edit-class" data-id="${c.id}">${icon('users')} أضف الطلاب</button>`}
+      ${n ? `<button type="button" class="btn soft sm" data-act="resume" data-id="${c.id}">تابع الرصد ${icon('next')}</button>` : `<button type="button" class="btn soft" data-act="edit-class" data-id="${c.id}">${icon('users')} أضف الطلاب</button>`}
     </div>
   </article>`;
 }
@@ -608,10 +608,10 @@ function stuRow(c, d, w, i) {
   const star = isStar(d, w, i);
   return `<div class="srow ${done ? 'complete' : ''} ${absent ? 'absent' : ''}" data-stu="${i}">
     <span class="srow-num num">${ar(i + 1)}</span>
-    <button type="button" class="srow-name" data-act="open-student" data-idx="${i}">${issues ? `<span class="issue-mark" title="مشكلة مسجّلة هذا الأسبوع">❗</span>` : ''}${esc(c.names[i])}${notes ? `<span class="note-dot" title="ملاحظات">${icon('edit')}${ar(notes)}</span>` : ''}</button>
+    <button type="button" class="srow-name" data-act="open-student" data-idx="${i}">${issues ? `<span class="issue-mark" title="مشكلة مسجّلة هذا الأسبوع">!</span>` : ''}${esc(c.names[i])}${notes ? `<span class="note-dot" title="ملاحظات">${icon('edit')}${ar(notes)}</span>` : ''}</button>
     <span class="row-flags">
-      <button type="button" class="star-btn note-btn ${issues ? 'issue' : ''}" data-act="quick-note" data-idx="${i}" aria-label="ملاحظة أو تنبيه">${issues ? '❗' : '📝'}</button>
-      <button type="button" class="star-btn ${star ? 'on' : ''}" data-act="star" data-idx="${i}" aria-pressed="${star}" aria-label="نجمة تميّز هذا الأسبوع">${star ? '★' : '☆'}</button>
+      <button type="button" class="star-btn note-btn ${issues ? 'issue' : ''}" data-act="quick-note" data-idx="${i}" aria-label="ملاحظة أو تنبيه">${issues ? '<b aria-hidden="true">!</b>' : icon('note')}</button>
+      <button type="button" class="star-btn ${star ? 'on' : ''}" data-act="star" data-idx="${i}" aria-pressed="${star}" aria-label="نجمة تميّز هذا الأسبوع">${icon('star')}</button>
       <button type="button" class="abs-btn ${absent ? 'on' : ''}" data-act="absent" data-idx="${i}" aria-pressed="${absent}">${absent ? 'غائب ✓' : 'غياب'}</button>
     </span>
     <span class="srow-total num ${t === CONFIG.itemMax * ITEMS ? 'full' : ''}" data-total>${t == null ? '' : fmt(t)}</span>
@@ -736,7 +736,7 @@ function weekGrid(c, d, w, idxs) {
       <td class="total num" data-total>${t == null ? '—' : fmt(t)}</td>
       <td><button type="button" class="btn-full" data-act="full" data-idx="${i}">${icon('check')} كامل</button></td>
       <td><button type="button" class="abs-btn ${isAbsent(d, w, i) ? 'on' : ''}" data-act="absent" data-idx="${i}" aria-pressed="${isAbsent(d, w, i)}">${isAbsent(d, w, i) ? 'غائب ✓' : 'غياب'}</button></td>
-      <td><button type="button" class="star-btn ${isStar(d, w, i) ? 'on' : ''}" data-act="star" data-idx="${i}" aria-pressed="${isStar(d, w, i)}" aria-label="نجمة تميّز">${isStar(d, w, i) ? '★' : '☆'}</button>${weekIssues(d, w, i).length ? '<span class="issue-mark" title="مشكلة هذا الأسبوع">❗</span>' : ''}</td>
+      <td><button type="button" class="star-btn ${isStar(d, w, i) ? 'on' : ''}" data-act="star" data-idx="${i}" aria-pressed="${isStar(d, w, i)}" aria-label="نجمة تميّز">${icon('star')}</button>${weekIssues(d, w, i).length ? '<span class="issue-mark" title="مشكلة هذا الأسبوع">!</span>' : ''}</td>
     </tr>`;
   }).join('');
   return `<div class="grid-wrap"><table class="grid">
