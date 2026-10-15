@@ -27,6 +27,8 @@ function remoteStore(base) {
   window.addEventListener('message', (e) => {
     if (e.origin !== location.origin || e.source !== window.parent) return;
     const d = e.data;
+    if (d && d.gfu === 'edit' && d.op) { presentEdit(d.op); return; }
+    if (d && d.gfu === 'opt') { presentOpt(d.key, d.on); return; }
     if (!d || d.gfu !== 'phone' || !d.msg) return;
     const m = d.msg;
     if (m.type === 'state') { if (!S.booted) gotState(m); else applyPhoneState(m); return; }
@@ -44,7 +46,7 @@ function remoteStore(base) {
     async saveClasses(c) { post({ type: 'put-classes', classes: c }); },
     async saveGrades(id, d) { post({ type: 'put-grades', id, data: d }); },
     async deleteGrades(id) { post({ type: 'del-grades', id }); },
-    async saveSettings(st) { post({ type: 'put-settings', settings: { teacher: st.teacher, subject: st.subject, year: st.year } }); },
+    async saveSettings(st) { post({ type: 'put-settings', settings: pickTeacher(st) }); },
     async setMeta() {}, async getMeta() { return null; },
     async replaceAll() { throw new Error('الاسترجاع يتم من الجوال فقط'); },
     async requestPersist() { return 'granted'; },
@@ -58,7 +60,7 @@ function syncingStore(base) {
     async saveClasses(c) { await base.saveClasses(c); manageSend({ type: 'put-classes', classes: c }); },
     async saveGrades(id, d) { await base.saveGrades(id, d); manageSend({ type: 'put-grades', id, data: d }); },
     async deleteGrades(id) { await base.deleteGrades(id); manageSend({ type: 'del-grades', id }); },
-    async saveSettings(st) { await base.saveSettings(st); manageSend({ type: 'put-settings', settings: { teacher: st.teacher, subject: st.subject, year: st.year } }); },
+    async saveSettings(st) { await base.saveSettings(st); manageSend({ type: 'put-settings', settings: pickTeacher(st) }); },
   };
 }
 const store = REMOTE ? remoteStore(localStore) : syncingStore(localStore);
@@ -70,6 +72,7 @@ function applyPhoneUpdate(m) {
   else if (m.type === 'del-grades' && m.id) delete S.grades[m.id];
   else if (m.type === 'put-settings' && m.settings) Object.assign(S.settings, pickTeacher(m.settings));
   else if (m.type === 'represent') { if (S.ui.presenting) presentClass(S.ui.presenting); return; }
+  else if (m.type === 'unpresent') { S.ui.presenting = null; softRender(); return; }
   softRender();
   if (S.ui.presenting && m.type === 'put-grades' && m.id === S.ui.presenting) presentClass(m.id);
 }
@@ -83,6 +86,14 @@ function applyPhoneState(m) {
 function pickTeacher(st) {
   const o = {};
   for (const k of ['teacher', 'subject', 'year']) if (typeof st[k] === 'string') o[k] = st[k].slice(0, 120);
+  for (const k of ['liveShowStars', 'liveShowIssues']) if (typeof st[k] === 'boolean') o[k] = st[k];
+  if (st.liveIssueHidden && typeof st.liveIssueHidden === 'object') {
+    const h = {};
+    for (const [id, arr] of Object.entries(st.liveIssueHidden).slice(0, 100)) {
+      if (typeof id === 'string' && id.length < 40 && Array.isArray(arr)) h[id] = arr.filter((i) => Number.isInteger(i) && i >= 0 && i < 500).slice(0, 500);
+    }
+    o.liveIssueHidden = h;
+  }
   return o;
 }
 // إعادة رسم لا تقطع الكتابة
@@ -230,7 +241,7 @@ function render({ scrollTop = false } = {}) {
   main().className = 'main' + (isRoot ? '' : ' no-tabbar');
   document.body.classList.toggle('no-tabbar', !isRoot);
   document.getElementById('tabbar').classList.toggle('hide', !isRoot);
-  main().innerHTML = shareBarHTML() + (REMOTE ? `<div class="remote-bar">${icon('phone')} <span><b>وضع الإدارة من الكمبيوتر</b> — كل التعديلات تُحفظ في جوالك</span></div>` : '') + `<div class="screen-enter">${fn(r.p)}</div>`;
+  main().innerHTML = shareBarHTML() + (REMOTE ? `<div class="remote-bar">${icon('phone')} <span><b>متصل بجوالك</b> — كل التعديلات تُحفظ في جوالك</span></div>` : '') + `<div class="screen-enter">${fn(r.p)}</div>`;
   renderNav();
   main().querySelectorAll('[data-save-state]').forEach(paintSave);
   if (scrollTop) window.scrollTo(0, 0);
@@ -241,7 +252,7 @@ const afterRender = {};
 
 function shareBarHTML() {
   if (REMOTE || route().name === 'live' || !['connected', 'resuming', 'lost'].includes(L.phase)) return '';
-  const txt = L.phase === 'connected' ? (L.mode === 'manage' ? 'الإدارة من الكمبيوتر تعمل' : 'العرض على الكمبيوتر يعمل') : L.phase === 'resuming' ? 'جارٍ إعادة الاتصال بالكمبيوتر…' : 'انقطع الاتصال بالكمبيوتر';
+  const txt = L.phase === 'connected' ? 'الكمبيوتر متصل' : L.phase === 'resuming' ? 'جارٍ إعادة الاتصال بالكمبيوتر…' : 'انقطع الاتصال بالكمبيوتر';
   return `<div class="share-bar ${L.phase}" data-share-bar><span class="dot"></span><button type="button" class="share-txt" data-act="nav" data-to="live">${txt}</button><button type="button" class="share-stop" data-act="live-stop-quick">إيقاف المشاركة</button></div>`;
 }
 function renderShareBar() {
@@ -445,7 +456,7 @@ function ClassScreen(p) {
   const tools = wide ? `<div class="toolbar wrap" style="padding-top:0;padding-bottom:0">
     <button type="button" class="btn sm" data-act="edit-class" data-id="${c.id}">${icon('users')} الطلاب</button>
     <button type="button" class="btn sm" data-act="export-xlsx" data-id="${c.id}">${icon('sheet')} تصدير Excel</button>
-    <button type="button" class="btn sm" data-act="go-live" data-id="${c.id}">${icon('monitor')} عرض على الكمبيوتر</button>
+    ${REMOTE ? `<button type="button" class="btn sm primary" data-act="present" data-id="${c.id}">${icon('monitor')} اعرض للطلاب وارصد</button>` : `<button type="button" class="btn sm" data-act="go-live" data-id="${c.id}">${icon('monitor')} عرض على الكمبيوتر</button>`}
     <button type="button" class="btn sm" data-act="go" data-to="transferOut" data-id="${c.id}">${icon('send')} نقل طلاب</button>
   </div>` : '';
   const menuBtn = wide ? '' : `<button type="button" class="icon-btn labeled" data-act="class-menu" aria-label="خيارات الشعبة">${icon('more')}</button>`;
@@ -1692,7 +1703,8 @@ async function shareStudent(id, idx) {
 // الشاشة ٦ — العرض على الكمبيوتر (جهة الجوال)
 // =====================================================================
 const L = {
-  mode: 'display', // display = عرض للطلاب (قراءة فقط) | manage = إدارة التطبيق من الكمبيوتر
+  // مسح واحد: الكمبيوتر يفتح التطبيق كاملًا، ومنه «اعرض للطلاب» والرصد. (display: العرض القديم، للاختبارات فقط)
+  mode: typeof window !== 'undefined' && window.__gfuDisplayMode ? 'display' : 'manage',
   room: null,             // غرفة الوسيط (المفتاح) — للرجوع التلقائي بلا مسح QR
   usedOffers: new Set(),  // رموز الكمبيوتر التي استُعملت
   link: null, state: 'idle', classId: null, scope: { kind: 'class', idx: 0 }, hideNames: false, blank: false,
@@ -1718,21 +1730,19 @@ function Live() {
   // ١) ماذا تريد؟
   const modeCard = (v, ic, t, sub) => `<button type="button" class="mode-card ${L.mode === v ? 'on' : ''}" data-act="live-mode" data-v="${v}" aria-pressed="${L.mode === v}" ${busy && L.mode !== v ? 'disabled' : ''}>
     <span class="mode-ico">${icon(ic)}</span><span><strong>${t}</strong><small>${sub}</small></span></button>`;
-  const step1 = `<section class="live-step"><h3><span class="step-n">${ar(1)}</span> ماذا تريد على الكمبيوتر؟</h3>
-    <div class="mode-grid">
-      ${modeCard('display', 'monitor', 'اعرض شعبة للطلاب', 'الدرجات على الشاشة فقط — بدون تعديل وبدون ملاحظات')}
-      ${modeCard('manage', 'edit', 'أدِر التطبيق من الكمبيوتر', 'ارصد الدرجات والغياب وارفع ملفات Excel وPDF من الكمبيوتر')}
-    </div></section>`;
+  void modeCard;
+  const step1 = '';
 
   // ٢) الإعدادات حسب الوضع
   let step2;
   if (L.mode === 'manage') {
-    step2 = `<section class="live-step"><h3><span class="step-n">${ar(2)}</span> كيف تعمل الإدارة؟</h3>
+    step2 = `<section class="live-step"><h3><span class="step-n">${ar(1)}</span> ماذا يظهر على الكمبيوتر؟</h3>
       <ul class="hint manage-points">
-        <li>يفتح التطبيق كاملًا على الكمبيوتر: رصد، غياب، ملاحظات، إنشاء الشعب من ملفات الكمبيوتر، والتقارير.</li>
-        <li>كل تعديل يُحفظ في <b>جوالك</b> فورًا — الكمبيوتر لا يحفظ شيئًا.</li>
-        <li>من هناك تستطيع «اعرض للطلاب» لأي شعبة.</li>
-        <li>أوقف الإدارة من هنا في أي وقت.</li>
+        <li>تظهر شعبك كلها على الكمبيوتر — اختر الشعبة التي تريدها.</li>
+        <li><b>«اعرض للطلاب وارصد»</b>: جدول الدرجات على الشاشة، وترصد منه الدرجات والغياب والنجوم والملاحظات (طالب أو عدة طلاب معًا).</li>
+        <li>تُظهر أو تُخفي النجوم ❗ والأسماء من الشاشة نفسها. نص الملاحظات لا يظهر للطلاب أبدًا.</li>
+        <li>تستطيع أيضًا إنشاء الشعب من ملفات Excel وPDF الموجودة على الكمبيوتر.</li>
+        <li>كل شيء يُحفظ في <b>جوالك</b> فقط — الكمبيوتر لا يحفظ شيئًا.</li>
       </ul></section>`;
   } else if (!S.classes.length) {
     step2 = `<section class="live-step"><h3><span class="step-n">${ar(2)}</span> لا توجد شعب بعد</h3>
@@ -1770,8 +1780,8 @@ function Live() {
       <button type="button" class="btn ghost block" data-act="live-stop">إلغاء</button>`;
   } else if (L.phase === 'connected') {
     body = L.mode === 'manage'
-      ? `<div class="alert ok">${icon('checkCircle')}<div class="grow"><strong>الإدارة من الكمبيوتر تعمل</strong><p style="margin:0">ما تعدّله على الكمبيوتر يُحفظ هنا فورًا. تستطيع الخروج من التطبيق؛ عند رجوعك يعود الاتصال تلقائيًا.</p></div></div>
-        <button type="button" class="btn danger block lg" data-act="live-stop">${icon('power')} إيقاف الإدارة</button>`
+      ? `<div class="alert ok">${icon('checkCircle')}<div class="grow"><strong>الكمبيوتر متصل</strong><p style="margin:0">اختر الشعبة من الكمبيوتر واعرضها للطلاب أو ارصد منها. ما تعدّله هناك يُحفظ هنا فورًا. تستطيع الخروج من التطبيق؛ عند رجوعك يعود الاتصال تلقائيًا.</p></div></div>
+        <button type="button" class="btn danger block lg" data-act="live-stop">${icon('power')} إيقاف الاتصال</button>`
       : `<div class="alert ok">${icon('checkCircle')}<div class="grow"><strong>العرض يعمل الآن</strong><p style="margin:0">أي درجة ترصدها تظهر فورًا. تستطيع الخروج للواتساب مثلًا؛ عند رجوعك يعود الاتصال تلقائيًا.</p></div></div>
         ${c ? `<button type="button" class="btn block" data-act="open-class" data-id="${c.id}">${icon('edit')} ارصد «${esc(c.label)}»</button>` : ''}
         <button type="button" class="btn ${L.blank ? 'primary' : 'soft'} lg block" data-act="live-blank">${icon(L.blank ? 'eye' : 'eyeOff')} ${L.blank ? 'إظهار الدرجات' : 'إخفاء الدرجات مؤقتًا'}</button>
@@ -1784,7 +1794,7 @@ function Live() {
       <button type="button" class="btn primary lg block" data-act="live-scan">${icon('refresh')} صوّر الرمز الجديد</button>
       <button type="button" class="btn block" data-act="live-reset">رجوع</button>`;
   }
-  const step3 = `<section class="live-step"><h3><span class="step-n">${ar(3)}</span> اربط بالكمبيوتر</h3>${body}</section>`;
+  const step3 = `<section class="live-step"><h3><span class="step-n">${ar(L.mode === 'manage' ? 2 : 3)}</span> اربط بالكمبيوتر</h3>${body}</section>`;
 
   const help = `<details class="card"><summary style="font-weight:800;cursor:pointer;min-height:44px;display:flex;align-items:center;gap:8px">${icon('wifi')} مشاكل الاتصال؟</summary>
     <ul class="hint" style="padding-inline-start:20px;line-height:2">
@@ -1817,8 +1827,11 @@ function presentClass(id) {
   if (!REMOTE) return;
   const c = cls(id);
   if (!c) return;
+  const first = S.ui.presenting !== id;
   S.ui.presenting = id;
-  window.parent.postMessage({ gfu: 'present', classId: id, label: c.label, hideNames: L.hideNames, names: displayNames(c, L.hideNames), data: displayData(c) }, location.origin);
+  const o = displayOpts(c);
+  const tab = S.ui.tab[id];
+  window.parent.postMessage({ gfu: 'present', classId: id, first, week: first && typeof tab === 'number' ? tab : null, label: c.label, hideNames: L.hideNames, names: displayNames(c, L.hideNames), data: displayData(c), opts: { stars: o.stars, issues: o.issues, hide: L.hideNames } }, location.origin);
 }
 
 // خيارات ما يظهر على الشاشة (للجوال وللإدارة من الكمبيوتر)
@@ -1833,7 +1846,7 @@ function displayOptionsHTML(c) {
   const hiddenCount = withIssues.filter((i) => o.hidden.has(i)).length;
   return `<div class="list opts-list">
     <label class="list-item"><span class="grow"><strong>إخفاء الأسماء</strong><small>أرقام الطلاب فقط</small></span><input type="checkbox" class="switch" data-live="hide" ${L.hideNames ? 'checked' : ''}></label>
-    <label class="list-item"><span class="grow"><strong>✏️ الرصد من الكمبيوتر</strong><small>رصد الدرجات والغياب من شاشة العرض (يُحفظ في الجوال)</small></span><input type="checkbox" class="switch" data-live-opt="liveAllowEdit" ${S.settings.liveAllowEdit !== false ? 'checked' : ''}></label>
+    ${REMOTE || L.mode === 'manage' ? '' : `<label class="list-item"><span class="grow"><strong>✏️ الرصد من الكمبيوتر</strong><small>رصد الدرجات والغياب من شاشة العرض (يُحفظ في الجوال)</small></span><input type="checkbox" class="switch" data-live-opt="liveAllowEdit" ${S.settings.liveAllowEdit !== false ? 'checked' : ''}></label>`}
     <label class="list-item"><span class="grow"><strong>⭐ نجوم التميّز</strong><small>تظهر بجانب اسم الطالب المتميز</small></span><input type="checkbox" class="switch" data-live-opt="liveShowStars" ${o.stars ? 'checked' : ''}></label>
     <label class="list-item"><span class="grow"><strong>❗ علامات التنبيه</strong><small>العلامة فقط — نص الملاحظة لا يظهر أبدًا</small></span><input type="checkbox" class="switch" data-live-opt="liveShowIssues" ${o.issues ? 'checked' : ''}></label>
     ${o.issues ? `<button type="button" class="list-item" data-act="issue-hide" data-id="${c.id}">${icon('eyeOff')}<span class="grow"><strong>إخفاء ❗ عن طلاب معيّنين</strong><small>${withIssues.length ? `${ar(withIssues.length)} لديهم تنبيه · مخفي عن ${ar(hiddenCount)}` : 'لا توجد تنبيهات في هذه الشعبة'}</small></span>${icon('fwd')}</button>` : ''}
@@ -1928,8 +1941,8 @@ function setLiveState(st) {
     if (L.mode === 'manage') sendState(); else sendSnapshot();
     if (L.link && L.link.room) L.room = L.link.room;
     const c0 = cls(L.classId);
-    if (platform.sharingStart) platform.sharingStart(L.mode === 'manage' ? 'الإدارة من الكمبيوتر — اضغط للعودة' : `${c0 ? c0.label : 'الشعبة'} — اضغط للعودة`);
-    toast(L.mode === 'manage' ? 'الإدارة من الكمبيوتر تعمل ✓' : 'تم الاتصال بالكمبيوتر ✓');
+    if (platform.sharingStart) platform.sharingStart(L.mode === 'manage' ? 'متصل بالكمبيوتر — اضغط للعودة' : `${c0 ? c0.label : 'الشعبة'} — اضغط للعودة`);
+    toast('تم الاتصال بالكمبيوتر ✓');
   } else if (st === 'disconnected' && (L.phase === 'connected' || L.phase === 'answer')) {
     L.phase = 'lost';
     // نحاول الرجوع تلقائيًا (الآن إن كان التطبيق ظاهرًا، أو عند العودة إليه)
@@ -2060,17 +2073,27 @@ function displayEditAllowed() {
 // رصد من شاشة العرض: درجة بند، كامل، غياب، نجمة، درجة نهائية — للشعبة المعروضة فقط
 function applyDisplayEdit(m) {
   if (!displayEditAllowed()) return;
-  const c = cls(L.classId); const d = dataOf(c.id);
+  const c = cls(L.classId);
+  const res = applyEditOp(c, m);
+  if (!res) return;
+  const ack = typeof m.oid === 'number' || typeof m.oid === 'string' ? String(m.oid).slice(0, 20) : undefined;
+  markDirty(c.id);
+  if (res.kind === 'fin') livePatchFin(c.id, res.i, ack);
+  else if (res.kind === 'items') livePatchItems(c.id, res.w, res.i, ack);
+  softRender();
+}
+// يطبّق تعديلًا واحدًا (درجة/كامل/غياب/نجمة/ملاحظة/نهائي) على بيانات الشعبة. يرجع ما تغيّر أو null
+function applyEditOp(c, m) {
+  const d = dataOf(c.id);
   const i = Number(m.idx);
-  if (!Number.isInteger(i) || i < 0 || i >= c.names.length) return;
+  if (!Number.isInteger(i) || i < 0 || i >= c.names.length) return null;
   const w = Number(m.week);
   const okWeek = Number.isInteger(w) && w >= 1 && w <= WEEKS;
-  const ack = typeof m.oid === 'number' || typeof m.oid === 'string' ? String(m.oid).slice(0, 20) : undefined;
   if (m.kind === 'item' && okWeek) {
     const k = Number(m.k);
-    if (!(k >= 0 && k < ITEMS)) return;
+    if (!(k >= 0 && k < ITEMS)) return null;
     const res = m.value == null ? { ok: true, value: null } : parseScore(String(m.value), CONFIG.itemMax);
-    if (!res.ok) return;
+    if (!res.ok) return null;
     setItem(d, w, i, k, res.value);
   } else if (m.kind === 'full' && okWeek) {
     for (let k = 0; k < ITEMS; k++) setItem(d, w, i, k, CONFIG.itemMax);
@@ -2081,24 +2104,37 @@ function applyDisplayEdit(m) {
   } else if (m.kind === 'note') {
     const text = typeof m.text === 'string' ? m.text.trim().slice(0, 500) : '';
     const issue = m.issue === true && okWeek;
-    if (!text && !issue) return;
+    if (!text && !issue) return null;
     addNote(d, i, text || 'تنبيه', new Date(), okWeek ? { week: w, issue } : {});
-    if (!okWeek) { markDirty(c.id); softRender(); return; }
+    if (!okWeek) return { kind: 'note', i };
   } else if (m.kind === 'issue-off' && okWeek) {
     clearWeekIssues(d, w, i);
   } else if (m.kind === 'fin') {
     const k = Number(m.k);
-    if (!(k >= 0 && k < FINS.length)) return;
+    if (!(k >= 0 && k < FINS.length)) return null;
     const res = m.value == null ? { ok: true, value: null } : parseScore(String(m.value), FINS[k].max);
-    if (!res.ok) return;
+    if (!res.ok) return null;
     setFin(d, i, k, res.value);
-    markDirty(c.id);
-    livePatchFin(c.id, i, ack);
-    softRender();
-    return;
-  } else return;
+    return { kind: 'fin', i };
+  } else return null;
+  return { kind: 'items', w, i };
+}
+// الكمبيوتر (الإدارة): رصد من شاشة «عرض للطلاب» — يُحفظ في الجوال عبر الحفظ العادي
+function presentEdit(m) {
+  if (!REMOTE || !S.ui.presenting) return;
+  const c = cls(S.ui.presenting);
+  if (!c || !applyEditOp(c, m)) return;
   markDirty(c.id);
-  livePatchItems(c.id, w, i, ack);
+  softRender();
+  presentClass(c.id);
+}
+// الكمبيوتر: إظهار/إخفاء النجوم والتنبيهات والأسماء من شاشة العرض نفسها
+function presentOpt(key, on) {
+  if (!REMOTE || !S.ui.presenting) return;
+  if (key === 'hide') L.hideNames = !!on;
+  else if (key === 'liveShowStars' || key === 'liveShowIssues') { S.settings[key] = !!on; saveSettingsNow(); }
+  else return;
+  presentClass(S.ui.presenting);
   softRender();
 }
 

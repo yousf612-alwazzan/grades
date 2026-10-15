@@ -565,3 +565,9 @@ textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 
 .pop-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
 .ed-btn.on { background: var(--primary); color: var(--primary-ink, #fff); border-color: var(--primary); }
 .ed-btn.ghost { border-color: transparent; background: transparent; }
+
+/* خيارات العرض من الإدارة */
+.present-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.opt-btn { min-height: 40px; }
+
+.ver-note { font-size: 13px; color: var(--muted); margin-top: 6px; }

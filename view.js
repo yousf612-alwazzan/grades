@@ -8,6 +8,8 @@ import {
 
 const params = new URLSearchParams(location.search);
 const E2E = params.has('e2e');
+// رقم النسخة ظاهر في صفحة الربط حتى يعرف المعلم أن الصفحة محدّثة
+if (document.getElementById('ver-note')) document.getElementById('ver-note').textContent = 'نسخة صفحة العرض ' + toArabicDigits(CONFIG.version) + ' — إن لم تظهر الميزات الجديدة اضغط Ctrl+Shift+R مرة واحدة';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -597,9 +599,11 @@ const pending = new Map(); // oid → تعديل لم يؤكد الجوال اس
 let editSeq = 0;
 ui.sel = new Set();
 function canEdit() {
-  return !!(ui.allowEdit && ui.mode !== 'manage' && model && model.scope.kind === 'class' && !presenting);
+  if (presenting) return !!model; // من الإدارة: الرصد متاح دائمًا ويُحفظ في الجوال
+  return !!(ui.allowEdit && ui.mode !== 'manage' && model && model.scope.kind === 'class');
 }
 function sendEdit(op) {
+  if (presenting) { if (manageFrame && manageFrame.contentWindow) manageFrame.contentWindow.postMessage({ gfu: 'edit', op }, location.origin); return; }
   const oid = String(++editSeq) + '-' + Date.now().toString(36);
   pending.set(oid, op);
   if (link && ui.connState === 'connected') link.sendOp({ type: 'edit', oid, ...op });
@@ -746,7 +750,7 @@ function openNotePop(anchor, i) {
       if (has && !issue) sendEdit({ kind: 'issue-off', week: w, idx: j });
     }
     closePop();
-    toast(issue && !ui.showIssues ? 'حُفظ التنبيه في الجوال — علامة ❗ مخفية عن الشاشة (فعّلها من الجوال: «علامات التنبيه»)' : 'حُفظت الملاحظة في الجوال ✓');
+    toast(issue && !ui.showIssues ? `حُفظ التنبيه في الجوال — علامة ❗ مخفية عن الشاشة (فعّلها من ${presenting ? 'زر «❗ التنبيهات» أعلاه' : 'الجوال: «علامات التنبيه»'})` : 'حُفظت الملاحظة في الجوال ✓');
   });
 }
 document.addEventListener('mousedown', (e) => { if (popEl && !popEl.contains(e.target) && !e.target.closest('td.editable') && !e.target.closest('[data-ed="note"]')) closePop(); });
@@ -803,20 +807,29 @@ window.addEventListener('message', (e) => {
   if (d.gfu === 'op' && d.msg && link) { applyMirror(d.msg); link.sendOp(d.msg); return; }
   if (d.gfu === 'present') {
     // عرض للطلاب من وضع الإدارة: بيانات العرض فقط (بلا ملاحظات)
+    const was = presenting && model;
     presenting = true;
     const names = Array.isArray(d.names) ? d.names.map((x) => String(x ?? '').slice(0, 120)) : [];
     model = { names, data: sanitizeData(d.data), scope: { kind: 'class' }, hideNames: !!d.hideNames };
     hello = { ...(hello || {}), classLabel: String(d.label || '').slice(0, 120) };
-    prevCells = null; closeDrawer();
+    const o = d.opts || {};
+    ui.popts = { stars: o.stars !== false, issues: o.issues === true, hide: o.hide === true };
+    ui.showIssues = ui.popts.issues;
+    if (d.first || !was) {
+      prevCells = null; closeDrawer(); ui.sel = new Set();
+      if (Number.isInteger(d.week) && isWeek(d.week)) { ui.view = 'week'; ui.week = d.week; }
+    }
     renderHeader();
-    setScreen('live');
-    render(true);
+    if (ui.screen !== 'live') setScreen('live');
+    render(!(d.first || !was));
     return;
   }
 });
 function backToManage() {
   presenting = false;
   model = null;
+  ui.editing = false; ui.sel = new Set(); closePop();
+  toFrame({ type: 'unpresent' });
   setScreen('manage');
 }
 
@@ -891,9 +904,12 @@ function renderToolbar() {
       <button type="button" class="ed-btn" data-bulk="item">درجة بند…</button>
       <button type="button" class="ed-btn ghost" data-bulk="clear">إلغاء التحديد</button>
     </div>` : '';
+  const po = ui.popts || {};
+  const optBtn = (key, on, txt) => `<button type="button" class="ed-btn opt-btn ${on ? 'on' : ''}" data-popt="${key}" aria-pressed="${on}">${txt}</button>`;
+  const opts = presenting ? `<div class="present-opts" role="group" aria-label="ما يظهر للطلاب">${optBtn('liveShowStars', po.stars, '⭐ النجوم')}${optBtn('liveShowIssues', po.issues, '❗ التنبيهات')}${optBtn('hide', po.hide, 'إخفاء الأسماء')}</div>` : '';
   $('toolbar').innerHTML = `
     <div class="tb-title"><h1>${title}</h1><div class="tb-sub">${sub}</div></div>
-    <span class="pending-ind" id="pending-ind" hidden></span>${editBtn}${bulk}
+    <span class="pending-ind" id="pending-ind" hidden></span>${opts}${editBtn}${bulk}
     <div class="seg" role="group" aria-label="ترتيب الصفوف"><span class="seg-label">ترتيب حسب</span>${sorts.map(([k, l]) => `<button type="button" data-sort="${k}" class="${ui.sort.key === k ? 'active' : ''}" aria-pressed="${ui.sort.key === k}">${l}</button>`).join('')}</div>`;
 }
 
@@ -1150,6 +1166,13 @@ function bind() {
     return true;
   };
   $('toolbar').addEventListener('click', (e) => {
+    const po = e.target.closest('[data-popt]');
+    if (po && presenting && manageFrame) {
+      const key = po.dataset.popt;
+      const cur = key === 'hide' ? ui.popts.hide : key === 'liveShowStars' ? ui.popts.stars : ui.popts.issues;
+      manageFrame.contentWindow.postMessage({ gfu: 'opt', key, on: !cur }, location.origin);
+      return;
+    }
     const bk = e.target.closest('[data-bulk]');
     if (bk) { runBulk(bk.dataset.bulk, bk); return; }
     if (e.target.closest('[data-edit-toggle]')) {
