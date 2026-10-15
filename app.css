@@ -1145,3 +1145,6 @@ b, strong, h1, h2, h3, .btn, .tab { font-weight: 700; }
   .side-act:hover { background: color-mix(in srgb, var(--chip) 70%, var(--line)); }
   .side-act[data-act="present"], .side-act[data-act="go-live"] { grid-column: span 2; background: var(--primary-soft); justify-content: center; }
 }
+/* داخل شاشة الكمبيوتر: الاسم والشعار في الشريط العلوي فقط — بلا تكرار في القائمة الجانبية */
+body.remote .rail .brand { display: none; }
+body.remote .rail { padding-top: 16px; }
