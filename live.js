@@ -11,7 +11,7 @@ export const PROTO = 1;
 const HEARTBEAT_MS = 5000;
 const DEAD_MS = 12000;
 const GATHER_MS = 3000;       // أقصى انتظار لجمع مسارات الشبكة
-const GATHER_SETTLE_MS = 900;  // بعد أول مسار نكتفي بانتظار قصير (شبكة المدرسة/نقطة الاتصال تكفيها المسارات المحلية)
+const GATHER_SETTLE_MS = 500;  // بعد أول مسار نكتفي بانتظار قصير (شبكة المدرسة/نقطة الاتصال تكفيها المسارات المحلية)
 const CHUNK = 12000;           // حجم آمن لكل رسالة على كل الأجهزة (بعضها يرفض الرسائل الكبيرة بصمت)
 const MAX_CANDS = 4;
 const BAD_CODE = 'رمز الاتصال غير صالح أو ناقص. أعد المسح أو انسخ الرمز كاملًا مرة أخرى.';
@@ -478,7 +478,7 @@ async function relayPost(room, text, { tries = RELAY_POSTS, signal } = {}) {
 
 /** فترة الاستطلاع: سريعة أولًا ثم أبطأ (حد الطلبات المجاني في ntfy.sh ≈ ٦٠ دفعة ثم طلب كل ٥ ث). */
 function pollDelay(elapsed) {
-  if (elapsed < 20_000) return 900;
+  if (elapsed < 20_000) return 500;
   if (elapsed < 45_000) return 1500;
   if (elapsed < 165_000) return 3000;
   return 5000;

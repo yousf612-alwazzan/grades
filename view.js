@@ -1263,7 +1263,7 @@ if ('serviceWorker' in navigator && window.isSecureContext && !E2E) {
     // نسخة جديدة من صفحة العرض: قبل الاتصال نحدّث فورًا، وأثناء الاتصال نعرض زر «تحديث»
     const ready = (w) => {
       if (!hadController) return;
-      if (ui.screen === 'pair' && ui.connState !== 'connected') { w.postMessage({ type: 'skip-waiting' }); return; }
+      if (ui.screen === 'pair' && ui.connState !== 'connected' && performance.now() < 4000) { w.postMessage({ type: 'skip-waiting' }); return; }
       const b = $('btn-update'); if (b) { b.hidden = false; b.onclick = () => w.postMessage({ type: 'skip-waiting' }); }
     };
     if (reg.waiting) ready(reg.waiting);

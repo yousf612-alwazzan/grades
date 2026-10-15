@@ -1778,7 +1778,9 @@ function Live() {
     const failed = rs === 'failed' || rs === 'none';
     body = `${failed
       ? `<div class="alert warn">${icon('warn')}<div class="grow"><strong>تعذّر الإرسال تلقائيًا</strong><p style="margin:0">انسخ الرمز وأرسله لنفسك، ثم الصقه في صفحة العرض («مشاكل الاتصال؟» ← «لصق الرد يدويًا»).</p></div></div>`
-      : `<div class="live-wait"><span class="spinner-lg" aria-hidden="true"></span><h3>${rs === 'sending' ? 'جارٍ الإرسال للكمبيوتر…' : 'أُرسل للكمبيوتر ✓'}</h3><p class="hint">يتصل الكمبيوتر خلال ثوانٍ. أبقِ الشاشة مفتوحة.</p></div>`}
+      : `<div class="live-wait"><span class="spinner-lg" aria-hidden="true"></span><h3>${rs === 'sending' ? 'جارٍ الإرسال للكمبيوتر…' : 'أُرسل للكمبيوتر ✓'}</h3><p class="hint">يتصل الكمبيوتر خلال ثوانٍ. أبقِ الشاشة مفتوحة.</p></div>
+        ${L.slow ? `<div class="alert warn">${icon('warn')}<div class="grow"><strong>تأخر الاتصال؟</strong><p style="margin:0">اضغط «رمز جديد» على الكمبيوتر ثم صوّره مرة ثانية. وتأكد أن الجهازين على نفس الشبكة.</p></div></div>
+        <button type="button" class="btn primary block" data-act="live-scan">${icon('camera')} صوّر الرمز من جديد</button>` : ''}`}
       <details class="flat-details" ${failed ? 'open' : ''}><summary>${icon('paste')} لم يتصل؟ النسخ واللصق</summary>
         <button type="button" class="btn block" data-act="live-copy">${icon('copy')} نسخ رمز الرد</button></details>
       <button type="button" class="btn ghost block" data-act="live-stop">إلغاء</button>`;
@@ -2003,6 +2005,9 @@ async function startLiveFromCode(code) {
     // رموز صغيرة متتابعة بمربعات كبيرة: أسهل بكثير لكاميرا الكمبيوتر من رمز واحد كثيف
     L.frames = m.splitFrames(L.answer, 110);
     L.phase = 'answer';
+    L.slow = false;
+    clearTimeout(L.slowTimer);
+    L.slowTimer = setTimeout(() => { if (L.phase === 'answer' && L.state !== 'connected') { L.slow = true; if (route().name === 'live') render(); } }, 12000);
   } catch (e) {
     L.phase = 'setup'; L.state = 'idle';
     toast(e && /[؀-ۿ]/.test(e.message || '') ? e.message : 'الرمز غير صالح. أنشئ رمزًا جديدًا على الكمبيوتر.', { err: true, ms: 5000 });
@@ -2702,14 +2707,15 @@ function registerSW() {
   const bootAt = Date.now();
   let hiddenAt = 0;
   // التحديث تلقائيًا في لحظة آمنة: عند فتح التطبيق، أو الرجوع له بعد غياب — إن لم يكن هناك حفظ معلّق أو اتصال بالكمبيوتر
-  const safeToApply = () => !S.dirty.size && !['connected', 'resuming'].includes(L.phase) && !document.querySelector('.sheet');
+  const safeToApply = () => !S.dirty.size && L.phase === 'setup' && route().name !== 'live' && !document.querySelector('.sheet');
   navigator.serviceWorker.register('sw.js').then((reg) => {
-    const ask = (w) => {
-      if (Date.now() - bootAt < 20000 && safeToApply()) { w.postMessage({ type: 'skip-waiting' }); return; }
+    const ask = (w, atBoot = false) => {
+      // نسخة جاهزة من قبل: نطبّقها فور الفتح (قبل أن يبدأ المعلم أي شيء). نسخة نزلت للتو: إشعار فقط
+      if (atBoot && Date.now() - bootAt < 3000 && safeToApply()) { w.postMessage({ type: 'skip-waiting' }); return; }
       UPD.state = 'ready'; UPD.worker = w; paintUpdate();
       toast('تحديث متوفر، أعد التشغيل', { ms: 0, action: { label: 'أعد التشغيل', fn: () => w.postMessage({ type: 'skip-waiting' }) } });
     };
-    if (reg.waiting && hadController) ask(reg.waiting);
+    if (reg.waiting && hadController) ask(reg.waiting, true);
     reg.addEventListener('updatefound', () => {
       const w = reg.installing;
       if (!w) return;
