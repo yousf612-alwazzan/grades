@@ -1,3 +1,4 @@
+import { T, tr } from './i18n.js';
 // طبقة المنصة: كل ما يختلف بين أندرويد (Capacitor) والويب/آيفون يمر من هنا بواجهة واحدة.
 
 const Cap = globalThis.Capacitor;
@@ -30,7 +31,7 @@ function downloadLink(name, blob) {
 async function nativeWrite(name, blob) {
   const Filesystem = P('Filesystem');
   const data = await blobToBase64(blob);
-  const path = `متابعة الدرجات/${name}`;
+  const path = T`متابعة الدرجات/${name}`;
   try {
     const r = await Filesystem.writeFile({ path, data, directory: 'DOCUMENTS', recursive: true });
     return r.uri;
@@ -61,7 +62,7 @@ export const platform = {
   async saveFile(name, blob, mime) {
     if (isNative) {
       const uri = await nativeWrite(name, blob);
-      try { await P('Share').share({ title: name, url: uri, dialogTitle: 'حفظ أو إرسال الملف' }); } catch { /* أُلغيت المشاركة */ }
+      try { await P('Share').share({ title: name, url: uri, dialogTitle: tr('حفظ أو إرسال الملف') }); } catch { /* أُلغيت المشاركة */ }
       return 'saved';
     }
     if (isIOS || (navigator.maxTouchPoints > 0 && isStandalone)) {
@@ -74,7 +75,7 @@ export const platform = {
 
   async shareText(text, title = '') {
     if (isNative) {
-      try { await P('Share').share({ title, text, dialogTitle: 'مشاركة' }); return 'shared'; } catch { return 'cancelled'; }
+      try { await P('Share').share({ title, text, dialogTitle: tr('مشاركة') }); return 'shared'; } catch { return 'cancelled'; }
     }
     if (navigator.share) {
       try { await navigator.share({ title, text }); return 'shared'; } catch (e) { return e && e.name === 'AbortError' ? 'cancelled' : (await platform.copyText(text) ? 'copied' : 'failed'); }
@@ -144,7 +145,7 @@ export const platform = {
   // GradesNative.printPage — ومنها «حفظ بتنسيق PDF». الويب/آيفون: window.print().
   // ترجع 'native' | 'web' | 'unsupported'.
   print(title) {
-    const name = String(title || document.title || 'كشف').slice(0, 120);
+    const name = String(title || document.title || tr('كشف')).slice(0, 120);
     const bridge = globalThis.GradesNative;
     if (isNative && bridge && typeof bridge.printPage === 'function') {
       try { bridge.printPage(name); return 'native'; } catch { /* نجرب طباعة المتصفح */ }

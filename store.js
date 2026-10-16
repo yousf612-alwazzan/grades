@@ -2,6 +2,7 @@
 // لا يُلمس indexedDB عند الاستيراد، لذا يمكن استيراد الدوال الصافية من Node.
 import CONFIG from './config.js';
 import { WEEKS, ITEMS, ITEM_MAX, FIN_MAX, emptyClassData, parseScore, round2, NOTE_MAX_LEN, NOTES_PER_STUDENT, noteShape } from './grades-core.js';
+import { T, tr } from './i18n.js';
 
 const DB_NAME = 'grades-followup';
 const DB_VERSION = 1;
@@ -131,13 +132,13 @@ export function buildBackup({ classes, settings, data }) {
 
 export function backupFileName(date = new Date()) {
   const p = n => String(n).padStart(2, '0');
-  return `نسخة_الدرجات_${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}.json`;
+  return T`نسخة_الدرجات_${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}.json`;
 }
 
-const ERR_READ = 'تعذّرت قراءة الملف. تأكد أنه ملف نسخة احتياطية (json) من تطبيق متابعة الدرجات.';
-const ERR_APP = 'هذا الملف ليس نسخة احتياطية من تطبيق متابعة الدرجات.';
-const ERR_NEWER = 'هذه النسخة الاحتياطية من إصدار أحدث من التطبيق. حدّث التطبيق ثم أعد المحاولة.';
-const ERR_SHAPE = 'النسخة الاحتياطية ناقصة أو تالفة ولا يمكن استرجاعها.';
+const ERR_READ = tr('تعذّرت قراءة الملف. تأكد أنه ملف نسخة احتياطية (json) من تطبيق متابعة الدرجات.');
+const ERR_APP = tr('هذا الملف ليس نسخة احتياطية من تطبيق متابعة الدرجات.');
+const ERR_NEWER = tr('هذه النسخة الاحتياطية من إصدار أحدث من التطبيق. حدّث التطبيق ثم أعد المحاولة.');
+const ERR_SHAPE = tr('النسخة الاحتياطية ناقصة أو تالفة ولا يمكن استرجاعها.');
 
 // قيمة درجة آمنة: رقم ضمن [0, max] أو null
 export function sanitizeScore(v, max) {
@@ -240,7 +241,7 @@ export function parseBackup(textOrObj) {
     used.add(id);
     const names = (Array.isArray(c.names) ? c.names : Array.isArray(c.students) ? c.students : [])
       .map(n => (typeof n === 'string' ? n : n && typeof n.name === 'string' ? n.name : '')).map(n => n.trim());
-    return { id, label: String(c.label ?? c.name ?? c.title ?? '').trim() || `صف ${i + 1}`, names, srcId: c.id };
+    return { id, label: String(c.label ?? c.name ?? c.title ?? '').trim() || T`صف ${i + 1}`, names, srcId: c.id };
   });
   const data = {};
   for (const c of classes) {

@@ -15,6 +15,7 @@ import * as localStore from './store.js';
 import { buildTransfer, transferFileName, parseTransfer, applyTransfer, moveStudents } from './transfer.js';
 import { platform } from './platform.js';
 import { ar, esc, icon, toast, openSheet, closeTopSheet, hasSheet, confirmDialog, keypad, students, cells, names as namesWord } from './ui.js';
+import { T, tr, trCrit, lang, rememberLang, translateStatic } from './i18n.js';
 
 // ===================== وضع الإدارة من الكمبيوتر =====================
 // REMOTE: هذا التطبيق يعمل داخل صفحة العرض على الكمبيوتر، وبياناته في جوال المعلم (لا شيء يُحفظ هنا).
@@ -104,8 +105,8 @@ function softRender() {
 }
 document.addEventListener('focusout', () => { if (S.pendingRender) { S.pendingRender = false; setTimeout(() => { if (!document.activeElement || !document.activeElement.matches('input, textarea, select')) render(); }, 50); } });
 
-const CRIT = CONFIG.criteria;
-const FINS = CONFIG.finals;
+const CRIT = CONFIG.criteria.map((c) => ({ ...c, label: trCrit(c.label), short: trCrit(c.short) }));
+const FINS = CONFIG.finals.map((f) => ({ ...f, label: trCrit(f.label), short: f.short ? trCrit(f.short) : f.short }));
 const WIDE = window.matchMedia('(min-width: 900px)');
 const ASIDE = window.matchMedia('(min-width: 1181px)'); // عرض بطاقة الطالب بجانب الجدول
 
@@ -161,7 +162,7 @@ async function flushSave() {
     setSaveState(S.dirty.size ? 'saving' : 'saved');
   } catch {
     setSaveState('error');
-    toast('تعذّر الحفظ. تأكد من وجود مساحة كافية على الجهاز.', { err: true });
+    toast(tr('تعذّر الحفظ. تأكد من وجود مساحة كافية على الجهاز.'), { err: true });
   }
 }
 function setSaveState(st) {
@@ -171,7 +172,7 @@ function setSaveState(st) {
 function paintSave(el) {
   const st = S.saving;
   el.className = 'save-state' + (st === 'saved' ? ' ok' : '');
-  el.innerHTML = st === 'saving' ? 'جارٍ الحفظ…' : st === 'error' ? `${icon('warn')} لم يُحفظ` : st === 'saved' ? `${icon('check')} محفوظ` : '';
+  el.innerHTML = st === 'saving' ? tr('جارٍ الحفظ…') : st === 'error' ? T`${icon('warn')} لم يُحفظ` : st === 'saved' ? T`${icon('check')} محفوظ` : '';
 }
 async function saveClassesNow() { noteChange(); await store.saveClasses(S.classes); }
 async function saveSettingsNow() { await store.saveSettings(S.settings); }
@@ -211,7 +212,7 @@ window.addEventListener('popstate', () => {
     if (leaving.name === 'editor' && leaving.p.dirty && !leaving.p.confirmedLeave) {
       // نمنع فقدان التعديلات: نرجع الحالة ونسأل
       history.pushState({ depth: S.stack.length }, '');
-      confirmDialog({ title: 'تجاهل التعديلات؟', text: 'لم تحفظ التغييرات على الصف.', ok: 'تجاهل', danger: true }).then((yes) => {
+      confirmDialog({ title: tr('تجاهل التعديلات؟'), text: tr('لم تحفظ التغييرات على الصف.'), ok: tr('تجاهل'), danger: true }).then((yes) => {
         if (yes) { leaving.p.confirmedLeave = true; history.back(); }
       });
       return;
@@ -221,7 +222,7 @@ window.addEventListener('popstate', () => {
     render({ scrollTop: true });
     if (leaving.name === 'class' && S.sessionChanged && S.meta.changedSinceBackup) {
       S.sessionChanged = false;
-      toast('الدرجات محفوظة على الجهاز. احفظ نسخة احتياطية؟', { ms: 7000, action: { label: 'احفظ نسخة', fn: doBackup } });
+      toast(tr('الدرجات محفوظة على الجهاز. احفظ نسخة احتياطية؟'), { ms: 7000, action: { label: tr('احفظ نسخة'), fn: doBackup } });
     }
   }
 });
@@ -241,7 +242,7 @@ function render({ scrollTop = false } = {}) {
   main().className = 'main' + (isRoot ? '' : ' no-tabbar') + (r.name === 'class' && WIDE.matches && cls(r.p.id) && cls(r.p.id).names.length ? ' desk-class' : '');
   document.body.classList.toggle('no-tabbar', !isRoot);
   document.getElementById('tabbar').classList.toggle('hide', !isRoot);
-  main().innerHTML = shareBarHTML() + (REMOTE ? `<div class="remote-bar">${icon('phone')} <span><b>متصل بجوالك</b> — كل التعديلات تُحفظ في جوالك</span></div>` : '') + `<div class="screen-enter">${fn(r.p)}</div>`;
+  main().innerHTML = shareBarHTML() + (REMOTE ? T`<div class="remote-bar">${icon('phone')} <span><b>متصل بجوالك</b> — كل التعديلات تُحفظ في جوالك</span></div>` : '') + `<div class="screen-enter">${fn(r.p)}</div>`;
   renderNav();
   main().querySelectorAll('[data-save-state]').forEach(paintSave);
   if (scrollTop) window.scrollTo(0, 0);
@@ -252,8 +253,8 @@ const afterRender = {};
 
 function shareBarHTML() {
   if (REMOTE || route().name === 'live' || !['connected', 'resuming', 'lost'].includes(L.phase)) return '';
-  const txt = L.phase === 'connected' ? 'الكمبيوتر متصل' : L.phase === 'resuming' ? 'جارٍ إعادة الاتصال بالكمبيوتر…' : 'انقطع الاتصال بالكمبيوتر';
-  return `<div class="share-bar ${L.phase}" data-share-bar><span class="dot"></span><button type="button" class="share-txt" data-act="nav" data-to="live">${txt}</button><button type="button" class="share-stop" data-act="live-stop-quick">إيقاف المشاركة</button></div>`;
+  const txt = L.phase === 'connected' ? tr('الكمبيوتر متصل') : L.phase === 'resuming' ? tr('جارٍ إعادة الاتصال بالكمبيوتر…') : tr('انقطع الاتصال بالكمبيوتر');
+  return T`<div class="share-bar ${L.phase}" data-share-bar><span class="dot"></span><button type="button" class="share-txt" data-act="nav" data-to="live">${txt}</button><button type="button" class="share-stop" data-act="live-stop-quick">إيقاف المشاركة</button></div>`;
 }
 function renderShareBar() {
   const bar = document.querySelector('[data-share-bar]');
@@ -264,15 +265,15 @@ function renderShareBar() {
 
 function renderNav() {
   const cur = ROOTS.includes(route().name) ? route().name : (S.stack[0] || {}).name;
-  const items = [['home', 'users', 'الصفوف'], ['reports', 'sheet', 'التقارير'], ['live', 'monitor', REMOTE ? 'عرض للطلاب' : 'العرض'], ['tools', 'bolt', 'الأدوات'], ['settings', 'gear', 'الإعدادات']];
+  const items = [['home', 'users', tr('الصفوف')], ['reports', 'sheet', tr('التقارير')], ['live', 'monitor', REMOTE ? tr('عرض للطلاب') : tr('العرض')], ['tools', 'bolt', tr('الأدوات')], ['settings', 'gear', tr('الإعدادات')]];
   const btns = items.map(([n, ic, label]) => `<button type="button" class="tab" data-act="nav" data-to="${n}" ${cur === n ? 'aria-current="page"' : ''}><span class="tab-ico">${icon(ic)}</span><span>${label}</span></button>`).join('');
   document.getElementById('tabbar').innerHTML = btns;
-  document.getElementById('rail').innerHTML = `<div class="brand"><img src="icons/icon-192.png" alt=""><span>${esc(CONFIG.appName)}</span></div>${btns}<div class="rail-foot">الإصدار ${ar(CONFIG.version)}<br>بياناتك على هذا الجهاز فقط</div>`;
+  document.getElementById('rail').innerHTML = T`<div class="brand"><img src="icons/icon-192.png" alt=""><span>${esc(tr(CONFIG.appName))}</span></div>${btns}<div class="rail-foot">الإصدار ${ar(CONFIG.version)}<br>بياناتك على هذا الجهاز فقط</div>`;
 }
 
 function appbar({ title, sub = '', backBtn = true, actions = '', save = false }) {
   return `<header class="appbar"><div class="appbar-row">
-    ${backBtn ? `<button type="button" class="icon-btn" data-act="back" aria-label="رجوع">${icon('back')}</button>` : ''}
+    ${backBtn ? T`<button type="button" class="icon-btn" data-act="back" aria-label="رجوع">${icon('back')}</button>` : ''}
     <h1>${esc(title)}${sub ? `<span class="sub">${sub}</span>` : ''}</h1>
     ${save ? '<span data-save-state></span>' : ''}
     ${actions}
@@ -308,29 +309,29 @@ function Home() {
   const st = S.settings;
   const alerts = [];
   if (!REMOTE && platform.isIOS && !platform.isStandalone) {
-    alerts.push(`<div class="alert warn">${icon('warn')}<div class="grow"><strong>ثبّت التطبيق على الشاشة الرئيسية</strong><p>في وضع المتصفح قد يمسح آيفون البيانات. أضِفه للشاشة الرئيسية لحماية أفضل.</p><button type="button" class="btn sm soft" data-act="go" data-to="guide">اعرض الطريقة</button></div></div>`);
+    alerts.push(T`<div class="alert warn">${icon('warn')}<div class="grow"><strong>ثبّت التطبيق على الشاشة الرئيسية</strong><p>في وضع المتصفح قد يمسح آيفون البيانات. أضِفه للشاشة الرئيسية لحماية أفضل.</p><button type="button" class="btn sm soft" data-act="go" data-to="guide">اعرض الطريقة</button></div></div>`);
   }
   if (!st.teacher || !st.subject) {
-    alerts.push(`<div class="alert info">${icon('info')}<div class="grow"><strong>أضف اسمك والمادة</strong><p>تظهر في كشف الإكسل وبطاقة الطالب.</p><button type="button" class="btn sm soft" data-act="nav" data-to="settings">إضافة الآن</button></div></div>`);
+    alerts.push(T`<div class="alert info">${icon('info')}<div class="grow"><strong>أضف اسمك والمادة</strong><p>تظهر في كشف الإكسل وبطاقة الطالب.</p><button type="button" class="btn sm soft" data-act="nav" data-to="settings">إضافة الآن</button></div></div>`);
   }
   const last = S.meta.lastBackupAt ? new Date(S.meta.lastBackupAt) : null;
   const days = last ? (Date.now() - last.getTime()) / 86400000 : Infinity;
   const pending = !!S.meta.changedSinceBackup && hasAnyGrades();
   if (REMOTE) { /* النسخ الاحتياطي من الجوال */ } else if (hasAnyGrades() && days > CONFIG.backupReminderDays) {
-    alerts.push(`<div class="alert warn" data-testid="backup-reminder">${icon('shield')}<div class="grow"><strong>احفظ نسخة احتياطية</strong><p>${last ? `آخر نسخة قبل ${ar(Math.floor(days))} يومًا.` : 'لم تحفظ أي نسخة بعد.'} احفظها في «الملفات» أو أرسلها لنفسك.</p><button type="button" class="btn sm soft" data-act="backup">احفظ نسخة الآن</button></div></div>`);
+    alerts.push(T`<div class="alert warn" data-testid="backup-reminder">${icon('shield')}<div class="grow"><strong>احفظ نسخة احتياطية</strong><p>${last ? T`آخر نسخة قبل ${ar(Math.floor(days))} يومًا.` : tr('لم تحفظ أي نسخة بعد.')} احفظها في «الملفات» أو أرسلها لنفسك.</p><button type="button" class="btn sm soft" data-act="backup">احفظ نسخة الآن</button></div></div>`);
   } else if (pending) {
-    alerts.push(`<div class="alert info" data-testid="backup-nudge">${icon('shield')}<div class="grow"><strong>عندك درجات جديدة بدون نسخة احتياطية</strong><p>ضغطة واحدة تحفظها في iCloud Drive أو ترسلها لنفسك، فلا تضيع لو ضاع الجوال.</p><button type="button" class="btn sm soft" data-act="backup">${icon('download')} احفظ نسخة الآن</button></div></div>`);
+    alerts.push(T`<div class="alert info" data-testid="backup-nudge">${icon('shield')}<div class="grow"><strong>عندك درجات جديدة بدون نسخة احتياطية</strong><p>ضغطة واحدة تحفظها في iCloud Drive أو ترسلها لنفسك، فلا تضيع لو ضاع الجوال.</p><button type="button" class="btn sm soft" data-act="backup">${icon('download')} احفظ نسخة الآن</button></div></div>`);
   }
 
   const backupOk = last && !pending && hasAnyGrades()
-    ? `<p class="hint" data-testid="backup-ok" style="color:var(--success);font-weight:700">${icon('checkCircle')} نسختك الاحتياطية محدّثة (${days < 1 ? 'اليوم' : `قبل ${ar(Math.floor(days))} يوم`})</p>` : '';
-  const helloTitle = st.teacher ? `أهلًا أ. ${st.teacher}` : 'أهلًا بك';
-  const helloSub = `${st.subject ? esc(st.subject) + ' · ' : ''}${S.classes.length ? `${ar(S.classes.length)} ${S.classes.length === 1 ? 'صف' : S.classes.length === 2 ? 'صفّان' : 'صفوف'}` : 'لنبدأ'}`;
-  const addBtn = S.classes.length ? `<button type="button" class="btn sm soft add-class" data-act="new-class">${icon('plus')} إضافة صف</button>` : '';
+    ? T`<p class="hint" data-testid="backup-ok" style="color:var(--success);font-weight:700">${icon('checkCircle')} نسختك الاحتياطية محدّثة (${days < 1 ? tr('اليوم') : T`قبل ${ar(Math.floor(days))} يوم`})</p>` : '';
+  const helloTitle = st.teacher ? T`أهلًا أ. ${st.teacher}` : tr('أهلًا بك');
+  const helloSub = `${st.subject ? esc(st.subject) + ' · ' : ''}${S.classes.length === 1 ? tr('صف واحد') : S.classes.length === 2 ? tr('صفّان') : S.classes.length ? T`${ar(S.classes.length)} صفوف` : tr('لنبدأ')}`;
+  const addBtn = S.classes.length ? T`<button type="button" class="btn sm soft add-class" data-act="new-class">${icon('plus')} إضافة صف</button>` : '';
 
   let body;
   if (!S.classes.length) {
-    body = `<div class="empty card">${ART_EMPTY}<h2>ابدأ بثلاث خطوات</h2>
+    body = T`<div class="empty card">${ART_EMPTY}<h2>ابدأ بثلاث خطوات</h2>
       <ol class="steps">
         <li><span class="n">${ar(1)}</span><span>أضف صفًا (مثل «العاشر / ٣»)</span></li>
         <li><span class="n">${ar(2)}</span><span>الصق أسماء الطلاب أو استوردها من Excel أو PDF</span></li>
@@ -343,7 +344,7 @@ function Home() {
     body = `<div class="home-grid stack">${S.classes.map(classCard).join('')}</div>`;
   }
 
-  return `${appbar({ title: helloTitle, sub: helloSub, backBtn: false, save: true, actions: addBtn })}
+  return T`${appbar({ title: helloTitle, sub: helloSub, backBtn: false, save: true, actions: addBtn })}
   <div class="wrap stack home-wrap">
     ${backupOk}
     ${alerts.join('')}
@@ -358,26 +359,26 @@ function Home() {
 function Tools() {
   const item = (act, ic, t, sub, extra = '') => `<button type="button" class="list-item" data-act="${act}" ${extra}>${icon(ic)}<span class="grow"><strong>${t}</strong><small>${sub}</small></span>${icon('fwd')}</button>`;
   const has = S.classes.length > 0;
-  return `${appbar({ title: 'الأدوات', backBtn: false })}
+  return T`${appbar({ title: tr('الأدوات'), backBtn: false })}
   <div class="wrap stack">
     <div class="section-title">الصفوف</div>
     <div class="list">
-      ${item('new-class', 'plus', 'إضافة صف', 'بإدخال الأسماء أو لصقها')}
-      ${item('import-classes', 'upload', 'إنشاء صفوف من ملف', 'كشف Excel أو PDF فيه صف أو أكثر — حتى الممسوح ضوئيًا')}
+      ${item('new-class', 'plus', tr('إضافة صف'), tr('بإدخال الأسماء أو لصقها'))}
+      ${item('import-classes', 'upload', tr('إنشاء صفوف من ملف'), tr('كشف Excel أو PDF فيه صف أو أكثر — حتى الممسوح ضوئيًا'))}
     </div>
     <div class="section-title">النقل بين المعلمين</div>
     <div class="list">
-      ${has ? item('handover-pick', 'send', 'تسليم صف كامل لمعلم آخر', 'كل الطلاب مع الدرجات والغياب والملاحظات في ملف واحد') : ''}
-      ${has ? item('transfer-pick', 'move', 'نقل طلاب', 'طالب أو أكثر لمعلم آخر أو لصف آخر عندك') : ''}
-      ${item('go', 'inbox', 'استقبال صف أو طلاب', 'من ملف أرسله معلم آخر', 'data-to="transferIn"')}
+      ${has ? item('handover-pick', 'send', tr('تسليم صف كامل لمعلم آخر'), tr('كل الطلاب مع الدرجات والغياب والملاحظات في ملف واحد')) : ''}
+      ${has ? item('transfer-pick', 'move', tr('نقل طلاب'), tr('طالب أو أكثر لمعلم آخر أو لصف آخر عندك')) : ''}
+      ${item('go', 'inbox', tr('استقبال صف أو طلاب'), tr('من ملف أرسله معلم آخر'), 'data-to="transferIn"')}
     </div>
-    ${REMOTE ? `<p class="hint">${icon('shield')} النسخ الاحتياطي والاسترجاع وحذف البيانات تتم من الجوال (البيانات محفوظة فيه).</p>` : `<div class="section-title">النسخ الاحتياطي</div>
+    ${REMOTE ? T`<p class="hint">${icon('shield')} النسخ الاحتياطي والاسترجاع وحذف البيانات تتم من الجوال (البيانات محفوظة فيه).</p>` : T`<div class="section-title">النسخ الاحتياطي</div>
     <div class="list">
-      <div class="list-item"><span class="grow"><strong>آخر نسخة احتياطية</strong><small class="num">${S.meta.lastBackupAt ? ar(new Date(S.meta.lastBackupAt).toLocaleDateString('en-GB')) : 'لم تُحفظ بعد'}</small></span>${S.meta.persist === 'granted' ? `<span class="status-pill ok">${icon('shield')} التخزين محمي</span>` : ''}</div>
-      ${item('backup', 'download', 'حفظ نسخة احتياطية', 'كل الصفوف والدرجات في ملف — على الجوال وفي iCloud')}
-      ${item('restore', 'upload', 'استرجاع نسخة', 'من ملف نسخة احتياطية سابق (يستبدل البيانات الحالية)')}
+      <div class="list-item"><span class="grow"><strong>آخر نسخة احتياطية</strong><small class="num">${S.meta.lastBackupAt ? ar(new Date(S.meta.lastBackupAt).toLocaleDateString('en-GB')) : tr('لم تُحفظ بعد')}</small></span>${S.meta.persist === 'granted' ? T`<span class="status-pill ok">${icon('shield')} التخزين محمي</span>` : ''}</div>
+      ${item('backup', 'download', tr('حفظ نسخة احتياطية'), tr('كل الصفوف والدرجات في ملف — على الجوال وفي iCloud'))}
+      ${item('restore', 'upload', tr('استرجاع نسخة'), tr('من ملف نسخة احتياطية سابق (يستبدل البيانات الحالية)'))}
     </div>`}
-    ${REMOTE ? '' : `<div class="section-title">منطقة الخطر</div>
+    ${REMOTE ? '' : T`<div class="section-title">منطقة الخطر</div>
     <div class="list">
       <button type="button" class="list-item" data-act="wipe">${icon('trash')}<span class="grow"><strong style="color:var(--error)">حذف كل البيانات</strong><small>كل الصفوف والدرجات من هذا الجهاز — احفظ نسخة أولًا</small></span></button>
     </div>`}
@@ -388,7 +389,7 @@ function Tools() {
 function pickClass(title) {
   return new Promise((resolve) => {
     let res = null;
-    const s = openSheet(`<h2>${esc(title)}</h2><div class="list">${S.classes.map((c) => `<button type="button" class="list-item" data-pc="${c.id}">${icon('users')}<span class="grow"><strong>${esc(c.label)}</strong><small>${students(c.names.length)}</small></span>${icon('fwd')}</button>`).join('')}</div>
+    const s = openSheet(T`<h2>${esc(title)}</h2><div class="list">${S.classes.map((c) => `<button type="button" class="list-item" data-pc="${c.id}">${icon('users')}<span class="grow"><strong>${esc(c.label)}</strong><small>${students(c.names.length)}</small></span>${icon('fwd')}</button>`).join('')}</div>
       <div class="actions"><button type="button" class="btn" data-pc="">إلغاء</button></div>`, { label: title, onClose: () => resolve(res) });
     s.sheet.addEventListener('click', (e) => { const b = e.target.closest('[data-pc]'); if (!b) return; res = b.dataset.pc ? cls(b.dataset.pc) : null; s.close(); });
   });
@@ -399,7 +400,7 @@ function pickClass(title) {
 // =====================================================================
 function Reports() {
   if (!S.classes.length) {
-    return `${appbar({ title: 'التقارير', backBtn: false })}<div class="wrap"><div class="empty card">${ART_EMPTY}<h2>لا توجد صفوف بعد</h2><p>أضف صفًا وارصد الدرجات، ثم اطبع كشوفه من هنا.</p><button type="button" class="btn primary" data-act="new-class">${icon('plus')} إضافة صف</button></div></div>`;
+    return T`${appbar({ title: tr('التقارير'), backBtn: false })}<div class="wrap"><div class="empty card">${ART_EMPTY}<h2>لا توجد صفوف بعد</h2><p>أضف صفًا وارصد الدرجات، ثم اطبع كشوفه من هنا.</p><button type="button" class="btn primary" data-act="new-class">${icon('plus')} إضافة صف</button></div></div>`;
   }
   if (!S.ui.reportClass || !cls(S.ui.reportClass)) S.ui.reportClass = S.classes[0].id;
   const c = cls(S.ui.reportClass);
@@ -407,15 +408,15 @@ function Reports() {
   const n = c.names.length;
   const pr = progress(d, n);
   const card = (act, ic, t, sub) => `<button type="button" class="report-card" data-act="${act}" data-id="${c.id}">${icon(ic)}<span><strong>${t}</strong><small>${sub}</small></span></button>`;
-  return `${appbar({ title: 'التقارير', backBtn: false })}
+  return T`${appbar({ title: tr('التقارير'), backBtn: false })}
   <div class="wrap stack">
     <button type="button" class="pick-btn" data-act="report-class-pick" aria-haspopup="dialog"><span class="pick-ico">${icon('users')}</span><span class="grow"><small>الصف</small><strong>${esc(c.label)}</strong><span class="pick-meta">${students(n)} · رصد ${ar(Math.round(pr.ratio * 100))}٪</span></span><span class="pick-chev" aria-hidden="true">تغيير</span></button>
     <p class="hint">التقارير تُطبع أو تُحفظ PDF من نافذة الطباعة.</p>
     <div class="report-grid">
-      ${card('report-grades', 'sheet', 'كشف الدرجات', 'الأسابيع والفترتان والنهائي — PDF منسّق للطباعة')}
-      ${card('report-attendance', 'calendar', 'كشف الحضور والغياب', 'غياب كل طالب في كل أسبوع — PDF')}
-      ${card('export-xlsx', 'download', 'كشف Excel الرسمي', 'ملف xlsx بأوراق المتابعة والطباعة والرصد')}
-      ${card('report-student', 'users', 'تقرير طالب', 'درجات طالب واحد مع ملاحظاته — PDF')}
+      ${card('report-grades', 'sheet', tr('كشف الدرجات'), tr('الأسابيع والفترتان والنهائي — PDF منسّق للطباعة'))}
+      ${card('report-attendance', 'calendar', tr('كشف الحضور والغياب'), tr('غياب كل طالب في كل أسبوع — PDF'))}
+      ${card('export-xlsx', 'download', tr('كشف Excel الرسمي'), tr('ملف xlsx بأوراق المتابعة والطباعة والرصد'))}
+      ${card('report-student', 'users', tr('تقرير طالب'), tr('درجات طالب واحد مع ملاحظاته — PDF'))}
     </div>
   </div>`;
 }
@@ -424,9 +425,9 @@ function Reports() {
 function pickClassSheet(current, done) {
   const items = S.classes.map((o) => {
     const p = Math.round(progress(dataOf(o.id), o.names.length).ratio * 100);
-    return `<button type="button" role="radio" class="cp" aria-checked="${o.id === current}" data-pick="${o.id}"><span class="cp-dot" aria-hidden="true"></span><span class="grow"><strong>${esc(o.label)}</strong><small>${students(o.names.length)} · رصد ${ar(p)}٪</small></span></button>`;
+    return T`<button type="button" role="radio" class="cp" aria-checked="${o.id === current}" data-pick="${o.id}"><span class="cp-dot" aria-hidden="true"></span><span class="grow"><strong>${esc(o.label)}</strong><small>${students(o.names.length)} · رصد ${ar(p)}٪</small></span></button>`;
   }).join('');
-  const s = openSheet(`<h2>اختر الصف</h2><div class="class-pick" role="radiogroup" aria-label="الصفوف">${items}</div>`, { label: 'اختر الصف' });
+  const s = openSheet(T`<h2>اختر الصف</h2><div class="class-pick" role="radiogroup" aria-label="الصفوف">${items}</div>`, { label: tr('اختر الصف') });
   s.sheet.addEventListener('click', (e) => {
     const b = e.target.closest('[data-pick]');
     if (!b) return;
@@ -441,15 +442,15 @@ function classCard(c) {
   const pr = progress(d, n);
   const pct = Math.round(pr.ratio * 100);
   const fw = n ? firstIncompleteWeek(d, n) : null;
-  const where = fw == null ? '' : fw === 'fin' ? (finalsRemaining(d, n) ? 'الدرجات النهائية' : 'اكتمل كل شيء ✓') : `الأسبوع ${ar(fw)}`;
-  return `<article class="card class-card tap" data-act="open-class" data-id="${c.id}">
+  const where = fw == null ? '' : fw === 'fin' ? (finalsRemaining(d, n) ? tr('الدرجات النهائية') : tr('اكتمل كل شيء ✓')) : T`الأسبوع ${ar(fw)}`;
+  return T`<article class="card class-card tap" data-act="open-class" data-id="${c.id}">
     <div class="head"><span class="class-badge">${icon('users')}</span>
       <div class="grow"><h3>${esc(c.label)}</h3><div class="meta">${students(n)}${where ? ` · ${where}` : ''}</div></div>
     </div>
     <div><div class="row" style="justify-content:space-between"><span class="meta">نسبة الرصد</span><b class="num">${ar(pct)}٪</b></div>
       <div class="progress ${pct === 100 ? 'done' : ''}" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div></div>
     <div class="class-actions">
-      ${n ? `<button type="button" class="btn soft sm" data-act="resume" data-id="${c.id}">تابع الرصد ${icon('next')}</button>` : `<button type="button" class="btn soft" data-act="edit-class" data-id="${c.id}">${icon('users')} أضف الطلاب</button>`}
+      ${n ? T`<button type="button" class="btn soft sm" data-act="resume" data-id="${c.id}">تابع الرصد ${icon('next')}</button>` : T`<button type="button" class="btn soft" data-act="edit-class" data-id="${c.id}">${icon('users')} أضف الطلاب</button>`}
     </div>
   </article>`;
 }
@@ -467,32 +468,32 @@ function ClassScreen(p) {
 
   const wide = WIDE.matches;
   // على الكمبيوتر: الأزرار ظاهرة. على الجوال: قائمة «⋯» واحدة حتى تبقى الشاشة للرصد فقط
-  const tools = wide ? `<div class="toolbar wrap" style="padding-top:0;padding-bottom:0">
+  const tools = wide ? T`<div class="toolbar wrap" style="padding-top:0;padding-bottom:0">
     <button type="button" class="btn sm" data-act="edit-class" data-id="${c.id}">${icon('users')} الطلاب</button>
     <button type="button" class="btn sm" data-act="export-xlsx" data-id="${c.id}">${icon('sheet')} تصدير Excel</button>
-    ${REMOTE ? `<button type="button" class="btn sm primary" data-act="present" data-id="${c.id}">${icon('monitor')} اعرض للطلاب وارصد</button>` : `<button type="button" class="btn sm" data-act="go-live" data-id="${c.id}">${icon('monitor')} عرض على الكمبيوتر</button>`}
+    ${REMOTE ? T`<button type="button" class="btn sm primary" data-act="present" data-id="${c.id}">${icon('monitor')} اعرض للطلاب وارصد</button>` : T`<button type="button" class="btn sm" data-act="go-live" data-id="${c.id}">${icon('monitor')} عرض على الكمبيوتر</button>`}
     <button type="button" class="btn sm" data-act="go" data-to="transferOut" data-id="${c.id}">${icon('send')} نقل طلاب</button>
   </div>` : '';
-  const menuBtn = wide ? '' : `<button type="button" class="icon-btn labeled" data-act="class-menu" aria-label="خيارات الصف">${icon('more')}</button>`;
-  const weekLabel = p.tab === 'fin' ? 'الدرجات النهائية' : `الأسبوع ${ar(p.tab)}`;
+  const menuBtn = wide ? '' : T`<button type="button" class="icon-btn labeled" data-act="class-menu" aria-label="خيارات الصف">${icon('more')}</button>`;
+  const weekLabel = p.tab === 'fin' ? tr('الدرجات النهائية') : T`الأسبوع ${ar(p.tab)}`;
   const weekSub = !n ? '' : p.tab === 'fin'
-    ? (finalsRemaining(d, n) ? `باقي ${ar(finalsRemaining(d, n))}` : 'مكتملة ✓')
-    : (weekComplete(d, p.tab, n) ? 'مكتمل ✓' : `باقي ${ar(weekRemaining(d, p.tab, n))} من ${ar(n)}`);
-  const weekbar = `<div class="weekbar">
+    ? (finalsRemaining(d, n) ? T`باقي ${ar(finalsRemaining(d, n))}` : tr('مكتملة ✓'))
+    : (weekComplete(d, p.tab, n) ? tr('مكتمل ✓') : T`باقي ${ar(weekRemaining(d, p.tab, n))} من ${ar(n)}`);
+  const weekbar = T`<div class="weekbar">
     <button type="button" class="icon-btn" data-act="week-step" data-dir="-1" aria-label="الأسبوع السابق" ${p.tab === 1 ? 'disabled' : ''}>${icon('prev')}</button>
     <button type="button" class="week-btn" data-act="week-pick" aria-label="اختر الأسبوع"><b>${weekLabel} ▾</b><small id="week-sub">${weekSub}</small></button>
     <button type="button" class="icon-btn" data-act="week-step" data-dir="1" aria-label="الأسبوع التالي" ${p.tab === 'fin' ? 'disabled' : ''}>${icon('next')}</button>
   </div>`;
 
-  const chips = `<div class="chips" role="tablist" aria-label="الأسابيع">${Array.from({ length: WEEKS }, (_, i) => {
+  const chips = T`<div class="chips" role="tablist" aria-label="الأسابيع">${Array.from({ length: WEEKS }, (_, i) => {
     const w = i + 1;
     const done = n && weekComplete(d, w, n);
-    return `<button type="button" role="tab" class="chip ${done ? 'done' : ''}" aria-selected="${p.tab === w}" data-act="tab" data-tab="${w}">${done ? icon('check') : ''}أسبوع ${ar(w)}</button>`;
+    return T`<button type="button" role="tab" class="chip ${done ? 'done' : ''}" aria-selected="${p.tab === w}" data-act="tab" data-tab="${w}">${done ? icon('check') : ''}أسبوع ${ar(w)}</button>`;
   }).join('')}<button type="button" role="tab" class="chip ${n && !finalsRemaining(d, n) ? 'done' : ''}" aria-selected="${p.tab === 'fin'}" data-act="tab" data-tab="fin">${n && !finalsRemaining(d, n) ? icon('check') : ''}الدرجات النهائية</button></div>`;
 
   let body;
   if (!n) {
-    body = `<div class="wrap"><div class="empty card">${ART_USERS}<h2>لا يوجد طلاب في هذا الصف</h2><p>أضف الأسماء بلصقها أو استوردها من ملف Excel أو PDF.</p>
+    body = T`<div class="wrap"><div class="empty card">${ART_USERS}<h2>لا يوجد طلاب في هذا الصف</h2><p>أضف الأسماء بلصقها أو استوردها من ملف Excel أو PDF.</p>
       <button type="button" class="btn primary lg" data-act="edit-class" data-id="${c.id}">${icon('plus')} أضف الطلاب</button>
       <button type="button" class="btn lg ghost" data-act="go" data-to="transferIn" data-id="${c.id}">${icon('inbox')} استقبال طلاب منقولين</button></div></div>`;
   } else {
@@ -531,21 +532,21 @@ function deskSide(c, d, inner) {
   const weeks = Array.from({ length: WEEKS }, (_, j) => {
     const x = j + 1;
     const done = n && weekComplete(d, x, n);
-    return `<button type="button" role="tab" class="chip wk-mini ${done ? 'done' : ''}" aria-selected="${w === x}" data-act="tab" data-tab="${x}" aria-label="الأسبوع ${ar(x)}">${ar(x)}</button>`;
+    return T`<button type="button" role="tab" class="chip wk-mini ${done ? 'done' : ''}" aria-selected="${w === x}" data-act="tab" data-tab="${x}" aria-label="الأسبوع ${ar(x)}">${ar(x)}</button>`;
   }).join('');
   const finDone = n && !finalsRemaining(d, n);
   const act = (a, ic, label, extra = '') => `<button type="button" class="side-act" data-act="${a}" data-id="${c.id}" ${extra}>${icon(ic)}<span>${label}</span></button>`;
-  return `<aside class="cls-side">
+  return T`<aside class="cls-side">
     <div class="side-card">
       <div class="side-title">الأسابيع</div>
       <div class="wk-mini-grid" role="tablist" aria-label="الأسابيع">${weeks}</div>
       <button type="button" role="tab" class="chip wk-mini fin ${finDone ? 'done' : ''}" aria-selected="${w === 'fin'}" data-act="tab" data-tab="fin">الدرجات النهائية</button>
     </div>
     <div class="side-card side-acts">
-      ${REMOTE ? act('present', 'monitor', 'اعرض للطلاب وارصد') : act('go-live', 'monitor', 'عرض على الكمبيوتر')}
-      ${act('edit-class', 'users', 'الطلاب')}
-      ${act('export-xlsx', 'sheet', 'تصدير Excel')}
-      ${act('go', 'send', 'نقل طلاب', 'data-to="transferOut"')}
+      ${REMOTE ? act('present', 'monitor', tr('اعرض للطلاب وارصد')) : act('go-live', 'monitor', tr('عرض على الكمبيوتر'))}
+      ${act('edit-class', 'users', tr('الطلاب'))}
+      ${act('export-xlsx', 'sheet', tr('تصدير Excel'))}
+      ${act('go', 'send', tr('نقل طلاب'), 'data-to="transferOut"')}
     </div>
     ${inner}
 
@@ -561,13 +562,13 @@ function asideHTML(c, d, p) {
   const totals = c.names.map((_, i) => finalTotal(d, i)).filter((v) => v != null);
   const avg = totals.length ? totals.reduce((a, b) => a + b, 0) / totals.length : null;
   const pr = progress(d, n);
-  return `<div class="side-card">
+  return T`<div class="side-card">
     <div class="side-title">ملخص الصف</div>
     <div class="kv">
       <div>نسبة الرصد</div><div class="num">${ar(Math.round(pr.ratio * 100))}٪</div>
       <div>اكتمل مجموعهم النهائي</div><div class="num">${ar(totals.length)} / ${ar(n)}</div>
       <div>متوسط المجموع النهائي</div><div class="num">${fmt(avg)}</div>
-      ${p.tab !== 'fin' ? `<div>باقي في الأسبوع ${ar(p.tab)}</div><div class="num">${ar(weekRemaining(d, p.tab, n))}</div>` : ''}
+      ${p.tab !== 'fin' ? T`<div>باقي في الأسبوع ${ar(p.tab)}</div><div class="num">${ar(weekRemaining(d, p.tab, n))}</div>` : ''}
     </div>
     <p class="hint" style="margin-top:8px">اضغط اسم أي طالب لعرض بطاقته هنا.</p>
   </div>`;
@@ -593,25 +594,25 @@ function weekTab(c, d, w) {
     // الجوال: شريط إجراءات صغير + صف مختصر لكل طالب
     const metaLine = meta.date || meta.lesson
       ? `<button type="button" class="meta-line" data-act="week-tools">${icon('calendar')} ${esc([meta.date, meta.lesson].filter(Boolean).join(' · '))}</button>`
-      : `<button type="button" class="meta-line muted" data-act="week-tools">${icon('calendar')} أضف التاريخ وعنوان الدرس</button>`;
+      : T`<button type="button" class="meta-line muted" data-act="week-tools">${icon('calendar')} أضف التاريخ وعنوان الدرس</button>`;
     const rows = visible.map((i) => stuRow(c, d, w, i)).join('');
-    return `<div class="stack">
+    return T`<div class="stack">
       <div class="action-row">
         <button type="button" class="btn success" data-act="fill" data-k="all">${icon('check')} الكل ${ar(CONFIG.itemMax)}</button>
         <button type="button" class="btn ${S.ui.missingOnly ? 'primary' : ''}" data-act="missing-toggle" aria-pressed="${S.ui.missingOnly}">الناقص فقط</button>
         <button type="button" class="btn" data-act="week-tools">${icon('edit')} أدوات</button>
       </div>
-      ${S.ui.undo && S.ui.undo.classId === c.id && S.ui.undo.week === w ? `<button type="button" class="btn danger-ghost block" data-act="undo-bulk">${icon('undo')} تراجع عن «${S.ui.undo.label}»</button>` : ''}
+      ${S.ui.undo && S.ui.undo.classId === c.id && S.ui.undo.week === w ? T`<button type="button" class="btn danger-ghost block" data-act="undo-bulk">${icon('undo')} تراجع عن «${S.ui.undo.label}»</button>` : ''}
       ${metaLine}
       <span id="week-status" hidden>${weekStatusHTML(d, w, n)}</span>
-      ${n > 12 ? `<div class="search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب أو رقمه" value="${esc(q)}" aria-label="بحث"></div>` : ''}
-      <div id="stu-list" class="slist">${rows || `<p class="hint" style="text-align:center;padding:24px">${S.ui.missingOnly && !q ? '🎉 كل الطلاب مكتملون في هذا الأسبوع' : 'لا نتائج'}</p>`}</div>
+      ${n > 12 ? T`<div class="search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب أو رقمه" value="${esc(q)}" aria-label="بحث"></div>` : ''}
+      <div id="stu-list" class="slist">${rows || `<p class="hint" style="text-align:center;padding:24px">${S.ui.missingOnly && !q ? tr('🎉 كل الطلاب مكتملون في هذا الأسبوع') : tr('لا نتائج')}</p>`}</div>
       <p class="hint" style="text-align:center">${icon('info')} اضغط أي مربع لاختيار الدرجة، أو «كامل» لوضع ${ar(CONFIG.itemMax)} في الأربعة.</p>
     </div>`;
   }
 
   const list = weekGrid(c, d, w, visible);
-  const side = `
+  const side = T`
     <div class="side-card">
       <div class="side-title">الأسبوع ${ar(w)}</div>
       <div class="field"><label for="wdate">التاريخ</label><div class="row"><input id="wdate" class="input" data-meta="date" value="${esc(meta.date)}" placeholder="مثال: ١٢/١٠" autocomplete="off"><button type="button" class="btn sm" data-act="today" title="تاريخ اليوم">${icon('calendar')} اليوم</button></div></div>
@@ -623,16 +624,16 @@ function weekTab(c, d, w) {
         <button type="button" class="btn sm success all" data-act="fill" data-k="all">${icon('check')} الكل ${ar(CONFIG.itemMax)}</button>
         ${CRIT.map((cr, k) => `<button type="button" class="btn sm" data-act="fill" data-k="${k}">${esc(cr.short)} ${ar(CONFIG.itemMax)}</button>`).join('')}
       </div>
-      ${S.ui.undo && S.ui.undo.classId === c.id && S.ui.undo.week === w ? `<button type="button" class="btn sm danger-ghost block" style="margin-top:8px" data-act="undo-bulk">${icon('undo')} تراجع عن «${S.ui.undo.label}»</button>` : ''}
+      ${S.ui.undo && S.ui.undo.classId === c.id && S.ui.undo.week === w ? T`<button type="button" class="btn sm danger-ghost block" style="margin-top:8px" data-act="undo-bulk">${icon('undo')} تراجع عن «${S.ui.undo.label}»</button>` : ''}
     </div>`;
-  return `<div class="cls-desk">
+  return T`<div class="cls-desk">
     <div class="cls-main">
       <div class="main-bar">
         <span id="week-status">${weekStatusHTML(d, w, n)}</span>
         <div class="search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب أو رقمه" value="${esc(q)}" aria-label="بحث"></div>
         <label class="toggle-line">الناقص فقط <input type="checkbox" class="switch" data-act="missing" ${S.ui.missingOnly ? 'checked' : ''}></label>
       </div>
-      <div id="stu-list" class="stu-scroll">${list || `<p class="hint" style="text-align:center;padding:24px">${S.ui.missingOnly && !q ? 'لا يوجد طلاب ناقصون في هذا الأسبوع' : 'لا نتائج'}</p>`}</div>
+      <div id="stu-list" class="stu-scroll">${list || `<p class="hint" style="text-align:center;padding:24px">${S.ui.missingOnly && !q ? tr('لا يوجد طلاب ناقصون في هذا الأسبوع') : tr('لا نتائج')}</p>`}</div>
     </div>
     ${deskSide(c, d, side)}
   </div>`;
@@ -640,7 +641,7 @@ function weekTab(c, d, w) {
 
 function weekStatusHTML(d, w, n) {
   const rem = weekRemaining(d, w, n);
-  return rem ? `<span class="status-pill">${icon('warn')} باقي ${ar(rem)} من ${ar(n)} طالب</span>` : `<span class="status-pill ok">${icon('checkCircle')} اكتمل هذا الأسبوع</span>`;
+  return rem ? T`<span class="status-pill">${icon('warn')} باقي ${ar(rem)} من ${ar(n)} طالب</span>` : T`<span class="status-pill ok">${icon('checkCircle')} اكتمل هذا الأسبوع</span>`;
 }
 
 function totalBadge(t, max) {
@@ -656,31 +657,31 @@ function stuRow(c, d, w, i) {
   const notes = getNotes(d, i).length;
   const issues = weekIssues(d, w, i).length;
   const star = isStar(d, w, i);
-  return `<div class="srow ${done ? 'complete' : ''} ${absent ? 'absent' : ''}" data-stu="${i}">
+  return T`<div class="srow ${done ? 'complete' : ''} ${absent ? 'absent' : ''}" data-stu="${i}">
     <span class="srow-num num">${ar(i + 1)}</span>
-    <button type="button" class="srow-name" data-act="open-student" data-idx="${i}">${issues ? `<span class="issue-mark" title="تنبيه هذا الأسبوع" aria-label="تنبيه">!</span>` : ''}${esc(c.names[i])}${star ? `<span class="name-star" title="نجمة تميّز">${icon('star')}</span>` : ''}</button>
+    <button type="button" class="srow-name" data-act="open-student" data-idx="${i}">${issues ? T`<span class="issue-mark" title="تنبيه هذا الأسبوع" aria-label="تنبيه">!</span>` : ''}${esc(c.names[i])}${star ? T`<span class="name-star" title="نجمة تميّز">${icon('star')}</span>` : ''}</button>
     <span class="srow-total num ${t === CONFIG.itemMax * ITEMS ? 'full' : ''} ${absent ? 'abs' : ''}" data-total>${t == null ? '' : fmt(t)}</span>
     <div class="boxes" data-inputs>${absent ? absentPill() : rowBoxes(w, i, getItems(d, w, i), c.names[i])}</div>
-    <span class="srow-act" data-rowact>${absent ? `<span class="srow-done abs" aria-label="غائب">${icon('xCircle')}</span>` : rowAct(done, i)}</span>
+    <span class="srow-act" data-rowact>${absent ? T`<span class="srow-done abs" aria-label="غائب">${icon('xCircle')}</span>` : rowAct(done, i)}</span>
     <span class="row-flags">
-      <button type="button" class="flag abs-btn ${absent ? 'on' : ''}" data-act="absent" data-idx="${i}" aria-pressed="${absent}">${absent ? `${icon('undo')} تسجيل حضور` : `${icon('x')} غياب`}</button>
+      <button type="button" class="flag abs-btn ${absent ? 'on' : ''}" data-act="absent" data-idx="${i}" aria-pressed="${absent}">${absent ? T`${icon('undo')} تسجيل حضور` : T`${icon('x')} غياب`}</button>
       <button type="button" class="flag star-btn ${star ? 'on' : ''}" data-act="star" data-idx="${i}" aria-pressed="${star}" aria-label="نجمة تميّز هذا الأسبوع">${icon('star')} نجمة</button>
-      <button type="button" class="flag note-btn" data-act="quick-note" data-idx="${i}" aria-label="ملاحظة أو تنبيه">${icon('note')} ملاحظة${notes ? `<span class="note-dot" title="ملاحظات">${ar(notes)}</span>` : ''}</button>
+      <button type="button" class="flag note-btn" data-act="quick-note" data-idx="${i}" aria-label="ملاحظة أو تنبيه">${icon('note')} ملاحظة${notes ? T`<span class="note-dot" title="ملاحظات">${ar(notes)}</span>` : ''}</button>
     </span>
   </div>`;
 }
 function absentPill() {
-  return `<span class="absent-pill">غائب — الدرجات أصفار</span>`;
+  return T`<span class="absent-pill">غائب — الدرجات أصفار</span>`;
 }
 function rowAct(done, i) {
-  return done ? `<span class="srow-done" aria-label="مكتمل">${icon('checkCircle')}</span>`
-    : `<button type="button" class="btn-full" data-act="full" data-idx="${i}" aria-label="كامل: ${ar(CONFIG.itemMax)} في كل البنود">كامل</button>`;
+  return done ? T`<span class="srow-done" aria-label="مكتمل">${icon('checkCircle')}</span>`
+    : T`<button type="button" class="btn-full" data-act="full" data-idx="${i}" aria-label="كامل: ${ar(CONFIG.itemMax)} في كل البنود">كامل</button>`;
 }
 function rowBoxes(w, i, vals, name) {
   if (S.settings.inputMode === 'fields') {
     return CRIT.map((cr, k) => `<label class="box field"><small>${esc(cr.short)}</small><input class="score-input" inputmode="decimal" enterkeyhint="next" autocomplete="off" data-score="item" data-idx="${i}" data-k="${k}" value="${vals[k] == null ? '' : ar(vals[k])}" placeholder="" aria-label="${esc(cr.label)} — ${esc(name)}"><span class="cell-err" data-err></span></label>`).join('');
   }
-  return CRIT.map((cr, k) => `<button type="button" class="box ${vals[k] == null ? '' : 'filled'}" data-act="box" data-idx="${i}" data-k="${k}" aria-label="${esc(cr.label)}: ${vals[k] == null ? 'فارغ' : ar(vals[k])}"><small>${esc(cr.short)}</small><b class="num">${vals[k] == null ? '' : ar(vals[k])}</b></button>`).join('');
+  return CRIT.map((cr, k) => `<button type="button" class="box ${vals[k] == null ? '' : 'filled'}" data-act="box" data-idx="${i}" data-k="${k}" aria-label="${esc(cr.label)}: ${vals[k] == null ? tr('فارغ') : ar(vals[k])}"><small>${esc(cr.short)}</small><b class="num">${vals[k] == null ? '' : ar(vals[k])}</b></button>`).join('');
 }
 
 // نافذة اختيار الدرجة: سلايدر ٠–٥ بالأنصاص. السحب ثم الترك = حفظ والانتقال للبند التالي
@@ -688,14 +689,14 @@ function openPicker(c, w, i, k0) {
   const d = dataOf(c.id);
   let k = k0;
   const max = CONFIG.itemMax;
-  const s = openSheet('<div data-picker></div>', { label: 'اختيار الدرجة' });
+  const s = openSheet('<div data-picker></div>', { label: tr('اختيار الدرجة') });
   const ints = Array.from({ length: max + 1 }, (_, j) => max - j);          // ٥ ٤ ٣ ٢ ١ ٠
   const halves = Array.from({ length: max }, (_, j) => max - j - 0.5);      // ٤٫٥ … ٠٫٥
   const btn = (v, cur, cls) => `<button type="button" class="pv ${cls} ${cur === v ? 'on' : ''}" data-pv="${v}" aria-pressed="${cur === v}">${ar(v)}</button>`;
   const paint = () => {
     const vals = getItems(d, w, i);
     const cur = vals[k];
-    s.sheet.querySelector('[data-picker]').innerHTML = `
+    s.sheet.querySelector('[data-picker]').innerHTML = T`
       <div class="picker-head"><span class="srow-num num">${ar(i + 1)}</span><b>${esc(c.names[i])}</b></div>
       <div class="seg picker-tabs" role="tablist">${CRIT.map((cr, j) => `<button type="button" data-pk="${j}" aria-pressed="${j === k}">${esc(cr.short)} <span class="num">${vals[j] == null ? '—' : ar(vals[j])}</span></button>`).join('')}</div>
       <div class="pv-title"><b>${esc(CRIT[k].label)}</b><span class="hint">اضغط الدرجة — تُحفظ وتنتقل للبند التالي</span></div>
@@ -737,7 +738,7 @@ function openPicker(c, w, i, k0) {
 function stuCard(c, d, w, i) {
   const vals = getItems(d, w, i);
   const done = studentComplete(d, w, i);
-  return `<article class="card stu ${done ? 'complete' : ''}" data-stu="${i}">
+  return T`<article class="card stu ${done ? 'complete' : ''}" data-stu="${i}">
     <div class="stu-head">
       <span class="stu-num num">${ar(i + 1)}</span>
       <button type="button" class="stu-name" data-act="open-student" data-idx="${i}">${esc(c.names[i])}</button>
@@ -752,9 +753,9 @@ function chipsRows(w, i, vals) {
   return `<div class="items">${CRIT.map((cr, k) => {
     const v = vals[k];
     const other = v != null && !CONFIG.chipValues.includes(v);
-    return `<div class="item-row"><span class="item-label">${esc(cr.label)}</span><div class="score-chips" role="group" aria-label="${esc(cr.label)}">
+    return T`<div class="item-row"><span class="item-label">${esc(cr.label)}</span><div class="score-chips" role="group" aria-label="${esc(cr.label)}">
       ${CONFIG.chipValues.map((x) => `<button type="button" class="sc" data-act="chip" data-idx="${i}" data-k="${k}" data-v="${x}" aria-pressed="${v === x}">${ar(x)}</button>`).join('')}
-      <button type="button" class="sc other" data-act="other" data-idx="${i}" data-k="${k}" aria-pressed="${other}" aria-label="رقم آخر" title="رقم آخر">${other ? ar(v) : 'أخرى'}</button>
+      <button type="button" class="sc other" data-act="other" data-idx="${i}" data-k="${k}" aria-pressed="${other}" aria-label="رقم آخر" title="رقم آخر">${other ? ar(v) : tr('أخرى')}</button>
     </div></div>`;
   }).join('')}</div>`;
 }
@@ -769,17 +770,17 @@ function weekGrid(c, d, w, idxs) {
   const rows = idxs.map((i) => {
     const vals = getItems(d, w, i);
     const t = weekTotal(d, w, i);
-    return `<tr data-stu="${i}" class="${studentComplete(d, w, i) ? 'complete' : ''}">
+    return T`<tr data-stu="${i}" class="${studentComplete(d, w, i) ? 'complete' : ''}">
       <td class="num">${ar(i + 1)}</td>
-      <td class="name"><button type="button" class="stu-name" data-act="open-student" data-idx="${i}">${esc(c.names[i])}${isStar(d, w, i) ? `<span class="name-star" title="نجمة تميّز">${icon('star')}</span>` : ''}</button></td>
+      <td class="name"><button type="button" class="stu-name" data-act="open-student" data-idx="${i}">${esc(c.names[i])}${isStar(d, w, i) ? T`<span class="name-star" title="نجمة تميّز">${icon('star')}</span>` : ''}</button></td>
       ${CRIT.map((cr, k) => `<td><input class="score-input" inputmode="decimal" autocomplete="off" data-score="item" data-idx="${i}" data-k="${k}" value="${vals[k] == null ? '' : ar(vals[k])}" placeholder="—" aria-label="${esc(cr.label)} — ${esc(c.names[i])}"><span class="cell-err" data-err></span></td>`).join('')}
       <td class="total num" data-total>${t == null ? '—' : fmt(t)}</td>
       <td><button type="button" class="btn-full" data-act="full" data-idx="${i}">${icon('check')} كامل</button></td>
-      <td><button type="button" class="abs-btn ${isAbsent(d, w, i) ? 'on' : ''}" data-act="absent" data-idx="${i}" aria-pressed="${isAbsent(d, w, i)}">${isAbsent(d, w, i) ? 'غائب ✓' : 'غياب'}</button></td>
-      <td><button type="button" class="star-btn ${isStar(d, w, i) ? 'on' : ''}" data-act="star" data-idx="${i}" aria-pressed="${isStar(d, w, i)}" aria-label="نجمة تميّز">${icon('star')}</button>${weekIssues(d, w, i).length ? '<span class="issue-mark" title="مشكلة هذا الأسبوع">!</span>' : ''}</td>
+      <td><button type="button" class="abs-btn ${isAbsent(d, w, i) ? 'on' : ''}" data-act="absent" data-idx="${i}" aria-pressed="${isAbsent(d, w, i)}">${isAbsent(d, w, i) ? tr('غائب ✓') : tr('غياب')}</button></td>
+      <td><button type="button" class="star-btn ${isStar(d, w, i) ? 'on' : ''}" data-act="star" data-idx="${i}" aria-pressed="${isStar(d, w, i)}" aria-label="نجمة تميّز">${icon('star')}</button>${weekIssues(d, w, i).length ? tr('<span class="issue-mark" title="مشكلة هذا الأسبوع">!</span>') : ''}</td>
     </tr>`;
   }).join('');
-  return `<div class="grid-wrap"><table class="grid">
+  return T`<div class="grid-wrap"><table class="grid">
     <thead><tr><th>م</th><th class="name">اسم الطالب</th>${CRIT.map((cr) => `<th>${esc(cr.label)}<br><small>/ ${ar(CONFIG.itemMax)}</small></th>`).join('')}<th>المجموع<br><small>/ ${ar(CONFIG.itemMax * ITEMS)}</small></th><th></th><th>الحضور</th><th>تميّز</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
 }
@@ -792,13 +793,13 @@ function finTab(c, d) {
   const idxs = c.names.map((_, i) => i).filter((i) => !qk || nameKey(c.names[i]).includes(qk) || String(i + 1) === q)
     .filter((i) => !S.ui.missingOnly || getFin(d, i).some((v) => v == null));
   const rem = finalsRemaining(d, n);
-  const intro = `<div class="alert info">${icon('info')}<div class="grow"><strong>الدرجات النهائية</strong><p style="margin:0">أدخل ${FINS.map((f) => `${f.label} (من ${ar(f.max)})`).join('، ')}. يُحسب المجموع من ${ar(100)} عند اكتمال كل الأسابيع والدرجات.</p></div></div>`;
-  const status = `<div class="status-line"><span id="week-status">${rem ? `<span class="status-pill">${icon('warn')} باقي ${ar(rem)} من ${ar(n)} طالب</span>` : `<span class="status-pill ok">${icon('checkCircle')} اكتملت الدرجات النهائية</span>`}</span>
+  const intro = T`<div class="alert info">${icon('info')}<div class="grow"><strong>الدرجات النهائية</strong><p style="margin:0">أدخل ${FINS.map((f) => T`${f.label} (من ${ar(f.max)})`).join(tr('، '))}. يُحسب المجموع من ${ar(100)} عند اكتمال كل الأسابيع والدرجات.</p></div></div>`;
+  const status = T`<div class="status-line"><span id="week-status">${rem ? T`<span class="status-pill">${icon('warn')} باقي ${ar(rem)} من ${ar(n)} طالب</span>` : T`<span class="status-pill ok">${icon('checkCircle')} اكتملت الدرجات النهائية</span>`}</span>
     <label class="toggle-line">الناقص فقط <input type="checkbox" class="switch" data-act="missing" ${S.ui.missingOnly ? 'checked' : ''}></label></div>`;
-  const search = `<div class="search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب أو رقمه" value="${esc(q)}" aria-label="بحث"></div>`;
+  const search = T`<div class="search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب أو رقمه" value="${esc(q)}" aria-label="بحث"></div>`;
   let list;
   if (WIDE.matches) {
-    list = `<div class="grid-wrap"><table class="grid"><thead><tr><th>م</th><th class="name">اسم الطالب</th><th>الفترة ١<br><small>/ ٢٠</small></th><th>الفترة ٢<br><small>/ ٢٠</small></th><th>البنائي<br><small>/ ٤٠</small></th>
+    list = T`<div class="grid-wrap"><table class="grid"><thead><tr><th>م</th><th class="name">اسم الطالب</th><th>الفترة ١<br><small>/ ٢٠</small></th><th>الفترة ٢<br><small>/ ٢٠</small></th><th>البنائي<br><small>/ ٤٠</small></th>
       ${FINS.map((f) => `<th>${esc(f.label)}<br><small>/ ${ar(f.max)}</small></th>`).join('')}<th>المجموع<br><small>/ ١٠٠</small></th></tr></thead><tbody>
       ${idxs.map((i) => { const fin = getFin(d, i); return `<tr data-stu="${i}"><td class="num">${ar(i + 1)}</td><td class="name"><button type="button" class="stu-name" data-act="open-student" data-idx="${i}">${esc(c.names[i])}</button></td>
         <td class="num" data-p1>${fmt(periodScore(d, i, 1))}</td><td class="num" data-p2>${fmt(periodScore(d, i, 2))}</td><td class="num" data-form>${fmt(formative(d, i))}</td>
@@ -807,26 +808,26 @@ function finTab(c, d) {
       </tbody></table></div>`;
   } else {
     const rows = idxs.map((i) => finRow(c, d, i)).join('');
-    return `<div class="stack">
+    return T`<div class="stack">
       <div class="action-row">
         <button type="button" class="btn ${S.ui.missingOnly ? 'primary' : ''}" data-act="missing-toggle" aria-pressed="${S.ui.missingOnly}">الناقص فقط</button>
       </div>
       <span id="week-status" hidden></span>
-      <p class="hint">${FINS.map((f) => `${esc(f.label)} من ${ar(f.max)}`).join(' · ')}. المجموع من ${ar(100)} يظهر عند اكتمال كل شيء.</p>
+      <p class="hint">${FINS.map((f) => T`${esc(f.label)} من ${ar(f.max)}`).join(' · ')}. المجموع من ${ar(100)} يظهر عند اكتمال كل شيء.</p>
       ${n > 12 ? search : ''}
-      <div id="stu-list" class="slist">${rows || '<p class="hint" style="text-align:center;padding:24px">لا نتائج</p>'}</div>
+      <div id="stu-list" class="slist">${rows || tr('<p class="hint" style="text-align:center;padding:24px">لا نتائج</p>')}</div>
     </div>`;
   }
   void intro; void status;
-  const side = `<div class="side-card"><div class="side-title">الدرجات النهائية</div><p class="hint" style="margin:0">${FINS.map((f) => `${esc(f.label)} من ${ar(f.max)}`).join('، ')}. المجموع من ${ar(100)} يظهر عند اكتمال كل الأسابيع والدرجات.</p></div>`;
-  return `<div class="cls-desk">
+  const side = T`<div class="side-card"><div class="side-title">الدرجات النهائية</div><p class="hint" style="margin:0">${FINS.map((f) => T`${esc(f.label)} من ${ar(f.max)}`).join(tr('، '))}. المجموع من ${ar(100)} يظهر عند اكتمال كل الأسابيع والدرجات.</p></div>`;
+  return T`<div class="cls-desk">
     <div class="cls-main">
       <div class="main-bar">
-        <span id="week-status">${rem ? `<span class="status-pill">${icon('warn')} باقي ${ar(rem)} من ${ar(n)} طالب</span>` : `<span class="status-pill ok">${icon('checkCircle')} اكتملت الدرجات النهائية</span>`}</span>
+        <span id="week-status">${rem ? T`<span class="status-pill">${icon('warn')} باقي ${ar(rem)} من ${ar(n)} طالب</span>` : T`<span class="status-pill ok">${icon('checkCircle')} اكتملت الدرجات النهائية</span>`}</span>
         ${search}
         <label class="toggle-line">الناقص فقط <input type="checkbox" class="switch" data-act="missing" ${S.ui.missingOnly ? 'checked' : ''}></label>
       </div>
-      <div id="stu-list" class="stu-scroll">${list || '<p class="hint" style="text-align:center;padding:24px">لا نتائج</p>'}</div>
+      <div id="stu-list" class="stu-scroll">${list || tr('<p class="hint" style="text-align:center;padding:24px">لا نتائج</p>')}</div>
     </div>
     ${deskSide(c, d, side)}
   </div>`;
@@ -837,8 +838,8 @@ function finRow(c, d, i) {
   const t = finalTotal(d, i);
   const boxes = S.settings.inputMode === 'fields'
     ? FINS.map((f, k) => `<label class="box field"><small>${esc(f.short || f.label)} /${ar(f.max)}</small><input class="score-input" inputmode="decimal" enterkeyhint="next" autocomplete="off" data-score="fin" data-idx="${i}" data-k="${k}" value="${fin[k] == null ? '' : ar(fin[k])}" placeholder="" aria-label="${esc(f.label)} — ${esc(c.names[i])}"><span class="cell-err" data-err></span></label>`).join('')
-    : FINS.map((f, k) => `<button type="button" class="box ${fin[k] == null ? '' : 'filled'}" data-act="fin-box" data-idx="${i}" data-k="${k}" aria-label="${esc(f.label)}: ${fin[k] == null ? 'فارغ' : ar(fin[k])}"><small>${esc(f.short || f.label)} /${ar(f.max)}</small><b class="num">${fin[k] == null ? '' : ar(fin[k])}</b></button>`).join('');
-  return `<div class="srow fin ${t != null ? 'complete' : ''}" data-stu="${i}">
+    : FINS.map((f, k) => `<button type="button" class="box ${fin[k] == null ? '' : 'filled'}" data-act="fin-box" data-idx="${i}" data-k="${k}" aria-label="${esc(f.label)}: ${fin[k] == null ? tr('فارغ') : ar(fin[k])}"><small>${esc(f.short || f.label)} /${ar(f.max)}</small><b class="num">${fin[k] == null ? '' : ar(fin[k])}</b></button>`).join('');
+  return T`<div class="srow fin ${t != null ? 'complete' : ''}" data-stu="${i}">
     <span class="srow-num num">${ar(i + 1)}</span>
     <button type="button" class="srow-name" data-act="open-student" data-idx="${i}">${esc(c.names[i])}<small class="muted">البنائي <span data-form>${fmt(formative(d, i))}</span> / ${ar(40)}</small></button>
     <div class="boxes" data-inputs>${boxes}</div>
@@ -850,7 +851,7 @@ function finRow(c, d, i) {
 function finCard(c, d, i) {
   const fin = getFin(d, i);
   const t = finalTotal(d, i);
-  return `<article class="card stu ${t != null ? 'complete' : ''}" data-stu="${i}">
+  return T`<article class="card stu ${t != null ? 'complete' : ''}" data-stu="${i}">
     <div class="stu-head"><span class="stu-num num">${ar(i + 1)}</span>
       <button type="button" class="stu-name" data-act="open-student" data-idx="${i}">${esc(c.names[i])}</button>
       <span class="stu-total num ${t != null ? 'full' : ''}" data-total>${fmt(t)} <span class="of">/ ${ar(100)}</span></span></div>
@@ -912,12 +913,12 @@ function refreshStudent(c, w, i, { rerenderInputs = false } = {}) {
   }
   const st = document.getElementById('week-status');
   if (st) st.innerHTML = w === 'fin'
-    ? (finalsRemaining(d, n) ? `<span class="status-pill">${icon('warn')} باقي ${ar(finalsRemaining(d, n))} من ${ar(n)} طالب</span>` : `<span class="status-pill ok">${icon('checkCircle')} اكتملت الدرجات النهائية</span>`)
+    ? (finalsRemaining(d, n) ? T`<span class="status-pill">${icon('warn')} باقي ${ar(finalsRemaining(d, n))} من ${ar(n)} طالب</span>` : T`<span class="status-pill ok">${icon('checkCircle')} اكتملت الدرجات النهائية</span>`)
     : weekStatusHTML(d, w, n);
   const sub = document.getElementById('week-sub');
   if (sub) sub.textContent = w === 'fin'
-    ? (finalsRemaining(d, n) ? `باقي ${ar(finalsRemaining(d, n))}` : 'مكتملة ✓')
-    : (weekComplete(d, w, n) ? 'مكتمل ✓' : `باقي ${ar(weekRemaining(d, w, n))} من ${ar(n)}`);
+    ? (finalsRemaining(d, n) ? T`باقي ${ar(finalsRemaining(d, n))}` : tr('مكتملة ✓'))
+    : (weekComplete(d, w, n) ? tr('مكتمل ✓') : T`باقي ${ar(weekRemaining(d, w, n))} من ${ar(n)}`);
   refreshChip(c, w);
   if (S.ui.selected && S.ui.selected.idx === i) refreshAside(); else if (!S.ui.selected) refreshAside();
 }
@@ -930,7 +931,7 @@ function refreshChip(c, w) {
   const done = w === 'fin' ? !finalsRemaining(d, n) : weekComplete(d, w, n);
   if (done !== chip.classList.contains('done')) {
     chip.classList.toggle('done', done);
-    chip.innerHTML = (done ? icon('check') : '') + (w === 'fin' ? 'الدرجات النهائية' : `أسبوع ${ar(w)}`);
+    chip.innerHTML = (done ? icon('check') : '') + (w === 'fin' ? tr('الدرجات النهائية') : T`أسبوع ${ar(w)}`);
   }
 }
 
@@ -981,15 +982,15 @@ function studentCardBody(c, i, { compact: small = false, week = null } = {}) {
     const it = getItems(d, w, i);
     const meta = getWeekMeta(d, w);
     const abs = isAbsent(d, w, i);
-    rows.push(`<tr class="${abs ? 'abs-row' : ''}"><td class="start"><b>${ar(w)}</b></td>${compact ? '' : `<td class="muted">${esc(meta.date) || '—'}</td>`}${abs ? `<td colspan="${ITEMS}" class="abs-cell">غائب</td>` : it.map((v) => `<td class="num">${fmt(v)}</td>`).join('')}<td class="num"><b>${fmt(sm.weeks[w - 1])}</b></td></tr>`);
-    if (w === 5) rows.push(`<tr class="sum"><td class="start" colspan="${compact ? 5 : 6}">الفترة الأولى (من ٢٠)</td><td class="num">${fmt(sm.p1)}</td></tr>`);
+    rows.push(`<tr class="${abs ? 'abs-row' : ''}"><td class="start"><b>${ar(w)}</b></td>${compact ? '' : `<td class="muted">${esc(meta.date) || '—'}</td>`}${abs ? T`<td colspan="${ITEMS}" class="abs-cell">غائب</td>` : it.map((v) => `<td class="num">${fmt(v)}</td>`).join('')}<td class="num"><b>${fmt(sm.weeks[w - 1])}</b></td></tr>`);
+    if (w === 5) rows.push(T`<tr class="sum"><td class="start" colspan="${compact ? 5 : 6}">الفترة الأولى (من ٢٠)</td><td class="num">${fmt(sm.p1)}</td></tr>`);
   }
-  rows.push(`<tr class="sum"><td class="start" colspan="${compact ? 5 : 6}">الفترة الثانية (من ٢٠)</td><td class="num">${fmt(sm.p2)}</td></tr>`);
-  return `<div class="stack">
+  rows.push(T`<tr class="sum"><td class="start" colspan="${compact ? 5 : 6}">الفترة الثانية (من ٢٠)</td><td class="num">${fmt(sm.p2)}</td></tr>`);
+  return T`<div class="stack">
     <div><p class="big-name" ${small ? 'style="font-size:21px"' : ''}>${esc(c.names[i])}</p>
       <div class="meta">${esc(c.label)} — رقم ${ar(i + 1)}${S.settings.subject ? '، ' + esc(S.settings.subject) : ''}</div></div>
-    <div class="banner ${total != null ? 'ok' : ''}"><span>المجموع النهائي</span>${total != null ? `<b class="num">${fmt(total)} <small>/ ${ar(100)}</small></b>` : '<strong>لم يكتمل بعد</strong>'}</div>
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th class="start">الأسبوع</th>${compact ? '' : '<th>التاريخ</th>'}${CRIT.map((cr) => `<th>${esc(cr.short)}</th>`).join('')}<th>المجموع</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>
+    <div class="banner ${total != null ? 'ok' : ''}"><span>المجموع النهائي</span>${total != null ? `<b class="num">${fmt(total)} <small>/ ${ar(100)}</small></b>` : tr('<strong>لم يكتمل بعد</strong>')}</div>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th class="start">الأسبوع</th>${compact ? '' : tr('<th>التاريخ</th>')}${CRIT.map((cr) => `<th>${esc(cr.short)}</th>`).join('')}<th>المجموع</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>
     <div class="card flat"><h3 style="margin-bottom:8px">الدرجات النهائية</h3><div class="kv">
       <div>التقويم البنائي</div><div class="num">${fmt(sm.formative)} / ${ar(40)}</div>
       ${FINS.map((f, k) => `<div>${esc(f.label)}</div><div class="num">${fmt(sm.fin[k])} / ${ar(f.max)}</div>`).join('')}
@@ -997,14 +998,14 @@ function studentCardBody(c, i, { compact: small = false, week = null } = {}) {
     <div class="card flat"><div class="kv"><div>أسابيع الغياب</div><div class="num">${ar(absenceCount(d, i))}</div><div>نجوم التميّز</div><div class="num">${starCount(d, i) ? '⭐ ' + ar(starCount(d, i)) : ar(0)}</div></div></div>
     <div class="card flat stack" data-notes>
       <h3>${icon('edit')} ملاحظات المعلم</h3>
-      ${getNotes(d, i).length ? `<ul class="notes">${getNotes(d, i).slice().reverse().map((nt) => `<li class="${nt.issue ? 'issue' : ''}"><div class="grow"><small class="muted num">${nt.issue ? 'تنبيه · ' : ''}${nt.w ? `الأسبوع ${ar(nt.w)} — ` : ''}${ar(new Date(nt.t).toLocaleDateString('en-GB'))}</small><p>${esc(nt.text)}</p></div><button type="button" class="icon-btn" data-act="note-del" data-id="${c.id}" data-idx="${i}" data-t="${esc(nt.t)}" aria-label="حذف الملاحظة">${icon('trash')}</button></li>`).join('')}</ul>` : '<p class="hint">لا توجد ملاحظات. الملاحظات تبقى عندك فقط ولا تظهر في بطاقة المشاركة.</p>'}
+      ${getNotes(d, i).length ? `<ul class="notes">${getNotes(d, i).slice().reverse().map((nt) => T`<li class="${nt.issue ? 'issue' : ''}"><div class="grow"><small class="muted num">${nt.issue ? tr('تنبيه · ') : ''}${nt.w ? T`الأسبوع ${ar(nt.w)} — ` : ''}${ar(new Date(nt.t).toLocaleDateString('en-GB'))}</small><p>${esc(nt.text)}</p></div><button type="button" class="icon-btn" data-act="note-del" data-id="${c.id}" data-idx="${i}" data-t="${esc(nt.t)}" aria-label="حذف الملاحظة">${icon('trash')}</button></li>`).join('')}</ul>` : tr('<p class="hint">لا توجد ملاحظات. الملاحظات تبقى عندك فقط ولا تظهر في بطاقة المشاركة.</p>')}
       <textarea class="textarea" style="min-height:80px" data-note-input="${i}" maxlength="500" placeholder="اكتب ملاحظة عن الطالب (سلوك، مستوى، تواصل مع ولي الأمر…)"></textarea>
-      ${week ? `<label class="toggle-line issue-toggle"><input type="checkbox" class="switch" data-note-issue="${i}" data-week="${week}"> تنبيه: مشكلة في الأسبوع ${ar(week)} (تظهر علامة عند اسمه)</label>` : ''}
+      ${week ? T`<label class="toggle-line issue-toggle"><input type="checkbox" class="switch" data-note-issue="${i}" data-week="${week}"> تنبيه: مشكلة في الأسبوع ${ar(week)} (تظهر علامة عند اسمه)</label>` : ''}
       <button type="button" class="btn soft" data-act="note-add" data-id="${c.id}" data-idx="${i}">${icon('plus')} إضافة ملاحظة</button>
     </div>
     <button type="button" class="btn primary block" data-act="share-student" data-id="${c.id}" data-idx="${i}">${icon('share')} مشاركة البطاقة</button>
     <button type="button" class="btn block" data-act="print-student" data-id="${c.id}" data-idx="${i}">${icon('sheet')} طباعة تقرير الطالب (PDF)</button>
-    ${small ? `<button type="button" class="btn ghost block" data-act="close-aside">إغلاق البطاقة</button>` : ''}
+    ${small ? T`<button type="button" class="btn ghost block" data-act="close-aside">إغلاق البطاقة</button>` : ''}
   </div>`;
 }
 
@@ -1012,9 +1013,9 @@ function StudentScreen(p) {
   const c = cls(p.id);
   if (!c || p.idx >= c.names.length) return Home();
   const n = c.names.length;
-  const nav = `<button type="button" class="icon-btn" data-act="stu-nav" data-dir="-1" ${p.idx === 0 ? 'disabled' : ''} aria-label="الطالب السابق">${icon('prev')}</button>
+  const nav = T`<button type="button" class="icon-btn" data-act="stu-nav" data-dir="-1" ${p.idx === 0 ? 'disabled' : ''} aria-label="الطالب السابق">${icon('prev')}</button>
     <button type="button" class="icon-btn" data-act="stu-nav" data-dir="1" ${p.idx === n - 1 ? 'disabled' : ''} aria-label="الطالب التالي">${icon('next')}</button>`;
-  return `${appbar({ title: 'بطاقة الطالب', sub: `${ar(p.idx + 1)} من ${ar(n)}`, actions: nav })}
+  return `${appbar({ title: tr('بطاقة الطالب'), sub: T`${ar(p.idx + 1)} من ${ar(n)}`, actions: nav })}
     <div class="wrap">${studentCardBody(c, p.idx, { week: p.week || null })}</div>`;
 }
 
@@ -1033,12 +1034,12 @@ function Editor(p) {
   const n = dr.rows.length;
   const rows = dr.rows.map((r, j) => {
     const has = d && r.from != null && studentHasGrades(d, r.from);
-    return `<div class="name-row" data-row="${j}"><span class="stu-num num">${ar(j + 1)}</span>
+    return T`<div class="name-row" data-row="${j}"><span class="stu-num num">${ar(j + 1)}</span>
       <input class="input grow" data-name-row="${j}" value="${esc(r.name)}" aria-label="اسم الطالب ${ar(j + 1)}">
-      ${has ? '<span class="tag">له درجات</span>' : ''}
+      ${has ? tr('<span class="tag">له درجات</span>') : ''}
       <button type="button" class="icon-btn" data-act="del-row" data-row="${j}" aria-label="حذف الطالب">${icon('x')}</button></div>`;
   }).join('');
-  return `${appbar({ title: p.id ? 'تعديل الصف' : 'صف جديد', actions: `<button type="button" class="btn primary sm" data-act="save-class">${p.id ? 'حفظ' : 'إنشاء'}</button>` })}
+  return T`${appbar({ title: p.id ? tr('تعديل الصف') : tr('صف جديد'), actions: `<button type="button" class="btn primary sm" data-act="save-class">${p.id ? tr('حفظ') : tr('إنشاء')}</button>` })}
   <div class="wrap stack">
     <div class="card"><div class="field"><label for="cls-label">اسم الصف</label><input id="cls-label" class="input" data-draft-label value="${esc(dr.label)}" placeholder="مثل: العاشر / ٣" autocomplete="off"></div></div>
     <div class="card stack">
@@ -1051,15 +1052,15 @@ function Editor(p) {
         <button type="button" class="btn ghost" data-act="add-one">${icon('plus')} طالب جديد</button>
       </div>
       <p class="hint">يقبل الاستيراد: Excel (xlsx)، PDF (حتى الممسوح ضوئيًا)، صورة للكشف، CSV، نص. ننظف الترقيم والمسافات ونتجاهل المكرر. الحد الأقصى ${ar(MAX_STUDENTS)} طالبًا.</p>
-      ${p.id ? `<button type="button" class="btn soft" data-act="go" data-to="transferIn" data-id="${p.id}">${icon('inbox')} استقبال طلاب منقولين من معلم آخر</button>` : ''}
+      ${p.id ? T`<button type="button" class="btn soft" data-act="go" data-to="transferIn" data-id="${p.id}">${icon('inbox')} استقبال طلاب منقولين من معلم آخر</button>` : ''}
     </div>
     <div class="row" style="justify-content:space-between;margin-top:20px">
       <div class="section-title" style="margin:0">قائمة الطلاب <span class="count-badge num">${ar(n)} / ${ar(MAX_STUDENTS)}</span></div>
-      ${n > 1 ? `<button type="button" class="btn sm" data-act="sort-az">${icon('sort')} ترتيب أبجدي</button>` : ''}
+      ${n > 1 ? T`<button type="button" class="btn sm" data-act="sort-az">${icon('sort')} ترتيب أبجدي</button>` : ''}
     </div>
-    <div class="list" id="name-list">${rows || '<p class="hint" style="padding:16px;text-align:center">لا يوجد طلاب بعد.</p>'}</div>
-    ${p.id ? `<div class="section-title">منطقة الخطر</div><button type="button" class="btn danger-ghost block" data-act="delete-class">${icon('trash')} حذف الصف</button>` : ''}
-    <button type="button" class="btn primary lg block" data-act="save-class">${p.id ? 'حفظ التعديلات' : 'إنشاء الصف'}</button>
+    <div class="list" id="name-list">${rows || tr('<p class="hint" style="padding:16px;text-align:center">لا يوجد طلاب بعد.</p>')}</div>
+    ${p.id ? T`<div class="section-title">منطقة الخطر</div><button type="button" class="btn danger-ghost block" data-act="delete-class">${icon('trash')} حذف الصف</button>` : ''}
+    <button type="button" class="btn primary lg block" data-act="save-class">${p.id ? tr('حفظ التعديلات') : tr('إنشاء الصف')}</button>
   </div>`;
 }
 
@@ -1068,18 +1069,18 @@ function addNamesToDraft(p, raw) {
   const res = cleanNames(raw, existing, MAX_STUDENTS);
   res.names.forEach((name) => p.draft.rows.push({ name, from: null }));
   if (res.names.length) p.dirty = true;
-  const parts = [`أُضيف ${namesWord(res.names.length)}`];
-  if (res.dup) parts.push(`${ar(res.dup)} مكرر`);
-  if (res.overLimit) parts.push(`${ar(res.overLimit)} فوق الحد (${ar(MAX_STUDENTS)})`);
-  toast(res.names.length || res.dup || res.overLimit ? parts.join(' · ') : 'لم نجد أسماء صالحة', { err: !res.names.length && !res.dup });
+  const parts = [T`أُضيف ${namesWord(res.names.length)}`];
+  if (res.dup) parts.push(T`${ar(res.dup)} مكرر`);
+  if (res.overLimit) parts.push(T`${ar(res.overLimit)} فوق الحد (${ar(MAX_STUDENTS)})`);
+  toast(res.names.length || res.dup || res.overLimit ? parts.join(' · ') : tr('لم نجد أسماء صالحة'), { err: !res.names.length && !res.dup });
   return res;
 }
 
 async function saveEditor(p) {
   const label = (p.draft.label || '').trim();
-  if (!label) { toast('اكتب اسم الصف أولًا', { err: true }); document.getElementById('cls-label')?.focus(); return; }
+  if (!label) { toast(tr('اكتب اسم الصف أولًا'), { err: true }); document.getElementById('cls-label')?.focus(); return; }
   const rows = p.draft.rows.map((r) => ({ ...r, name: r.name.replace(/\s+/g, ' ').trim() })).filter((r) => r.name);
-  if (rows.length > MAX_STUDENTS) { toast(`الحد الأقصى ${ar(MAX_STUDENTS)} طالبًا`, { err: true }); return; }
+  if (rows.length > MAX_STUDENTS) { toast(T`الحد الأقصى ${ar(MAX_STUDENTS)} طالبًا`, { err: true }); return; }
   if (p.id) {
     const c = cls(p.id);
     c.label = label;
@@ -1088,7 +1089,7 @@ async function saveEditor(p) {
     await saveClassesNow();
     await store.saveGrades(c.id, S.grades[c.id]);
     liveResync(c.id);
-    toast('حُفظ الصف ✓');
+    toast(tr('حُفظ الصف ✓'));
     p.dirty = false; p.confirmedLeave = true;
     back();
   } else {
@@ -1097,7 +1098,7 @@ async function saveEditor(p) {
     S.grades[c.id] = emptyClassData();
     await saveClassesNow();
     await store.saveGrades(c.id, S.grades[c.id]);
-    toast('أُنشئ الصف ✓');
+    toast(tr('أُنشئ الصف ✓'));
     p.dirty = false; p.confirmedLeave = true;
     S.stack.pop();
     S.stack.push({ name: 'class', p: { id: c.id } });
@@ -1109,7 +1110,7 @@ async function saveEditor(p) {
 async function deleteClass(id, { skipConfirm = false } = {}) {
   const c = cls(id);
   if (!c) return;
-  const ok = skipConfirm || await confirmDialog({ title: `حذف «${c.label}»؟`, text: `سيُحذف ${students(c.names.length)} وكل درجاتهم من هذا الجهاز.`, ok: 'حذف الصف', danger: true });
+  const ok = skipConfirm || await confirmDialog({ title: T`حذف «${c.label}»؟`, text: T`سيُحذف ${students(c.names.length)} وكل درجاتهم من هذا الجهاز.`, ok: tr('حذف الصف'), danger: true });
   if (!ok) return;
   const pos = S.classes.indexOf(c);
   const data = dataOf(id);
@@ -1120,15 +1121,15 @@ async function deleteClass(id, { skipConfirm = false } = {}) {
   S.stack = [{ name: 'home', p: {} }];
   history.replaceState({ depth: 1 }, '');
   render({ scrollTop: true });
-  toast(`حُذفت «${c.label}»`, {
+  toast(T`حُذفت «${c.label}»`, {
     ms: CONFIG.undoDeleteMs,
-    action: { label: 'تراجع', fn: async () => {
+    action: { label: tr('تراجع'), fn: async () => {
       S.classes.splice(Math.min(pos, S.classes.length), 0, c);
       S.grades[id] = data;
       await saveClassesNow();
       await store.saveGrades(id, data);
       render();
-      toast('أُعيد الصف ✓');
+      toast(tr('أُعيد الصف ✓'));
     } },
   });
 }
@@ -1140,7 +1141,7 @@ const IMPORT_ACCEPT = '.xlsx,.xls,.csv,.txt,.pdf,.jpg,.jpeg,.png,application/pdf
 async function pickAndReadNames() {
   const file = await platform.pickFile(IMPORT_ACCEPT);
   if (!file) return null;
-  let close = toast('جارٍ قراءة الملف…', { ms: 0 });
+  let close = toast(tr('جارٍ قراءة الملف…'), { ms: 0 });
   let lastPct = -1;
   const onProgress = (pr) => {
     if (!pr || pr.stage !== 'ocr') return;
@@ -1148,7 +1149,7 @@ async function pickAndReadNames() {
     if (pct === lastPct || pct % 5) return;
     lastPct = pct;
     close();
-    close = toast(`نقرأ الأسماء من الصورة… ${ar(pct)}٪ (صفحة ${ar(pr.page)} من ${ar(pr.pages)})`, { ms: 0 });
+    close = toast(T`نقرأ الأسماء من الصورة… ${ar(pct)}٪ (صفحة ${ar(pr.page)} من ${ar(pr.pages)})`, { ms: 0 });
   };
   try {
     const { readNamesFromFile } = await import('./importers.js');
@@ -1158,22 +1159,22 @@ async function pickAndReadNames() {
     return res;
   } catch (e) {
     close();
-    toast(e && e.message && /[\u0600-\u06FF]/.test(e.message) ? e.message : 'تعذّرت قراءة الملف. جرّب حفظه بصيغة xlsx أو انسخ الأسماء والصقها.', { err: true, ms: 6000 });
+    toast(e && e.message && /[\u0600-\u06FF]/.test(e.message) ? e.message : tr('تعذّرت قراءة الملف. جرّب حفظه بصيغة xlsx أو انسخ الأسماء والصقها.'), { err: true, ms: 6000 });
     return null;
   }
 }
 
-const OCR_NOTE = () => `<div class="alert warn">${icon('eye')}<div class="grow"><strong>قُرئت الأسماء من صورة</strong><p style="margin:0">القراءة الآلية قد تخطئ في بعض الحروف؛ راجع الأسماء وصحّحها.</p></div></div>`;
+const OCR_NOTE = () => T`<div class="alert warn">${icon('eye')}<div class="grow"><strong>قُرئت الأسماء من صورة</strong><p style="margin:0">القراءة الآلية قد تخطئ في بعض الحروف؛ راجع الأسماء وصحّحها.</p></div></div>`;
 
 // ملف فيه أكثر من صف: يختار المعلم صفًا واحدًا، أو ينشئ كل الصفوف
 function chooseGroup(res, { allowCreateAll = true } = {}) {
   return new Promise((resolve) => {
     let result = null;
-    const s = openSheet(`<h2>الملف فيه ${ar(res.groups.length)} صفوف</h2>
-      <p>اختر الصف الذي تريد استيراد طلابه${allowCreateAll ? '، أو أنشئ كل الصفوف مرة واحدة' : ''}.</p>
+    const s = openSheet(T`<h2>الملف فيه ${ar(res.groups.length)} صفوف</h2>
+      <p>اختر الصف الذي تريد استيراد طلابه${allowCreateAll ? tr('، أو أنشئ كل الصفوف مرة واحدة') : ''}.</p>
       <div class="list">${res.groups.map((g, i) => `<button type="button" class="list-item" data-g="${i}">${icon('users')}<span class="grow"><strong>${esc(g.label)}</strong><small>${students(g.names.length)}</small></span>${icon('fwd')}</button>`).join('')}</div>
-      <div class="actions">${allowCreateAll ? `<button type="button" class="btn primary" data-g="all">${icon('plus')} أنشئ كل الصفوف (${ar(res.groups.length)})</button>` : ''}<button type="button" class="btn" data-g="cancel">إلغاء</button></div>`,
-      { label: 'اختيار الصف', onClose: () => resolve(result) });
+      <div class="actions">${allowCreateAll ? T`<button type="button" class="btn primary" data-g="all">${icon('plus')} أنشئ كل الصفوف (${ar(res.groups.length)})</button>` : ''}<button type="button" class="btn" data-g="cancel">إلغاء</button></div>`,
+      { label: tr('اختيار الصف'), onClose: () => resolve(result) });
     s.sheet.addEventListener('click', (e) => {
       const b = e.target.closest('[data-g]');
       if (!b) return;
@@ -1187,11 +1188,11 @@ function chooseGroup(res, { allowCreateAll = true } = {}) {
 // إنشاء عدة صفوف من ملف واحد (من الرئيسية أو من المحرر)
 async function createClassesFromGroups(groups, ocr) {
   return new Promise((resolve) => {
-    const s = openSheet(`<h2>إنشاء ${ar(groups.length)} صفوف</h2>
+    const s = openSheet(T`<h2>إنشاء ${ar(groups.length)} صفوف</h2>
       <p>عدّل اسم أي صف أو ألغِ تحديده. يمكنك مراجعة أسماء الطلاب لاحقًا من «الطلاب» داخل كل صف.</p>
       ${ocr ? OCR_NOTE() : ''}
-      <div class="list">${groups.map((g, i) => `<div class="pick"><input type="checkbox" data-cg="${i}" checked aria-label="تحديد"><input class="input grow" data-cg-label="${i}" value="${esc(g.label)}" aria-label="اسم الصف"><span class="meta num">${students(cleanNames(g.names, [], MAX_STUDENTS).names.length)}</span></div>`).join('')}</div>
-      <div class="actions"><button type="button" class="btn" data-cx="0">إلغاء</button><button type="button" class="btn primary" data-cx="1">إنشاء الصفوف</button></div>`, { wide: true, label: 'إنشاء الصفوف', onClose: () => resolve(created) });
+      <div class="list">${groups.map((g, i) => T`<div class="pick"><input type="checkbox" data-cg="${i}" checked aria-label="تحديد"><input class="input grow" data-cg-label="${i}" value="${esc(g.label)}" aria-label="اسم الصف"><span class="meta num">${students(cleanNames(g.names, [], MAX_STUDENTS).names.length)}</span></div>`).join('')}</div>
+      <div class="actions"><button type="button" class="btn" data-cx="0">إلغاء</button><button type="button" class="btn primary" data-cx="1">إنشاء الصفوف</button></div>`, { wide: true, label: tr('إنشاء الصفوف'), onClose: () => resolve(created) });
     let created = 0;
     s.sheet.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-cx]');
@@ -1217,13 +1218,13 @@ async function importClassesFromFile() {
   const res = await pickAndReadNames();
   if (!res) return;
   const ocr = res.ocr || /ocr/.test(res.kind || '');
-  const groups = res.groups || [{ label: res.label || res.fileLabel || 'صف جديد', names: res.names }];
+  const groups = res.groups || [{ label: res.label || res.fileLabel || tr('صف جديد'), names: res.names }];
   const n = await createClassesFromGroups(groups, ocr);
   if (n) {
     S.stack = [{ name: 'home', p: {} }];
     history.replaceState({ depth: 1 }, '');
     render({ scrollTop: true });
-    toast(n === 1 ? 'أُنشئ الصف ✓' : `أُنشئت ${ar(n)} صفوف ✓`);
+    toast(n === 1 ? tr('أُنشئ الصف ✓') : T`أُنشئت ${ar(n)} صفوف ✓`);
   }
 }
 
@@ -1236,7 +1237,7 @@ async function importFileToDraft(p) {
     if (!g) return;
     if (g === 'all') {
       const n = await createClassesFromGroups(res.groups, res.ocr || /ocr/.test(res.kind || ''));
-      if (n) { p.dirty = false; p.confirmedLeave = true; S.stack = [{ name: 'home', p: {} }]; history.replaceState({ depth: 1 }, ''); render({ scrollTop: true }); toast(`أُنشئت ${ar(n)} صفوف ✓`); }
+      if (n) { p.dirty = false; p.confirmedLeave = true; S.stack = [{ name: 'home', p: {} }]; history.replaceState({ depth: 1 }, ''); render({ scrollTop: true }); toast(T`أُنشئت ${ar(n)} صفوف ✓`); }
       return;
     }
     res = { ...res, names: g.names, label: g.label };
@@ -1245,21 +1246,21 @@ async function importFileToDraft(p) {
   const existing = p.draft.rows.map((r) => r.name);
   const cleaned = cleanNames(res.names, existing, 999);
   if (!cleaned.names.length) {
-    toast(cleaned.dup ? `كل الأسماء موجودة مسبقًا (${ar(cleaned.dup)})` : 'لم نجد أسماء طلاب في هذا الملف', { err: !cleaned.dup });
+    toast(cleaned.dup ? T`كل الأسماء موجودة مسبقًا (${ar(cleaned.dup)})` : tr('لم نجد أسماء طلاب في هذا الملف'), { err: !cleaned.dup });
     return;
   }
-  const kindName = { xlsx: 'Excel', csv: 'CSV', txt: 'ملف نصي', pdf: 'PDF', 'pdf-ocr': 'PDF', 'image-ocr': 'الصورة' }[res.kind] || 'الملف';
+  const kindName = { xlsx: 'Excel', csv: 'CSV', txt: tr('ملف نصي'), pdf: 'PDF', 'pdf-ocr': 'PDF', 'image-ocr': tr('الصورة') }[res.kind] || tr('الملف');
   const ocr = res.ocr || /ocr/.test(res.kind || '');
   const room = MAX_STUDENTS - p.draft.rows.length;
-  const s = openSheet(`<h2>وجدنا ${namesWord(cleaned.names.length)} في ${kindName}</h2>
-    <p>${res.column ? `من عمود «${esc(res.column)}». ` : ''}ألغِ تحديد أي سطر ليس اسم طالب، ويمكنك تصحيح أي اسم قبل الإضافة.${cleaned.dup ? ` (تجاهلنا ${ar(cleaned.dup)} مكرر)` : ''}</p>
-    ${ocr ? `<div class="alert warn">${icon('eye')}<div class="grow"><strong>قُرئت الأسماء من صورة</strong><p style="margin:0">القراءة الآلية قد تخطئ في بعض الحروف؛ راجع الأسماء وصحّحها هنا أو لاحقًا من قائمة الطلاب.</p></div></div>` : ''}
-    ${cleaned.names.length > room ? `<div class="alert warn">${icon('warn')}<div class="grow">يتسع الفصل لـ ${ar(room)} فقط؛ سيُضاف أول ${ar(room)} محدد.</div></div>` : ''}
+  const s = openSheet(T`<h2>وجدنا ${namesWord(cleaned.names.length)} في ${kindName}</h2>
+    <p>${res.column ? T`من عمود «${esc(res.column)}». ` : ''}ألغِ تحديد أي سطر ليس اسم طالب، ويمكنك تصحيح أي اسم قبل الإضافة.${cleaned.dup ? T` (تجاهلنا ${ar(cleaned.dup)} مكرر)` : ''}</p>
+    ${ocr ? T`<div class="alert warn">${icon('eye')}<div class="grow"><strong>قُرئت الأسماء من صورة</strong><p style="margin:0">القراءة الآلية قد تخطئ في بعض الحروف؛ راجع الأسماء وصحّحها هنا أو لاحقًا من قائمة الطلاب.</p></div></div>` : ''}
+    ${cleaned.names.length > room ? T`<div class="alert warn">${icon('warn')}<div class="grow">يتسع الفصل لـ ${ar(room)} فقط؛ سيُضاف أول ${ar(room)} محدد.</div></div>` : ''}
     <div class="row" style="justify-content:space-between;margin:8px 0"><span class="count-badge num" data-count></span>
       <span><button type="button" class="btn sm ghost" data-pick-all="1">تحديد الكل</button><button type="button" class="btn sm ghost" data-pick-all="0">إلغاء الكل</button></span></div>
-    <div class="list" style="max-height:46vh;overflow:auto">${cleaned.names.map((nm, j) => `<div class="pick"><input type="checkbox" data-pick="${j}" checked aria-label="تحديد"><input class="input grow" data-pick-name="${j}" value="${esc(nm)}" aria-label="الاسم ${ar(j + 1)}"></div>`).join('')}</div>
-    <div class="actions"><button type="button" class="btn" data-x="cancel">إلغاء</button><button type="button" class="btn primary" data-x="ok">إضافة المحدد</button></div>`, { wide: true, label: 'معاينة الأسماء' });
-  const count = () => { s.sheet.querySelector('[data-count]').textContent = `${ar(s.sheet.querySelectorAll('[data-pick]:checked').length)} محدد`; };
+    <div class="list" style="max-height:46vh;overflow:auto">${cleaned.names.map((nm, j) => T`<div class="pick"><input type="checkbox" data-pick="${j}" checked aria-label="تحديد"><input class="input grow" data-pick-name="${j}" value="${esc(nm)}" aria-label="الاسم ${ar(j + 1)}"></div>`).join('')}</div>
+    <div class="actions"><button type="button" class="btn" data-x="cancel">إلغاء</button><button type="button" class="btn primary" data-x="ok">إضافة المحدد</button></div>`, { wide: true, label: tr('معاينة الأسماء') });
+  const count = () => { s.sheet.querySelector('[data-count]').textContent = T`${ar(s.sheet.querySelectorAll('[data-pick]:checked').length)} محدد`; };
   count();
   s.sheet.addEventListener('change', count);
   s.sheet.addEventListener('click', (e) => {
@@ -1288,13 +1289,13 @@ function TransferOut(p) {
   const qk = q ? nameKey(q) : '';
   const list = c.names.map((nm, i) => ({ nm, i })).filter(({ nm, i }) => !qk || nameKey(nm).includes(qk) || String(i + 1) === q);
   const k = p.sel.size;
-  return `${appbar({ title: 'نقل طلاب', sub: esc(c.label) })}
+  return T`${appbar({ title: tr('نقل طلاب'), sub: esc(c.label) })}
   <div class="wrap stack">
     <div class="alert info">${icon('info')}<div class="grow"><strong>اختر الطلاب المنقولين</strong><p style="margin:0">تنتقل أسماؤهم مع كل درجاتهم الأسبوعية والنهائية. أرسل الملف للمعلم الجديد (واتساب أو بريد) ليستقبله من «استقبال طلاب منقولين»، أو انقلهم لصف آخر عندك.</p></div></div>
     <div class="search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب" value="${esc(q)}" aria-label="بحث"></div>
-    <div class="row" style="justify-content:space-between"><span class="count-badge num">${k ? `اخترت ${students(k)}` : 'لم تختر أحدًا'}</span>
+    <div class="row" style="justify-content:space-between"><span class="count-badge num">${k ? T`اخترت ${students(k)}` : tr('لم تختر أحدًا')}</span>
       <span><button type="button" class="btn sm ghost" data-act="sel-all" data-v="1">تحديد الكل</button><button type="button" class="btn sm ghost" data-act="sel-all" data-v="0">إلغاء الكل</button></span></div>
-    <div class="list">${list.map(({ nm, i }) => `<label class="pick"><input type="checkbox" data-sel="${i}" ${p.sel.has(i) ? 'checked' : ''}><span class="stu-num num">${ar(i + 1)}</span><span class="grow">${esc(nm)}</span>${studentHasGrades(d, i) ? '<span class="meta">له درجات</span>' : ''}</label>`).join('') || '<p class="hint" style="padding:16px">لا نتائج</p>'}</div>
+    <div class="list">${list.map(({ nm, i }) => `<label class="pick"><input type="checkbox" data-sel="${i}" ${p.sel.has(i) ? 'checked' : ''}><span class="stu-num num">${ar(i + 1)}</span><span class="grow">${esc(nm)}</span>${studentHasGrades(d, i) ? tr('<span class="meta">له درجات</span>') : ''}</label>`).join('') || tr('<p class="hint" style="padding:16px">لا نتائج</p>')}</div>
     <div class="card stack" style="position:sticky;bottom:calc(var(--safe-b) + 8px);box-shadow:var(--shadow-lg)">
       <button type="button" class="btn primary block" data-act="transfer-file" ${k ? '' : 'disabled'}>${icon('send')} حفظ ملف النقل وإرساله لمعلم آخر</button>
       <button type="button" class="btn block" data-act="transfer-move" ${k && S.classes.length > 0 ? '' : 'disabled'}>${icon('move')} نقل إلى صف آخر عندي</button>
@@ -1305,12 +1306,12 @@ function TransferOut(p) {
 async function doTransferFile(p) {
   const c = cls(p.id);
   const idxs = [...p.sel].sort((a, b) => a - b);
-  const tr = buildTransfer({ classLabel: c.label, names: c.names, data: dataOf(c.id), idxs, settings: S.settings });
+  const xfer = buildTransfer({ classLabel: c.label, names: c.names, data: dataOf(c.id), idxs, settings: S.settings });
   const name = transferFileName(c.label, idxs.length);
   try {
-    await platform.saveFile(name, new Blob([JSON.stringify(tr)], { type: 'application/json' }), 'application/json');
-  } catch { toast('تعذّر حفظ الملف', { err: true }); return; }
-  const remove = await confirmDialog({ title: 'هل انتقل الطلاب فعلًا؟', text: `يمكنك حذف ${students(idxs.length)} من «${c.label}» الآن، أو إبقاؤهم إن كنت أرسلت نسخة فقط.`, ok: 'نعم، احذفهم من صفّي', cancel: 'أبقهم', danger: true });
+    await platform.saveFile(name, new Blob([JSON.stringify(xfer)], { type: 'application/json' }), 'application/json');
+  } catch { toast(tr('تعذّر حفظ الملف'), { err: true }); return; }
+  const remove = await confirmDialog({ title: tr('هل انتقل الطلاب فعلًا؟'), text: T`يمكنك حذف ${students(idxs.length)} من «${c.label}» الآن، أو إبقاؤهم إن كنت أرسلت نسخة فقط.`, ok: tr('نعم، احذفهم من صفّي'), cancel: tr('أبقهم'), danger: true });
   if (remove) {
     const keep = c.names.map((_, i) => i).filter((i) => !p.sel.has(i));
     const before = { names: c.names.slice(), data: dataOf(c.id) };
@@ -1320,27 +1321,27 @@ async function doTransferFile(p) {
     liveResync(c.id);
     p.sel = new Set();
     render();
-    toast(`حُذف ${students(idxs.length)} من الصف`, { ms: CONFIG.undoDeleteMs, action: { label: 'تراجع', fn: async () => {
+    toast(T`حُذف ${students(idxs.length)} من الصف`, { ms: CONFIG.undoDeleteMs, action: { label: tr('تراجع'), fn: async () => {
       c.names = before.names; S.grades[c.id] = before.data;
       await saveClassesNow(); await store.saveGrades(c.id, before.data); liveResync(c.id); render();
     } } });
-  } else toast('حُفظ ملف النقل ✓');
+  } else toast(tr('حُفظ ملف النقل ✓'));
 }
 
 function doTransferMove(p) {
   const c = cls(p.id);
   const others = S.classes.filter((x) => x.id !== c.id);
-  const s = openSheet(`<h2>نقل ${students(p.sel.size)} إلى…</h2><p>تنتقل الدرجات معهم وتُحذف من «${esc(c.label)}».</p>
+  const s = openSheet(T`<h2>نقل ${students(p.sel.size)} إلى…</h2><p>تنتقل الدرجات معهم وتُحذف من «${esc(c.label)}».</p>
     <div class="list">${others.map((o) => `<button type="button" class="list-item" data-to-cls="${o.id}">${icon('users')}<span class="grow"><strong>${esc(o.label)}</strong><small>${students(o.names.length)}</small></span>${icon('fwd')}</button>`).join('')}
     <button type="button" class="list-item" data-to-cls="__new">${icon('plus')}<span class="grow"><strong>صف جديد</strong><small>أنشئ صفًا بهؤلاء الطلاب</small></span></button></div>
-    <div class="actions"><button type="button" class="btn" data-x>إلغاء</button></div>`, { label: 'نقل إلى صف' });
+    <div class="actions"><button type="button" class="btn" data-x>إلغاء</button></div>`, { label: tr('نقل إلى صف') });
   s.sheet.addEventListener('click', async (e) => {
     if (e.target.closest('[data-x]')) return s.close();
     const b = e.target.closest('[data-to-cls]');
     if (!b) return;
     let dst;
     if (b.dataset.toCls === '__new') {
-      dst = { id: uid(), label: `${c.label} (منقولون)`, names: [] };
+      dst = { id: uid(), label: T`${c.label} (منقولون)`, names: [] };
       S.classes.push(dst); S.grades[dst.id] = emptyClassData();
     } else dst = cls(b.dataset.toCls);
     s.close();
@@ -1350,9 +1351,9 @@ function doTransferMove(p) {
     await saveClassesNow(); await store.saveGrades(c.id, S.grades[c.id]); await store.saveGrades(dst.id, S.grades[dst.id]);
     liveResync(c.id); liveResync(dst.id);
     p.sel = new Set();
-    const parts = [`نُقل ${students(res.moved)} إلى «${dst.label}»`];
-    if (res.dup) parts.push(`${ar(res.dup)} موجود مسبقًا`);
-    if (res.overLimit) parts.push(`${ar(res.overLimit)} فوق الحد`);
+    const parts = [T`نُقل ${students(res.moved)} إلى «${dst.label}»`];
+    if (res.dup) parts.push(T`${ar(res.dup)} موجود مسبقًا`);
+    if (res.overLimit) parts.push(T`${ar(res.overLimit)} فوق الحد`);
     toast(parts.join(' · '));
     render();
   });
@@ -1363,35 +1364,35 @@ function doTransferMove(p) {
 // =====================================================================
 function TransferIn(p) {
   if (!p.tr) {
-    return `${appbar({ title: 'استقبال طلاب منقولين' })}
+    return T`${appbar({ title: tr('استقبال طلاب منقولين') })}
     <div class="wrap stack">
       <div class="empty card">${ART_USERS}<h2>اختر ملف النقل</h2><p>ملف ينتهي بـ ‎.json أرسله لك معلم آخر من «نقل طلاب». يحوي أسماء الطلاب ودرجاتهم.</p>
         <button type="button" class="btn primary lg" data-act="pick-transfer">${icon('upload')} اختيار الملف</button></div>
       <p class="hint">${icon('info')} لإضافة أسماء فقط (بدون درجات) من Excel أو PDF استعمل «الطلاب» داخل الصف.</p>
     </div>`;
   }
-  const tr = p.tr;
-  p.pick ||= new Set(tr.students.map((_, i) => i));
+  const xfer = p.tr;
+  p.pick ||= new Set(xfer.students.map((_, i) => i));
   p.target ||= p.id && cls(p.id) ? p.id : '__new';
-  p.newLabel ??= tr.from.classLabel || '';
+  p.newLabel ??= xfer.from.classLabel || '';
   const count = (st) => { let n = 0; for (const w of Object.values(st.weeks || {})) n += (w || []).filter((v) => v != null).length; return n + (st.fin || []).filter((v) => v != null).length; };
-  return `${appbar({ title: 'استقبال طلاب منقولين' })}
+  return T`${appbar({ title: tr('استقبال طلاب منقولين') })}
   <div class="wrap stack">
     <div class="card"><div class="kv">
-      <div>من المعلم</div><div>${esc(tr.from.teacher || '—')}</div>
-      <div>الصف الأصلي</div><div>${esc(tr.from.classLabel || '—')}</div>
-      <div>المادة</div><div>${esc(tr.from.subject || '—')}</div>
-      <div>تاريخ الملف</div><div class="num">${tr.at ? ar(new Date(tr.at).toLocaleDateString('en-GB')) : '—'}</div>
+      <div>من المعلم</div><div>${esc(xfer.from.teacher || '—')}</div>
+      <div>الصف الأصلي</div><div>${esc(xfer.from.classLabel || '—')}</div>
+      <div>المادة</div><div>${esc(xfer.from.subject || '—')}</div>
+      <div>تاريخ الملف</div><div class="num">${xfer.at ? ar(new Date(xfer.at).toLocaleDateString('en-GB')) : '—'}</div>
     </div></div>
     <div class="section-title">أضفهم إلى</div>
     <div class="list">
       ${S.classes.map((o) => `<label class="pick"><input type="radio" name="tgt" data-tgt="${o.id}" ${p.target === o.id ? 'checked' : ''}><span class="grow"><strong>${esc(o.label)}</strong> <small class="muted">${students(o.names.length)}</small></span></label>`).join('')}
       <label class="pick"><input type="radio" name="tgt" data-tgt="__new" ${p.target === '__new' ? 'checked' : ''}><span class="grow"><strong>صف جديد</strong></span></label>
     </div>
-    ${p.target === '__new' ? `<div class="field"><label for="new-label">اسم الصف الجديد</label><input id="new-label" class="input" data-new-label value="${esc(p.newLabel)}" placeholder="مثل: العاشر / ٣"></div>` : ''}
-    <div class="row" style="justify-content:space-between;margin-top:12px"><span class="count-badge num">${ar(p.pick.size)} من ${ar(tr.students.length)}</span>
+    ${p.target === '__new' ? T`<div class="field"><label for="new-label">اسم الصف الجديد</label><input id="new-label" class="input" data-new-label value="${esc(p.newLabel)}" placeholder="مثل: العاشر / ٣"></div>` : ''}
+    <div class="row" style="justify-content:space-between;margin-top:12px"><span class="count-badge num">${ar(p.pick.size)} من ${ar(xfer.students.length)}</span>
       <span><button type="button" class="btn sm ghost" data-act="pick-all" data-v="1">تحديد الكل</button><button type="button" class="btn sm ghost" data-act="pick-all" data-v="0">إلغاء الكل</button></span></div>
-    <div class="list">${tr.students.map((st, i) => `<label class="pick"><input type="checkbox" data-pick-st="${i}" ${p.pick.has(i) ? 'checked' : ''}><span class="grow">${esc(st.name)}</span><span class="meta">${count(st) ? `${ar(count(st))} درجة` : 'بدون درجات'}</span></label>`).join('')}</div>
+    <div class="list">${xfer.students.map((st, i) => `<label class="pick"><input type="checkbox" data-pick-st="${i}" ${p.pick.has(i) ? 'checked' : ''}><span class="grow">${esc(st.name)}</span><span class="meta">${count(st) ? T`${ar(count(st))} درجة` : tr('بدون درجات')}</span></label>`).join('')}</div>
     <button type="button" class="btn primary lg block" data-act="apply-transfer" ${p.pick.size ? '' : 'disabled'}>${icon('check')} إضافة ${students(p.pick.size)}</button>
   </div>`;
 }
@@ -1400,18 +1401,18 @@ async function pickTransfer(p) {
   const file = await platform.pickFile('.json,application/json');
   if (!file) return;
   try {
-    const tr = parseTransfer(await file.text());
-    p.tr = tr; p.pick = null;
+    const xfer = parseTransfer(await file.text());
+    p.tr = xfer; p.pick = null;
     render();
   } catch (e) {
-    toast(e && /[؀-ۿ]/.test(e.message || '') ? e.message : 'هذا ليس ملف نقل طلاب صالحًا', { err: true, ms: 5000 });
+    toast(e && /[؀-ۿ]/.test(e.message || '') ? e.message : tr('هذا ليس ملف نقل طلاب صالحًا'), { err: true, ms: 5000 });
   }
 }
 
 async function applyTransferUI(p) {
   let target;
   if (p.target === '__new') {
-    const label = (p.newLabel || '').trim() || 'صف منقول';
+    const label = (p.newLabel || '').trim() || tr('صف منقول');
     target = { id: uid(), label, names: [] };
     S.classes.push(target); S.grades[target.id] = emptyClassData();
   } else target = cls(p.target);
@@ -1419,9 +1420,9 @@ async function applyTransferUI(p) {
   target.names = res.names; S.grades[target.id] = res.data;
   await saveClassesNow(); await store.saveGrades(target.id, res.data);
   liveResync(target.id);
-  const parts = [`أُضيف ${students(res.added)} إلى «${target.label}»`];
-  if (res.dup) parts.push(`${ar(res.dup)} موجود مسبقًا`);
-  if (res.overLimit) parts.push(`${ar(res.overLimit)} فوق الحد`);
+  const parts = [T`أُضيف ${students(res.added)} إلى «${target.label}»`];
+  if (res.dup) parts.push(T`${ar(res.dup)} موجود مسبقًا`);
+  if (res.overLimit) parts.push(T`${ar(res.overLimit)} فوق الحد`);
   toast(parts.join(' · '), { ms: 4500 });
   S.stack = [{ name: 'home', p: {} }, { name: 'class', p: { id: target.id } }];
   history.replaceState({ depth: 2 }, '');
@@ -1435,10 +1436,10 @@ function Settings() {
   const st = S.settings;
   const seg = (key, opts) => `<div class="seg" role="group">${opts.map(([v, l]) => `<button type="button" data-act="set" data-key="${key}" data-v="${v}" aria-pressed="${String(st[key]) === String(v)}">${l}</button>`).join('')}</div>`;
   const sw = (key, label, hint = '') => `<label class="list-item"><span class="grow"><strong>${label}</strong>${hint ? `<small>${hint}</small>` : ''}</span><input type="checkbox" class="switch" data-setting-bool="${key}" ${st[key] ? 'checked' : ''}></label>`;
-  const inst = platform.isNative ? 'مثبّت كتطبيق أندرويد' : platform.isStandalone ? 'مثبّت على الشاشة الرئيسية' : 'يعمل داخل المتصفح';
-  return `${appbar({ title: 'الإعدادات', backBtn: false, save: true })}
+  const inst = platform.isNative ? tr('مثبّت كتطبيق أندرويد') : platform.isStandalone ? tr('مثبّت على الشاشة الرئيسية') : tr('يعمل داخل المتصفح');
+  return T`${appbar({ title: tr('الإعدادات'), backBtn: false, save: true })}
   <div class="wrap stack">
-    ${REMOTE ? '' : `<div class="section-title">التحديثات</div>
+    ${REMOTE ? '' : T`<div class="section-title">التحديثات</div>
     <div class="card stack" data-testid="update-card">${updateCardHTML()}</div>`}
 
     <div class="section-title">بياناتي</div>
@@ -1451,18 +1452,19 @@ function Settings() {
 
     <div class="section-title">طريقة الرصد</div>
     <div class="card stack">
-      <div class="field"><span class="label">إدخال الدرجة</span>${seg('inputMode', [['chips', 'سلايدر'], ['fields', 'كتابة الرقم']])}
+      <div class="field"><span class="label">إدخال الدرجة</span>${seg('inputMode', [['chips', tr('سلايدر')], ['fields', tr('كتابة الرقم')]])}
         <p class="hint">السلايدر: اضغط المربع واسحب من ٠ إلى ٥. كتابة الرقم: اكتب ثم Enter. (على الكمبيوتر يظهر جدول دائمًا)</p></div>
     </div>
     <div class="list">
-      ${sw('autoAdvance', 'الانتقال التلقائي للطالب التالي', 'بعد إكمال درجات طالب')}
-      ${sw('haptics', 'الاهتزاز الخفيف', 'عند «كامل» والغياب والتعبئة السريعة')}
+      ${sw('autoAdvance', tr('الانتقال التلقائي للطالب التالي'), tr('بعد إكمال درجات طالب'))}
+      ${sw('haptics', tr('الاهتزاز الخفيف'), tr('عند «كامل» والغياب والتعبئة السريعة'))}
     </div>
 
     <div class="section-title">المظهر</div>
     <div class="card stack">
-      <div class="field"><span class="label">الألوان</span>${seg('theme', [['auto', 'تلقائي'], ['light', 'فاتح'], ['dark', 'داكن']])}</div>
-      <div class="field"><span class="label">حجم الخط</span>${seg('textScale', [['normal', 'عادي'], ['large', 'كبير']])}</div>
+      ${REMOTE ? '' : T`<div class="field"><span class="label">اللغة · Language</span><div class="seg" role="group"><button type="button" data-act="set-lang" data-v="ar" aria-pressed="${lang() === 'ar'}">العربية</button><button type="button" data-act="set-lang" data-v="en" aria-pressed="${lang() === 'en'}">English</button></div></div>`}
+      <div class="field"><span class="label">الألوان</span>${seg('theme', [['auto', tr('تلقائي')], ['light', tr('فاتح')], ['dark', tr('داكن')]])}</div>
+      <div class="field"><span class="label">حجم الخط</span>${seg('textScale', [['normal', tr('عادي')], ['large', tr('كبير')]])}</div>
     </div>
 
     <div class="section-title">التطبيق</div>
@@ -1474,7 +1476,7 @@ function Settings() {
       <div class="list-item">${icon('code')}<span class="grow"><strong>تخصيص الواجهة</strong><small>يمكن لأي معلم تعديل التطبيق بما يناسبه عبر Claude Code: افتح مجلد المشروع واطلب التعديل بالعربية. التفاصيل في ملف CLAUDE.md.</small></span></div>
     </div>
 
-    ${REMOTE ? '' : `<details class="card advanced">
+    ${REMOTE ? '' : T`<details class="card advanced">
       <summary>${icon('gear')} خيارات متقدمة (للفني فقط)</summary>
       <p class="hint">لا يحتاجها المعلم عادةً: رابط صفحة العرض مضبوط مسبقًا، والاتصال يعمل بدون خادم TURN في أغلب الشبكات.</p>
       <div class="field"><label for="s-view">رابط صفحة العرض</label><input id="s-view" class="input" dir="ltr" data-setting="viewUrl" value="${esc(st.viewUrl)}" placeholder="${esc(defaultViewUrl() || 'https://…/view.html')}"></div>
@@ -1484,29 +1486,29 @@ function Settings() {
         <div class="field"><label for="s-tp">كلمة المرور</label><input id="s-tp" class="input" dir="ltr" type="password" data-setting="turnPass" value="${esc(st.turnPass)}" autocomplete="off"></div>
       </div>
     </details>`}
-    <p class="hint" style="text-align:center;margin:16px 0">${icon('shield')} ${REMOTE ? 'وضع الإدارة: البيانات محفوظة في جوالك، ولا شيء يُحفظ على هذا الكمبيوتر.' : 'لا حسابات: كل الدرجات على هذا الجهاز فقط.'}</p>
+    <p class="hint" style="text-align:center;margin:16px 0">${icon('shield')} ${REMOTE ? tr('وضع الإدارة: البيانات محفوظة في جوالك، ولا شيء يُحفظ على هذا الكمبيوتر.') : tr('لا حسابات: كل الدرجات على هذا الجهاز فقط.')}</p>
   </div>`;
 }
 
 // ===== التحديثات =====
 const UPD = { state: 'idle', worker: null, build: '' };
 function updateCardHTML() {
-  const ver = `الإصدار ${ar(CONFIG.version)}${CONFIG.releaseDate ? ` — ${ar(CONFIG.releaseDate.split('-').reverse().join('/'))}` : ''}`;
-  const news = CHANGELOG.slice(0, 5).map((e) => `<li><b class="num">${ar(e.version)}</b> <small class="muted num">${ar(String(e.date || '').split('-').reverse().join('/'))}</small>${e.items.length ? `<ul>${e.items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</li>`).join('');
-  const newsBox = news ? `<details class="whats-new"><summary>${icon('sparkle')} ما الجديد</summary><ul class="changelog">${news}</ul></details>` : '';
+  const ver = T`الإصدار ${ar(CONFIG.version)}${CONFIG.releaseDate ? ` — ${ar(CONFIG.releaseDate.split('-').reverse().join('/'))}` : ''}`;
+  const news = CHANGELOG.slice(0, 5).map((e) => `<li><b class="num">${ar(e.version)}</b> <small class="muted num">${ar(String(e.date || '').split('-').reverse().join('/'))}</small>${e.items.length ? `<ul>${e.items.map((x) => `<li>${esc(tr(x))}</li>`).join('')}</ul>` : ''}</li>`).join('');
+  const newsBox = news ? T`<details class="whats-new"><summary>${icon('sparkle')} ما الجديد</summary><ul class="changelog">${news}</ul></details>` : '';
   if (platform.isNative) {
-    return `<div class="row"><span class="grow"><strong>${ver}</strong><small class="muted" style="display:block">تطبيق أندرويد</small></span></div>
+    return T`<div class="row"><span class="grow"><strong>${ver}</strong><small class="muted" style="display:block">تطبيق أندرويد</small></span></div>
       <p class="hint">يتحدّث تطبيق أندرويد بتثبيت ملف APK الجديد الذي يصلك؛ يُثبَّت فوق القديم وتبقى الدرجات.</p>${newsBox}`;
   }
   const st = UPD.state;
-  const line = st === 'ready' ? `<span class="status-pill">${icon('download')} تحديث جديد جاهز</span>`
-    : st === 'checking' ? `<span class="status-pill">${icon('refresh')} جارٍ البحث…</span>`
-      : st === 'latest' ? `<span class="status-pill ok">${icon('checkCircle')} عندك آخر إصدار</span>`
-        : st === 'offline' ? `<span class="status-pill">${icon('wifi')} لا يوجد اتصال بالإنترنت</span>` : '';
+  const line = st === 'ready' ? T`<span class="status-pill">${icon('download')} تحديث جديد جاهز</span>`
+    : st === 'checking' ? T`<span class="status-pill">${icon('refresh')} جارٍ البحث…</span>`
+      : st === 'latest' ? T`<span class="status-pill ok">${icon('checkCircle')} عندك آخر إصدار</span>`
+        : st === 'offline' ? T`<span class="status-pill">${icon('wifi')} لا يوجد اتصال بالإنترنت</span>` : '';
   return `<div class="row" style="justify-content:space-between;flex-wrap:wrap"><strong>${ver}</strong>${line}</div>
     ${st === 'ready'
-      ? `<button type="button" class="btn primary block" data-act="update-now">${icon('refresh')} حدّث الآن</button><p class="hint">يُعاد تشغيل التطبيق بالنسخة الجديدة. درجاتك لا تتأثر.</p>`
-      : `<button type="button" class="btn block" data-act="update-check" ${st === 'checking' ? 'disabled' : ''}>${icon('refresh')} ابحث عن تحديث</button><p class="hint">التحديثات تصل تلقائيًا عند فتح التطبيق مع اتصال بالإنترنت.</p>`}${newsBox}`;
+      ? T`<button type="button" class="btn primary block" data-act="update-now">${icon('refresh')} حدّث الآن</button><p class="hint">يُعاد تشغيل التطبيق بالنسخة الجديدة. درجاتك لا تتأثر.</p>`
+      : T`<button type="button" class="btn block" data-act="update-check" ${st === 'checking' ? 'disabled' : ''}>${icon('refresh')} ابحث عن تحديث</button><p class="hint">التحديثات تصل تلقائيًا عند فتح التطبيق مع اتصال بالإنترنت.</p>`}${newsBox}`;
 }
 function paintUpdate() {
   const card = document.querySelector('[data-testid="update-card"]');
@@ -1542,22 +1544,22 @@ function onSettingInput(key, value) {
 // إرشادات التثبيت
 // =====================================================================
 function Guide() {
-  const ios = `<ol class="ios-steps">
+  const ios = T`<ol class="ios-steps">
     <li><span class="pic">${icon('shareIos')}</span><span><strong>١. اضغط زر المشاركة</strong><br><span class="muted">في أسفل Safari (مربع وسهم للأعلى)</span></span></li>
     <li><span class="pic">${icon('plusSquare')}</span><span><strong>٢. اختر «إضافة إلى الشاشة الرئيسية»</strong><br><span class="muted">مرّر القائمة للأسفل إن لم تظهر</span></span></li>
     <li><span class="pic">${icon('check')}</span><span><strong>٣. اضغط «إضافة»</strong><br><span class="muted">ثم افتح التطبيق دائمًا من أيقونته</span></span></li>
   </ol>`;
-  const android = `<ol class="ios-steps">
+  const android = T`<ol class="ios-steps">
     <li><span class="pic">${icon('download')}</span><span><strong>تطبيق APK</strong><br><span class="muted">ثبّت ملف APK الذي يوزعه المعلم المسؤول (اسمح بالتثبيت من هذا المصدر).</span></span></li>
     <li><span class="pic">${icon('more')}</span><span><strong>أو من Chrome</strong><br><span class="muted">القائمة ⋮ ثم «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية».</span></span></li>
   </ol>`;
-  return `${appbar({ title: 'تثبيت التطبيق' })}
+  return T`${appbar({ title: tr('تثبيت التطبيق') })}
   <div class="wrap stack">
-    ${platform.isIOS && !platform.isStandalone ? `<div class="alert warn">${icon('warn')}<div class="grow"><strong>أنت الآن في المتصفح</strong><p style="margin:0">بيانات المواقع في Safari أقل حماية وقد تُمسح إذا لم تفتح الموقع لفترة. ثبّت التطبيق واحفظ نسخة احتياطية أسبوعيًا.</p></div></div>` : ''}
+    ${platform.isIOS && !platform.isStandalone ? T`<div class="alert warn">${icon('warn')}<div class="grow"><strong>أنت الآن في المتصفح</strong><p style="margin:0">بيانات المواقع في Safari أقل حماية وقد تُمسح إذا لم تفتح الموقع لفترة. ثبّت التطبيق واحفظ نسخة احتياطية أسبوعيًا.</p></div></div>` : ''}
     <div class="section-title">آيفون وآيباد (Safari)</div>${ios}
     <div class="section-title">أندرويد</div>${android}
     <div class="alert info">${icon('shield')}<div class="grow"><strong>بياناتك على جهازك فقط</strong><p style="margin:0">لا يرسل التطبيق أي شيء للإنترنت. انقل بياناتك بين الأجهزة عبر «نسخة احتياطية» ثم «استرجاع نسخة».</p></div></div>
-    ${platform.isIOS && !platform.isStandalone ? '<button type="button" class="btn block" data-act="dismiss-guide">متابعة في المتصفح على أي حال</button>' : ''}
+    ${platform.isIOS && !platform.isStandalone ? tr('<button type="button" class="btn block" data-act="dismiss-guide">متابعة في المتصفح على أي حال</button>') : ''}
   </div>`;
 }
 
@@ -1565,18 +1567,18 @@ function Guide() {
 // الجولة التعريفية
 // =====================================================================
 const TOUR = [
-  { t: 'ارصد بضغطة واحدة', d: 'لكل طالب زر «كامل» يضع ٥ في البنود الأربعة، وأزرار كبيرة لأي درجة أخرى. التطبيق يحفظ تلقائيًا ويعمل بدون إنترنت.', art: ART_EMPTY },
-  { t: 'أضف طلابك بسهولة', d: 'الصق الأسماء أو استوردها من Excel أو PDF. وإذا انتقل طالب، أرسل درجاته لمعلمه الجديد بملف.', art: ART_USERS },
-  { t: 'صدّر واعرض', d: 'صدّر كشف الإكسل الرسمي بضغطة، واعرض الدرجات مباشرة على شاشة الكمبيوتر عبر رمز QR. لا تنسَ النسخة الاحتياطية الأسبوعية.', art: `<svg class="art" viewBox="0 0 200 150" aria-hidden="true"><rect x="20" y="24" width="120" height="80" rx="10" fill="var(--primary-soft)"/><rect x="34" y="38" width="92" height="8" rx="4" fill="var(--primary)"/><rect x="34" y="54" width="70" height="6" rx="3" fill="var(--border)"/><rect x="34" y="66" width="80" height="6" rx="3" fill="var(--border)"/><rect x="66" y="110" width="28" height="6" rx="3" fill="var(--border)"/><rect x="140" y="50" width="42" height="76" rx="8" fill="var(--card)" stroke="var(--primary)" stroke-width="3"/><rect x="150" y="66" width="22" height="22" rx="2" fill="var(--primary)"/></svg>` },
+  { t: tr('ارصد بضغطة واحدة'), d: tr('لكل طالب زر «كامل» يضع ٥ في البنود الأربعة، وأزرار كبيرة لأي درجة أخرى. التطبيق يحفظ تلقائيًا ويعمل بدون إنترنت.'), art: ART_EMPTY },
+  { t: tr('أضف طلابك بسهولة'), d: tr('الصق الأسماء أو استوردها من Excel أو PDF. وإذا انتقل طالب، أرسل درجاته لمعلمه الجديد بملف.'), art: ART_USERS },
+  { t: tr('صدّر واعرض'), d: tr('صدّر كشف الإكسل الرسمي بضغطة، واعرض الدرجات مباشرة على شاشة الكمبيوتر عبر رمز QR. لا تنسَ النسخة الاحتياطية الأسبوعية.'), art: `<svg class="art" viewBox="0 0 200 150" aria-hidden="true"><rect x="20" y="24" width="120" height="80" rx="10" fill="var(--primary-soft)"/><rect x="34" y="38" width="92" height="8" rx="4" fill="var(--primary)"/><rect x="34" y="54" width="70" height="6" rx="3" fill="var(--border)"/><rect x="34" y="66" width="80" height="6" rx="3" fill="var(--border)"/><rect x="66" y="110" width="28" height="6" rx="3" fill="var(--border)"/><rect x="140" y="50" width="42" height="76" rx="8" fill="var(--card)" stroke="var(--primary)" stroke-width="3"/><rect x="150" y="66" width="22" height="22" rx="2" fill="var(--primary)"/></svg>` },
 ];
 function showTour() {
   let i = 0;
-  const s = openSheet('<div class="tour" data-tour></div>', { label: 'جولة تعريفية', onClose: async () => { S.settings.tourDone = true; await saveSettingsNow(); } });
+  const s = openSheet('<div class="tour" data-tour></div>', { label: tr('جولة تعريفية'), onClose: async () => { S.settings.tourDone = true; await saveSettingsNow(); } });
   const paint = () => {
     const t = TOUR[i];
-    s.sheet.querySelector('[data-tour]').innerHTML = `${t.art}<h2>${t.t}</h2><p>${t.d}</p>
+    s.sheet.querySelector('[data-tour]').innerHTML = T`${t.art}<h2>${t.t}</h2><p>${t.d}</p>
       <div class="dots">${TOUR.map((_, j) => `<span class="${j === i ? 'on' : ''}"></span>`).join('')}</div>
-      <div class="actions"><button type="button" class="btn ghost" data-t="skip">تخطَّ</button><button type="button" class="btn primary" data-t="next">${i === TOUR.length - 1 ? 'لنبدأ' : 'التالي'}</button></div>`;
+      <div class="actions"><button type="button" class="btn ghost" data-t="skip">تخطَّ</button><button type="button" class="btn primary" data-t="next">${i === TOUR.length - 1 ? tr('لنبدأ') : tr('التالي')}</button></div>`;
   };
   paint();
   s.sheet.addEventListener('click', (e) => {
@@ -1593,16 +1595,16 @@ function showTour() {
 async function doHandover(c) {
   if (!c) return;
   if (S.dirty.size) await flushSave();
-  const T = await import('./transfer.js');
-  const file = T.buildClassHandover({ classLabel: c.label, names: c.names, data: dataOf(c.id), settings: S.settings });
-  const name = T.handoverFileName ? T.handoverFileName(c.label) : `تسليم_عهدة_${c.label}.json`;
+  const TX = await import('./transfer.js');
+  const file = TX.buildClassHandover({ classLabel: c.label, names: c.names, data: dataOf(c.id), settings: S.settings });
+  const name = TX.handoverFileName ? TX.handoverFileName(c.label) : T`تسليم_عهدة_${c.label}.json`;
   try {
     const r = await platform.saveFile(name, new Blob([JSON.stringify(file)], { type: 'application/json' }), 'application/json');
     if (r === 'cancelled') return;
-  } catch { toast('تعذّر حفظ ملف التسليم', { err: true }); return; }
-  const del = await confirmDialog({ title: `سلّمت «${c.label}»؟`, text: 'أرسل الملف للمعلم الجديد (واتساب أو بريد) ليستقبله من «الأدوات ← استقبال صف أو طلاب». هل تحذف الصف من جهازك الآن؟ (احتفظ به إن لم تتأكد من وصول الملف)', ok: 'احذفها من جهازي', cancel: 'أبقها', danger: true });
+  } catch { toast(tr('تعذّر حفظ ملف التسليم'), { err: true }); return; }
+  const del = await confirmDialog({ title: T`سلّمت «${c.label}»؟`, text: tr('أرسل الملف للمعلم الجديد (واتساب أو بريد) ليستقبله من «الأدوات ← استقبال صف أو طلاب». هل تحذف الصف من جهازك الآن؟ (احتفظ به إن لم تتأكد من وصول الملف)'), ok: tr('احذفها من جهازي'), cancel: tr('أبقها'), danger: true });
   if (del) await deleteClass(c.id, { skipConfirm: true });
-  else toast('حُفظ ملف التسليم ✓');
+  else toast(tr('حُفظ ملف التسليم ✓'));
 }
 
 // =====================================================================
@@ -1612,7 +1614,7 @@ async function printReport(kind, c, idx) {
   if (!c) return;
   if (S.dirty.size) await flushSave();
   let R;
-  try { R = await import('./reports.js'); } catch { toast('تعذّر تجهيز التقرير', { err: true }); return; }
+  try { R = await import('./reports.js'); } catch { toast(tr('تعذّر تجهيز التقرير'), { err: true }); return; }
   const args = { classLabel: c.label, names: c.names, data: dataOf(c.id), settings: S.settings, idx };
   const html = kind === 'attendance' ? R.attendanceReportHTML(args) : kind === 'student' ? R.studentReportHTML(args) : R.gradesReportHTML({ ...args, part: 'all' });
   let css = document.getElementById('report-css');
@@ -1621,20 +1623,20 @@ async function printReport(kind, c, idx) {
   let root = document.getElementById('print-root');
   if (!root) { root = document.createElement('div'); root.id = 'print-root'; document.body.appendChild(root); }
   root.innerHTML = html;
-  const title = kind === 'attendance' ? `كشف_الحضور_${c.label}` : kind === 'student' ? `تقرير_${c.names[idx]}` : `كشف_الدرجات_${c.label}`;
+  const title = kind === 'attendance' ? T`كشف_الحضور_${c.label}` : kind === 'student' ? T`تقرير_${c.names[idx]}` : T`كشف_الدرجات_${c.label}`;
   const oldTitle = document.title;
   document.title = title.replace(/[\\/:*?"<>|]+/g, '_');
   try {
     const how = await platform.print(document.title);
-    if (how === 'unsupported') toast('الطباعة غير متاحة على هذا الجهاز. جرّب من الكمبيوتر أو صدّر Excel.', { err: true, ms: 6000 });
-  } catch { toast('تعذّرت الطباعة على هذا الجهاز', { err: true }); }
+    if (how === 'unsupported') toast(tr('الطباعة غير متاحة على هذا الجهاز. جرّب من الكمبيوتر أو صدّر Excel.'), { err: true, ms: 6000 });
+  } catch { toast(tr('تعذّرت الطباعة على هذا الجهاز'), { err: true }); }
   setTimeout(() => { document.title = oldTitle; }, 1500);
 }
 
 function pickStudent(c, title) {
   return new Promise((resolve) => {
     let res = null;
-    const s = openSheet(`<h2>${esc(title)}</h2><div class="list" style="max-height:60vh;overflow:auto">${c.names.map((nm, i) => `<button type="button" class="list-item" data-ps="${i}"><span class="stu-num num">${ar(i + 1)}</span><span class="grow"><strong>${esc(nm)}</strong></span></button>`).join('')}</div>
+    const s = openSheet(T`<h2>${esc(title)}</h2><div class="list" style="max-height:60vh;overflow:auto">${c.names.map((nm, i) => `<button type="button" class="list-item" data-ps="${i}"><span class="stu-num num">${ar(i + 1)}</span><span class="grow"><strong>${esc(nm)}</strong></span></button>`).join('')}</div>
       <div class="actions"><button type="button" class="btn" data-ps="">إلغاء</button></div>`, { label: title, onClose: () => resolve(res) });
     s.sheet.addEventListener('click', (e) => { const b = e.target.closest('[data-ps]'); if (!b) return; res = b.dataset.ps === '' ? null : +b.dataset.ps; s.close(); });
   });
@@ -1645,17 +1647,17 @@ function pickStudent(c, title) {
 // =====================================================================
 function backupTip() {
   const where = platform.isIOS
-    ? `<p>نحفظ <b>نسختين</b> حتى تكون درجاتك بأمان:</p>
+    ? T`<p>نحفظ <b>نسختين</b> حتى تكون درجاتك بأمان:</p>
        <ol class="steps"><li><span class="n">${ar(1)}</span><span><b>على الجوال:</b> «حفظ في الملفات» ← <b>«على الآيفون»</b> ← «حفظ»</span></li>
        <li><span class="n">${ar(2)}</span><span><b>في iCloud:</b> «حفظ في الملفات» ← <b>«iCloud Drive»</b> ← «حفظ»</span></li></ol>
        <p class="hint">نسخة الجوال لا تخرج منه أبدًا. ونسخة iCloud في حسابك الشخصي فقط (لا يراها أحد غيرك)، وتبقى لو ضاع الجوال. إن ظهر «استبدال» فاضغطه.</p>`
     : platform.isNative
-      ? `<p>تُحفظ النسخة تلقائيًا في الجوال: <b>المستندات ← متابعة الدرجات</b>. ثم تظهر قائمة المشاركة: أرسلها أيضًا إلى <b>Google Drive</b> أو لنفسك على واتساب حتى تبقى لو ضاع الجوال.</p>`
-      : `<p>سيُحفظ ملف النسخة في مجلد التنزيلات أو تظهر قائمة المشاركة. احفظه في مكان آمن خاص بك (مثل iCloud Drive أو Google Drive) أو أرسله لنفسك.</p>`;
+      ? T`<p>تُحفظ النسخة تلقائيًا في الجوال: <b>المستندات ← متابعة الدرجات</b>. ثم تظهر قائمة المشاركة: أرسلها أيضًا إلى <b>Google Drive</b> أو لنفسك على واتساب حتى تبقى لو ضاع الجوال.</p>`
+      : T`<p>سيُحفظ ملف النسخة في مجلد التنزيلات أو تظهر قائمة المشاركة. احفظه في مكان آمن خاص بك (مثل iCloud Drive أو Google Drive) أو أرسله لنفسك.</p>`;
   return new Promise((resolve) => {
     let go = false;
-    const s = openSheet(`<h2>${icon('shield')} أين تُحفظ النسخة؟</h2>${where}
-      <div class="actions"><button type="button" class="btn" data-x="0">لاحقًا</button><button type="button" class="btn primary" data-x="1" autofocus>فهمت، احفظ</button></div>`, { label: 'النسخة الاحتياطية', onClose: () => resolve(go) });
+    const s = openSheet(T`<h2>${icon('shield')} أين تُحفظ النسخة؟</h2>${where}
+      <div class="actions"><button type="button" class="btn" data-x="0">لاحقًا</button><button type="button" class="btn primary" data-x="1" autofocus>فهمت، احفظ</button></div>`, { label: tr('النسخة الاحتياطية'), onClose: () => resolve(go) });
     s.sheet.addEventListener('click', (e) => { const b = e.target.closest('[data-x]'); if (!b) return; go = b.dataset.x === '1'; s.close(); });
   });
 }
@@ -1675,7 +1677,7 @@ async function doBackup() {
     if (r === 'cancelled') return;
     if (platform.isIOS && !platform.isNative && r === 'shared') {
       // النسخة الثانية تحتاج ضغطة جديدة (قيود آبل على المشاركة)
-      const second = await confirmDialog({ title: `النسخة ١ ✓ — الآن النسخة ٢ في iCloud`, text: 'اضغط «احفظ في iCloud» ثم اختر «حفظ في الملفات» ← «iCloud Drive» ← «حفظ».', ok: 'احفظ في iCloud', cancel: 'تخطَّ' });
+      const second = await confirmDialog({ title: T`النسخة ١ ✓ — الآن النسخة ٢ في iCloud`, text: tr('اضغط «احفظ في iCloud» ثم اختر «حفظ في الملفات» ← «iCloud Drive» ← «حفظ».'), ok: tr('احفظ في iCloud'), cancel: tr('تخطَّ') });
       if (second) {
         const r2 = await platform.shareFile(blob, store.backupFileName(), 'application/json');
         if (r2 === 'shared') { S.meta.lastCloudBackupAt = new Date().toISOString(); await store.setMeta('lastCloudBackupAt', S.meta.lastCloudBackupAt); }
@@ -1685,9 +1687,9 @@ async function doBackup() {
     await store.setMeta('lastBackupAt', S.meta.lastBackupAt);
     S.meta.changedSinceBackup = null;
     await store.setMeta('changedSinceBackup', null);
-    toast('حُفظت النسخة الاحتياطية ✓');
+    toast(tr('حُفظت النسخة الاحتياطية ✓'));
     if (['home', 'settings'].includes(route().name)) render();
-  } catch { toast('تعذّر حفظ النسخة', { err: true }); }
+  } catch { toast(tr('تعذّر حفظ النسخة'), { err: true }); }
 }
 
 async function doRestore() {
@@ -1695,12 +1697,12 @@ async function doRestore() {
   if (!file) return;
   let b;
   try { b = store.parseBackup(await file.text()); } catch (e) {
-    toast(e && /[؀-ۿ]/.test(e.message || '') ? e.message : 'هذا الملف ليس نسخة احتياطية صالحة', { err: true, ms: 5000 });
+    toast(e && /[؀-ۿ]/.test(e.message || '') ? e.message : tr('هذا الملف ليس نسخة احتياطية صالحة'), { err: true, ms: 5000 });
     return;
   }
-  const date = b.at ? ar(new Date(b.at).toLocaleDateString('en-GB')) : 'غير معروف';
+  const date = b.at ? ar(new Date(b.at).toLocaleDateString('en-GB')) : tr('غير معروف');
   const nStu = b.classes.reduce((a, c) => a + c.names.length, 0);
-  const ok = await confirmDialog({ title: 'استرجاع النسخة؟', text: `نسخة بتاريخ ${date} فيها ${ar(b.classes.length)} صف و${students(nStu)}. ستُستبدل كل البيانات الحالية على هذا الجهاز.`, ok: 'استرجاع واستبدال', danger: true });
+  const ok = await confirmDialog({ title: tr('استرجاع النسخة؟'), text: T`نسخة بتاريخ ${date} فيها ${ar(b.classes.length)} صف و${students(nStu)}. ستُستبدل كل البيانات الحالية على هذا الجهاز.`, ok: tr('استرجاع واستبدال'), danger: true });
   if (!ok) return;
   await store.replaceAll({ classes: b.classes, settings: b.settings, data: b.data });
   await loadState();
@@ -1708,18 +1710,18 @@ async function doRestore() {
   await store.setMeta('lastBackupAt', S.meta.lastBackupAt);
   applyTheme();
   go('home');
-  toast('اكتمل الاسترجاع ✓');
+  toast(tr('اكتمل الاسترجاع ✓'));
 }
 
 async function doWipe() {
-  const ok = await confirmDialog({ title: 'حذف كل البيانات؟', text: 'ستُحذف كل الصفوف والدرجات والإعدادات من هذا الجهاز نهائيًا. احفظ نسخة احتياطية أولًا إن كنت تحتاجها.', ok: 'حذف الكل', danger: true });
+  const ok = await confirmDialog({ title: tr('حذف كل البيانات؟'), text: tr('ستُحذف كل الصفوف والدرجات والإعدادات من هذا الجهاز نهائيًا. احفظ نسخة احتياطية أولًا إن كنت تحتاجها.'), ok: tr('حذف الكل'), danger: true });
   if (!ok) return;
   await store.replaceAll({ classes: [], settings: { ...CONFIG.defaultSettings, tourDone: true }, data: {} });
   await store.setMeta('lastBackupAt', null);
   await loadState();
   applyTheme();
   go('home');
-  toast('حُذفت كل البيانات');
+  toast(tr('حُذفت كل البيانات'));
 }
 
 // =====================================================================
@@ -1729,25 +1731,25 @@ async function exportXlsx(id) {
   const c = cls(id);
   if (!c) return;
   if (S.dirty.size) await flushSave();
-  const close = toast('جارٍ تجهيز الكشف…', { ms: 0 });
+  const close = toast(tr('جارٍ تجهيز الكشف…'), { ms: 0 });
   try {
     const { buildWorkbook, exportFileName } = await import('./xlsx-export.js');
     const blob = await buildWorkbook({ classLabel: c.label, names: c.names, data: dataOf(c.id), settings: S.settings });
     close();
     const r = await platform.saveFile(exportFileName(c.label), blob, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    if (r !== 'cancelled') toast('جاهز ✓ كشف الإكسل');
+    if (r !== 'cancelled') toast(tr('جاهز ✓ كشف الإكسل'));
   } catch {
     close();
-    toast('تعذّر إنشاء ملف الإكسل', { err: true });
+    toast(tr('تعذّر إنشاء ملف الإكسل'), { err: true });
   }
 }
 
 async function shareStudent(id, idx) {
   const c = cls(id);
   const text = studentCardText({ name: c.names[idx], classLabel: c.label, subject: S.settings.subject, teacher: S.settings.teacher, data: dataOf(id), idx });
-  const r = await platform.shareText(text, 'بطاقة الطالب');
-  if (r === 'copied') toast('نُسخ نص البطاقة — الصقه في واتساب');
-  else if (r === 'failed') toast('تعذّرت المشاركة', { err: true });
+  const r = await platform.shareText(text, tr('بطاقة الطالب'));
+  if (r === 'copied') toast(tr('نُسخ نص البطاقة — الصقه في واتساب'));
+  else if (r === 'failed') toast(tr('تعذّرت المشاركة'), { err: true });
 }
 
 // =====================================================================
@@ -1775,7 +1777,7 @@ function Live() {
   const c = L.classId ? cls(L.classId) : null;
   const viewUrl = S.settings.viewUrl || defaultViewUrl();
   const busy = L.phase !== 'setup';
-  const stateLabel = { connected: 'متصل', connecting: 'جارٍ الاتصال', disconnected: 'انقطع الاتصال', closed: 'غير متصل', idle: 'غير متصل' }[L.state] || 'غير متصل';
+  const stateLabel = { connected: tr('متصل'), connecting: tr('جارٍ الاتصال'), disconnected: tr('انقطع الاتصال'), closed: tr('غير متصل'), idle: tr('غير متصل') }[L.state] || tr('غير متصل');
   const pill = `<span class="live-state ${L.state}" data-live-state><span class="dot"></span>${stateLabel}</span>`;
 
   // ١) ماذا تريد؟
@@ -1787,7 +1789,7 @@ function Live() {
   // ٢) الإعدادات حسب الوضع
   let step2;
   if (L.mode === 'manage') {
-    step2 = `<section class="live-step"><h3><span class="step-n">${ar(1)}</span> ماذا يظهر على الكمبيوتر؟</h3>
+    step2 = T`<section class="live-step"><h3><span class="step-n">${ar(1)}</span> ماذا يظهر على الكمبيوتر؟</h3>
       <ul class="hint manage-points">
         <li>تظهر صفوفك كلها على الكمبيوتر — اختر الصف الذي تريده.</li>
         <li><b>«اعرض للطلاب وارصد»</b>: جدول الدرجات على الشاشة، وترصد منه الدرجات والغياب والنجوم والملاحظات (طالب أو عدة طلاب معًا).</li>
@@ -1796,11 +1798,11 @@ function Live() {
         <li>كل شيء يُحفظ في <b>جوالك</b> فقط — الكمبيوتر لا يحفظ شيئًا.</li>
       </ul></section>`;
   } else if (!S.classes.length) {
-    step2 = `<section class="live-step"><h3><span class="step-n">${ar(2)}</span> لا توجد صفوف بعد</h3>
+    step2 = T`<section class="live-step"><h3><span class="step-n">${ar(2)}</span> لا توجد صفوف بعد</h3>
       <p class="hint">أضف صفًا أولًا، أو اختر «أدِر التطبيق من الكمبيوتر» لإنشاء الصفوف من ملفات الكمبيوتر.</p>
       <button type="button" class="btn primary" data-act="new-class">${icon('plus')} إضافة صف</button></section>`;
   } else {
-    step2 = `<section class="live-step"><h3><span class="step-n">${ar(2)}</span> ماذا يظهر على الشاشة؟</h3>
+    step2 = T`<section class="live-step"><h3><span class="step-n">${ar(2)}</span> ماذا يظهر على الشاشة؟</h3>
       <div class="field"><label for="lv-class">الصف</label><select id="lv-class" class="select" data-live="class">${S.classes.map((o) => `<option value="${o.id}" ${o.id === L.classId ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></div>
       ${c ? displayOptionsHTML(c) : ''}
     </section>`;
@@ -1809,47 +1811,47 @@ function Live() {
   // ٣) الربط
   let body = '';
   if (L.phase === 'setup') {
-    body = `<p class="hint">١) افتح على الكمبيوتر: <b>شاشة العرض</b>${viewUrl ? ` — <button type="button" class="link-btn" data-act="copy-view">${icon('copy')} نسخ الرابط</button>` : ''}</p>
+    body = T`<p class="hint">١) افتح على الكمبيوتر: <b>شاشة العرض</b>${viewUrl ? T` — <button type="button" class="link-btn" data-act="copy-view">${icon('copy')} نسخ الرابط</button>` : ''}</p>
       <p class="hint">٢) اضغط الزر وصوّر الرمز الظاهر على الكمبيوتر. يتصل الكمبيوتر بعدها تلقائيًا.</p>
       <button type="button" class="btn primary lg block" data-act="live-scan" ${L.mode === 'display' && !S.classes.length ? 'disabled' : ''}>${icon('camera')} صوّر رمز الكمبيوتر</button>
       <button type="button" class="link-btn" data-act="live-paste">لا تعمل الكاميرا؟ الصق الرمز بدلًا من ذلك</button>`;
   } else if (L.phase === 'scan') {
     const pr = L.collector ? L.collector.progress() : { got: 0, total: 0 };
-    body = `<div class="video-box"><video playsinline muted autoplay data-live-video></video><div class="frame"></div></div>
-      <p class="hint" style="text-align:center" data-scan-progress>${pr.total > 1 ? `قرأنا ${ar(pr.got)} من ${ar(pr.total)} أجزاء… أبقِ الكاميرا على الرمز` : 'وجّه الكاميرا إلى الرمز على شاشة الكمبيوتر'}</p>
+    body = T`<div class="video-box"><video playsinline muted autoplay data-live-video></video><div class="frame"></div></div>
+      <p class="hint" style="text-align:center" data-scan-progress>${pr.total > 1 ? T`قرأنا ${ar(pr.got)} من ${ar(pr.total)} أجزاء… أبقِ الكاميرا على الرمز` : tr('وجّه الكاميرا إلى الرمز على شاشة الكمبيوتر')}</p>
       <button type="button" class="btn block" data-act="live-cancel">إلغاء</button>`;
   } else if (L.phase === 'connecting') {
-    body = `<div class="live-wait"><span class="spinner-lg" aria-hidden="true"></span><h3>جارٍ تجهيز الاتصال…</h3></div>`;
+    body = T`<div class="live-wait"><span class="spinner-lg" aria-hidden="true"></span><h3>جارٍ تجهيز الاتصال…</h3></div>`;
   } else if (L.phase === 'answer') {
     const rs = L.link && L.link.relayState;
     const failed = rs === 'failed' || rs === 'none';
-    body = `${failed
-      ? `<div class="alert warn">${icon('warn')}<div class="grow"><strong>تعذّر الإرسال تلقائيًا</strong><p style="margin:0">انسخ الرمز وأرسله لنفسك، ثم الصقه في صفحة العرض («مشاكل الاتصال؟» ← «لصق الرد يدويًا»).</p></div></div>`
-      : `<div class="live-wait"><span class="spinner-lg" aria-hidden="true"></span><h3>${rs === 'sending' ? 'جارٍ الإرسال للكمبيوتر…' : 'أُرسل للكمبيوتر ✓'}</h3><p class="hint">يتصل الكمبيوتر خلال ثوانٍ. أبقِ الشاشة مفتوحة.</p></div>
-        ${L.slow ? `<div class="alert warn">${icon('warn')}<div class="grow"><strong>تأخر الاتصال؟</strong><p style="margin:0">اضغط «رمز جديد» على الكمبيوتر ثم صوّره مرة ثانية. وتأكد أن الجهازين على نفس الشبكة.</p></div></div>
+    body = T`${failed
+      ? T`<div class="alert warn">${icon('warn')}<div class="grow"><strong>تعذّر الإرسال تلقائيًا</strong><p style="margin:0">انسخ الرمز وأرسله لنفسك، ثم الصقه في صفحة العرض («مشاكل الاتصال؟» ← «لصق الرد يدويًا»).</p></div></div>`
+      : T`<div class="live-wait"><span class="spinner-lg" aria-hidden="true"></span><h3>${rs === 'sending' ? tr('جارٍ الإرسال للكمبيوتر…') : tr('أُرسل للكمبيوتر ✓')}</h3><p class="hint">يتصل الكمبيوتر خلال ثوانٍ. أبقِ الشاشة مفتوحة.</p></div>
+        ${L.slow ? T`<div class="alert warn">${icon('warn')}<div class="grow"><strong>تأخر الاتصال؟</strong><p style="margin:0">اضغط «رمز جديد» على الكمبيوتر ثم صوّره مرة ثانية. وتأكد أن الجهازين على نفس الشبكة.</p></div></div>
         <button type="button" class="btn primary block" data-act="live-scan">${icon('camera')} صوّر الرمز من جديد</button>` : ''}`}
       <details class="flat-details" ${failed ? 'open' : ''}><summary>${icon('paste')} لم يتصل؟ النسخ واللصق</summary>
         <button type="button" class="btn block" data-act="live-copy">${icon('copy')} نسخ رمز الرد</button></details>
       <button type="button" class="btn ghost block" data-act="live-stop">إلغاء</button>`;
   } else if (L.phase === 'connected') {
     body = L.mode === 'manage'
-      ? `<div class="alert ok">${icon('checkCircle')}<div class="grow"><strong>الكمبيوتر متصل</strong><p style="margin:0">اختر الصف من الكمبيوتر واعرضه للطلاب أو ارصد منها. ما تعدّله هناك يُحفظ هنا فورًا. تستطيع الخروج من التطبيق؛ عند رجوعك يعود الاتصال تلقائيًا.</p></div></div>
+      ? T`<div class="alert ok">${icon('checkCircle')}<div class="grow"><strong>الكمبيوتر متصل</strong><p style="margin:0">اختر الصف من الكمبيوتر واعرضه للطلاب أو ارصد منها. ما تعدّله هناك يُحفظ هنا فورًا. تستطيع الخروج من التطبيق؛ عند رجوعك يعود الاتصال تلقائيًا.</p></div></div>
         <button type="button" class="btn danger block lg" data-act="live-stop">${icon('power')} إيقاف الاتصال</button>`
-      : `<div class="alert ok">${icon('checkCircle')}<div class="grow"><strong>العرض يعمل الآن</strong><p style="margin:0">أي درجة ترصدها تظهر فورًا. تستطيع الخروج للواتساب مثلًا؛ عند رجوعك يعود الاتصال تلقائيًا.</p></div></div>
-        ${c ? `<button type="button" class="btn block" data-act="open-class" data-id="${c.id}">${icon('edit')} ارصد «${esc(c.label)}»</button>` : ''}
-        <button type="button" class="btn ${L.blank ? 'primary' : 'soft'} lg block" data-act="live-blank">${icon(L.blank ? 'eye' : 'eyeOff')} ${L.blank ? 'إظهار الدرجات' : 'إخفاء الدرجات مؤقتًا'}</button>
+      : T`<div class="alert ok">${icon('checkCircle')}<div class="grow"><strong>العرض يعمل الآن</strong><p style="margin:0">أي درجة ترصدها تظهر فورًا. تستطيع الخروج للواتساب مثلًا؛ عند رجوعك يعود الاتصال تلقائيًا.</p></div></div>
+        ${c ? T`<button type="button" class="btn block" data-act="open-class" data-id="${c.id}">${icon('edit')} ارصد «${esc(c.label)}»</button>` : ''}
+        <button type="button" class="btn ${L.blank ? 'primary' : 'soft'} lg block" data-act="live-blank">${icon(L.blank ? 'eye' : 'eyeOff')} ${L.blank ? tr('إظهار الدرجات') : tr('إخفاء الدرجات مؤقتًا')}</button>
         <button type="button" class="btn danger block" data-act="live-stop">${icon('power')} إيقاف العرض</button>`;
   } else if (L.phase === 'resuming') {
-    body = `<div class="live-wait"><span class="spinner-lg" aria-hidden="true"></span><h3>جارٍ إعادة الاتصال تلقائيًا…</h3><p class="hint">لا حاجة لتصوير الرمز من جديد.</p></div>
+    body = T`<div class="live-wait"><span class="spinner-lg" aria-hidden="true"></span><h3>جارٍ إعادة الاتصال تلقائيًا…</h3><p class="hint">لا حاجة لتصوير الرمز من جديد.</p></div>
       <button type="button" class="btn ghost block" data-act="live-stop">إيقاف المشاركة</button>`;
   } else if (L.phase === 'lost') {
-    body = `<div class="alert err">${icon('warn')}<div class="grow"><strong>انقطع الاتصال بالكمبيوتر</strong><p style="margin:0">قد يكون الجوال قُفل أو تغيّرت الشبكة. اضغط «إعادة الاتصال» في الكمبيوتر ثم صوّر الرمز الجديد.</p></div></div>
+    body = T`<div class="alert err">${icon('warn')}<div class="grow"><strong>انقطع الاتصال بالكمبيوتر</strong><p style="margin:0">قد يكون الجوال قُفل أو تغيّرت الشبكة. اضغط «إعادة الاتصال» في الكمبيوتر ثم صوّر الرمز الجديد.</p></div></div>
       <button type="button" class="btn primary lg block" data-act="live-scan">${icon('refresh')} صوّر الرمز الجديد</button>
       <button type="button" class="btn block" data-act="live-reset">رجوع</button>`;
   }
-  const step3 = `<section class="live-step"><h3><span class="step-n">${ar(L.mode === 'manage' ? 2 : 3)}</span> اربط بالكمبيوتر</h3>${body}</section>`;
+  const step3 = T`<section class="live-step"><h3><span class="step-n">${ar(L.mode === 'manage' ? 2 : 3)}</span> اربط بالكمبيوتر</h3>${body}</section>`;
 
-  const help = `<details class="card"><summary style="font-weight:800;cursor:pointer;min-height:44px;display:flex;align-items:center;gap:8px">${icon('wifi')} مشاكل الاتصال؟</summary>
+  const help = T`<details class="card"><summary style="font-weight:800;cursor:pointer;min-height:44px;display:flex;align-items:center;gap:8px">${icon('wifi')} مشاكل الاتصال؟</summary>
     <ul class="hint" style="padding-inline-start:20px;line-height:2">
       <li>اجعل الجوال والكمبيوتر على نفس شبكة Wi‑Fi.</li>
       <li>بعض شبكات المدارس تمنع اتصال الأجهزة ببعضها: شغّل «نقطة الاتصال» من الجوال ووصّل الكمبيوتر بها.</li>
@@ -1857,18 +1859,18 @@ function Live() {
       <li>إن خرجت من التطبيق يبقى العرض على الكمبيوتر، ويعود الاتصال تلقائيًا عند رجوعك (في أندرويد يبقى متصلًا ويظهر إشعار فيه «إيقاف المشاركة»).</li>
     </ul></details>`;
 
-  return `${appbar({ title: 'العرض على الكمبيوتر', backBtn: false, actions: pill })}
+  return `${appbar({ title: tr('العرض على الكمبيوتر'), backBtn: false, actions: pill })}
   <div class="wrap stack live-page">${step1}${step2}${step3}${help}</div>`;
 }
 
 // على الكمبيوتر (وضع الإدارة): اختيار صف لعرضها للطلاب على نفس الشاشة
 function RemotePresent() {
   if (!S.classes.length) {
-    return `${appbar({ title: 'عرض للطلاب', backBtn: false })}<div class="wrap"><div class="empty card">${ART_EMPTY}<h2>لا توجد صفوف بعد</h2><p>أنشئ الصفوف من «الأدوات ← إنشاء صفوف من ملف».</p></div></div>`;
+    return T`${appbar({ title: tr('عرض للطلاب'), backBtn: false })}<div class="wrap"><div class="empty card">${ART_EMPTY}<h2>لا توجد صفوف بعد</h2><p>أنشئ الصفوف من «الأدوات ← إنشاء صفوف من ملف».</p></div></div>`;
   }
   if (!S.ui.presentPick || !cls(S.ui.presentPick)) S.ui.presentPick = S.classes[0].id;
   const c = cls(S.ui.presentPick);
-  return `${appbar({ title: 'عرض للطلاب', backBtn: false })}
+  return T`${appbar({ title: tr('عرض للطلاب'), backBtn: false })}
   <div class="wrap stack">
     <div class="field"><label for="pr-class">الصف</label><select id="pr-class" class="select" data-present-pick>${S.classes.map((o) => `<option value="${o.id}" ${o.id === c.id ? 'selected' : ''}>${esc(o.label)} — ${students(o.names.length)}</option>`).join('')}</select></div>
     ${displayOptionsHTML(c)}
@@ -1897,12 +1899,12 @@ function displayOptionsHTML(c) {
   const d = dataOf(c.id);
   const withIssues = c.names.map((_, i) => i).filter((i) => getNotes(d, i).some((n) => n.issue));
   const hiddenCount = withIssues.filter((i) => o.hidden.has(i)).length;
-  return `<div class="list opts-list">
+  return T`<div class="list opts-list">
     <label class="list-item"><span class="grow"><strong>إخفاء الأسماء</strong><small>أرقام الطلاب فقط</small></span><input type="checkbox" class="switch" data-live="hide" ${L.hideNames ? 'checked' : ''}></label>
-    ${REMOTE || L.mode === 'manage' ? '' : `<label class="list-item"><span class="grow"><strong>✏️ الرصد من الكمبيوتر</strong><small>رصد الدرجات والغياب من شاشة العرض (يُحفظ في الجوال)</small></span><input type="checkbox" class="switch" data-live-opt="liveAllowEdit" ${S.settings.liveAllowEdit !== false ? 'checked' : ''}></label>`}
+    ${REMOTE || L.mode === 'manage' ? '' : T`<label class="list-item"><span class="grow"><strong>✏️ الرصد من الكمبيوتر</strong><small>رصد الدرجات والغياب من شاشة العرض (يُحفظ في الجوال)</small></span><input type="checkbox" class="switch" data-live-opt="liveAllowEdit" ${S.settings.liveAllowEdit !== false ? 'checked' : ''}></label>`}
     <label class="list-item"><span class="grow"><strong>⭐ نجوم التميّز</strong><small>تظهر بجانب اسم الطالب المتميز</small></span><input type="checkbox" class="switch" data-live-opt="liveShowStars" ${o.stars ? 'checked' : ''}></label>
     <label class="list-item"><span class="grow"><strong>علامات التنبيه</strong><small>العلامة فقط — نص الملاحظة لا يظهر أبدًا</small></span><input type="checkbox" class="switch" data-live-opt="liveShowIssues" ${o.issues ? 'checked' : ''}></label>
-    ${o.issues ? `<button type="button" class="list-item" data-act="issue-hide" data-id="${c.id}">${icon('eyeOff')}<span class="grow"><strong>إخفاء التنبيه عن طلاب معيّنين</strong><small>${withIssues.length ? `${ar(withIssues.length)} لديهم تنبيه · مخفي عن ${ar(hiddenCount)}` : 'لا توجد تنبيهات في هذا الصف'}</small></span>${icon('fwd')}</button>` : ''}
+    ${o.issues ? T`<button type="button" class="list-item" data-act="issue-hide" data-id="${c.id}">${icon('eyeOff')}<span class="grow"><strong>إخفاء التنبيه عن طلاب معيّنين</strong><small>${withIssues.length ? T`${ar(withIssues.length)} لديهم تنبيه · مخفي عن ${ar(hiddenCount)}` : tr('لا توجد تنبيهات في هذا الصف')}</small></span>${icon('fwd')}</button>` : ''}
   </div>`;
 }
 
@@ -1926,19 +1928,19 @@ function displayData(c, only = null) {
   return out;
 }
 function displayNames(c, hide, only = null) {
-  return c.names.map((nm, i) => (only != null && i !== only ? '' : hide ? `طالب ${ar(i + 1)}` : nm));
+  return c.names.map((nm, i) => (only != null && i !== only ? '' : hide ? T`طالب ${ar(i + 1)}` : nm));
 }
 
 // ملاحظة سريعة من صف الطالب، مع خيار «❗ تنبيه هذا الأسبوع»
 function quickNote(c, w, i) {
   const d = dataOf(c.id);
   const has = w ? weekIssues(d, w, i).length : 0;
-  const s = openSheet(`<h2>${icon('edit')} ملاحظة على ${esc(c.names[i])}</h2>
+  const s = openSheet(T`<h2>${icon('edit')} ملاحظة على ${esc(c.names[i])}</h2>
     <p>الملاحظات خاصة بك ولا تظهر في بطاقة ولي الأمر ولا على شاشة الطلاب.</p>
     <textarea class="textarea" style="min-height:100px" data-qn-text maxlength="500" placeholder="مثال: لم يُحضر أدواته، تحدّث أثناء الشرح، مستواه تحسّن…" autofocus></textarea>
-    ${w ? `<label class="list-item" style="border:1px solid var(--border);border-radius:14px;margin-top:8px"><span class="grow"><strong>تنبيه في الأسبوع ${ar(w)}</strong><small>تظهر علامة التنبيه عند اسمه في هذا الأسبوع</small></span><input type="checkbox" class="switch" data-qn-issue ${has ? 'checked' : ''}></label>` : ''}
-    ${getNotes(d, i).length ? `<p class="hint" style="margin-top:8px">لديه ${ar(getNotes(d, i).length)} ملاحظة سابقة — <button type="button" class="link-btn" data-qn="open">اعرضها في بطاقته</button></p>` : ''}
-    <div class="actions"><button type="button" class="btn" data-qn="cancel">إلغاء</button><button type="button" class="btn primary" data-qn="save">حفظ</button></div>`, { label: 'ملاحظة' });
+    ${w ? T`<label class="list-item" style="border:1px solid var(--border);border-radius:14px;margin-top:8px"><span class="grow"><strong>تنبيه في الأسبوع ${ar(w)}</strong><small>تظهر علامة التنبيه عند اسمه في هذا الأسبوع</small></span><input type="checkbox" class="switch" data-qn-issue ${has ? 'checked' : ''}></label>` : ''}
+    ${getNotes(d, i).length ? T`<p class="hint" style="margin-top:8px">لديه ${ar(getNotes(d, i).length)} ملاحظة سابقة — <button type="button" class="link-btn" data-qn="open">اعرضها في بطاقته</button></p>` : ''}
+    <div class="actions"><button type="button" class="btn" data-qn="cancel">إلغاء</button><button type="button" class="btn primary" data-qn="save">حفظ</button></div>`, { label: tr('ملاحظة') });
   s.sheet.addEventListener('click', (e) => {
     const b = e.target.closest('[data-qn]');
     if (!b) return;
@@ -1948,15 +1950,15 @@ function quickNote(c, w, i) {
     const text = s.sheet.querySelector('[data-qn-text]').value.trim();
     const issueBox = s.sheet.querySelector('[data-qn-issue]');
     const issue = !!(issueBox && issueBox.checked);
-    if (!text && !issue && !has) { toast('اكتب الملاحظة أولًا', { err: true }); return; }
-    if (text || (issue && !has)) addNote(d, i, text || 'تنبيه', new Date(), w ? { week: w, issue } : {});
+    if (!text && !issue && !has) { toast(tr('اكتب الملاحظة أولًا'), { err: true }); return; }
+    if (text || (issue && !has)) addNote(d, i, text || tr('تنبيه'), new Date(), w ? { week: w, issue } : {});
     if (has && !issue) clearWeekIssues(d, w, i);
     markDirty(c.id);
     if (w) livePatchItems(c.id, w, i);
     s.close();
     const row = main().querySelector(`[data-stu="${i}"]`);
     if (row && row.classList.contains('srow') && w) row.outerHTML = stuRow(c, d, w, i); else softRender();
-    toast(issue ? 'حُفظ التنبيه' : 'حُفظت الملاحظة ✓');
+    toast(issue ? tr('حُفظ التنبيه') : tr('حُفظت الملاحظة ✓'));
   });
 }
 
@@ -1964,11 +1966,11 @@ function quickNote(c, w, i) {
 function showIssueHide(c) {
   const d = dataOf(c.id);
   const withIssues = c.names.map((_, i) => i).filter((i) => getNotes(d, i).some((n) => n.issue));
-  if (!withIssues.length) { toast('لا يوجد طلاب عليهم تنبيه في هذا الصف'); return; }
+  if (!withIssues.length) { toast(tr('لا يوجد طلاب عليهم تنبيه في هذا الصف')); return; }
   const o = displayOpts(c);
-  const s = openSheet(`<h2>إخفاء التنبيه عن طلاب معيّنين</h2><p>الطلاب المحددون لن تظهر عندهم علامة التنبيه على الشاشة.</p>
+  const s = openSheet(T`<h2>إخفاء التنبيه عن طلاب معيّنين</h2><p>الطلاب المحددون لن تظهر عندهم علامة التنبيه على الشاشة.</p>
     <div class="list" style="max-height:55vh;overflow:auto">${withIssues.map((i) => `<label class="pick"><input type="checkbox" data-ih="${i}" ${o.hidden.has(i) ? 'checked' : ''}><span class="stu-num num">${ar(i + 1)}</span><span class="grow">${esc(c.names[i])}</span></label>`).join('')}</div>
-    <div class="actions"><button type="button" class="btn primary" data-x>تم</button></div>`, { label: 'إخفاء التنبيه', onClose: async () => {
+    <div class="actions"><button type="button" class="btn primary" data-x>تم</button></div>`, { label: tr('إخفاء التنبيه'), onClose: async () => {
     const list = [...s.sheet.querySelectorAll('[data-ih]:checked')].map((x) => +x.dataset.ih);
     S.settings.liveIssueHidden = { ...(S.settings.liveIssueHidden || {}), [c.id]: list };
     await saveSettingsNow();
@@ -1994,8 +1996,8 @@ function setLiveState(st) {
     if (L.mode === 'manage') sendState(); else sendSnapshot();
     if (L.link && L.link.room) L.room = L.link.room;
     const c0 = cls(L.classId);
-    if (platform.sharingStart) platform.sharingStart(L.mode === 'manage' ? 'متصل بالكمبيوتر — اضغط للعودة' : `${c0 ? c0.label : 'الصف'} — اضغط للعودة`);
-    toast('تم الاتصال بالكمبيوتر ✓');
+    if (platform.sharingStart) platform.sharingStart(L.mode === 'manage' ? tr('متصل بالكمبيوتر — اضغط للعودة') : T`${c0 ? c0.label : tr('الصف')} — اضغط للعودة`);
+    toast(tr('تم الاتصال بالكمبيوتر ✓'));
   } else if (st === 'disconnected' && (L.phase === 'connected' || L.phase === 'answer')) {
     L.phase = 'lost';
     // نحاول الرجوع تلقائيًا (الآن إن كان التطبيق ظاهرًا، أو عند العودة إليه)
@@ -2025,7 +2027,7 @@ document.addEventListener('visibilitychange', () => {
   else if (L.phase === 'connected' && L.link && Date.now() - L.link.lastSeen > 12000) { L.phase = 'lost'; L.state = 'disconnected'; tryResume(); }
 });
 // إيقاف من إشعار أندرويد
-window.__gfuStopSharing = () => { liveStop(); render(); toast('أُوقفت المشاركة'); };
+window.__gfuStopSharing = () => { liveStop(); render(); toast(tr('أُوقفت المشاركة')); };
 
 async function startLiveFromCode(code) {
   const m = await liveMod();
@@ -2057,7 +2059,7 @@ async function startLiveFromCode(code) {
     L.slowTimer = setTimeout(() => { if (L.phase === 'answer' && L.state !== 'connected') { L.slow = true; if (route().name === 'live') render(); } }, 12000);
   } catch (e) {
     L.phase = 'setup'; L.state = 'idle';
-    toast(e && /[؀-ۿ]/.test(e.message || '') ? e.message : 'الرمز غير صالح. أنشئ رمزًا جديدًا على الكمبيوتر.', { err: true, ms: 5000 });
+    toast(e && /[؀-ۿ]/.test(e.message || '') ? e.message : tr('الرمز غير صالح. أنشئ رمزًا جديدًا على الكمبيوتر.'), { err: true, ms: 5000 });
   }
   if (route().name === 'live') render();
 }
@@ -2071,7 +2073,7 @@ async function startScanner() {
     const full = L.collector.push(text);
     const prog = main().querySelector('[data-scan-progress]');
     const pr = L.collector.progress();
-    if (prog && pr.total > 1) prog.textContent = `قرأنا ${ar(pr.got)} من ${ar(pr.total)} أجزاء… أبقِ الكاميرا على الرمز`;
+    if (prog && pr.total > 1) prog.textContent = T`قرأنا ${ar(pr.got)} من ${ar(pr.total)} أجزاء… أبقِ الكاميرا على الرمز`;
     if (full) { haptic('success'); stopScanner(); startLiveFromCode(full); }
   });
   try {
@@ -2081,9 +2083,9 @@ async function startScanner() {
     L.phase = 'setup';
     render();
     const msg = e && e.code === 'denied'
-      ? (platform.isIOS ? 'رُفض إذن الكاميرا. فعّله من: الإعدادات ← Safari ← الكاميرا ← سماح، ثم أعد المحاولة.' : 'رُفض إذن الكاميرا. فعّله من إعدادات الجهاز ← التطبيقات ← الأذونات ← الكاميرا.')
-      : e && e.code === 'notfound' ? 'لا توجد كاميرا متاحة. استعمل «الصق رمز العرض».'
-        : e && e.code === 'insecure' ? 'الكاميرا تحتاج رابطًا آمنًا (https).' : 'تعذّر فتح الكاميرا. استعمل «الصق رمز العرض».';
+      ? (platform.isIOS ? tr('رُفض إذن الكاميرا. فعّله من: الإعدادات ← Safari ← الكاميرا ← سماح، ثم أعد المحاولة.') : tr('رُفض إذن الكاميرا. فعّله من إعدادات الجهاز ← التطبيقات ← الأذونات ← الكاميرا.'))
+      : e && e.code === 'notfound' ? tr('لا توجد كاميرا متاحة. استعمل «الصق رمز العرض».')
+        : e && e.code === 'insecure' ? tr('الكاميرا تحتاج رابطًا آمنًا (https).') : tr('تعذّر فتح الكاميرا. استعمل «الصق رمز العرض».');
     toast(msg, { err: true, ms: 7000 });
   }
 }
@@ -2100,7 +2102,7 @@ async function paintAnswerQR() {
     const cv = main().querySelector('[data-answer-qr]');
     if (!cv) return stopFrames();
     m.renderQR(cv, L.frames[i], { size: 720, ec: 'L' });
-    if (label) label.textContent = L.frames.length > 1 ? `جزء ${ar(i + 1)} من ${ar(L.frames.length)} — يتبدّل تلقائيًا` : '';
+    if (label) label.textContent = L.frames.length > 1 ? T`جزء ${ar(i + 1)} من ${ar(L.frames.length)} — يتبدّل تلقائيًا` : '';
     i = (i + 1) % L.frames.length;
   };
   paint();
@@ -2113,7 +2115,7 @@ function liveSend(msg) {
 }
 function sendHello() {
   const c = cls(L.classId);
-  liveSend({ type: 'hello', mode: L.mode, allowEdit: displayEditAllowed(), showIssues: !!S.settings.liveShowIssues, teacher: S.settings.teacher, subject: S.settings.subject, classLabel: L.mode === 'manage' ? '' : (c ? c.label : ''), criteria: CRIT.map((x) => x.label), finals: FINS.map((f) => ({ label: f.label, max: f.max })) });
+  liveSend({ type: 'hello', lang: lang(), mode: L.mode, allowEdit: displayEditAllowed(), showIssues: !!S.settings.liveShowIssues, teacher: S.settings.teacher, subject: S.settings.subject, classLabel: L.mode === 'manage' ? '' : (c ? c.label : ''), criteria: CRIT.map((x) => x.label), finals: FINS.map((f) => ({ label: f.label, max: f.max })) });
 }
 function sendSnapshot() {
   if (L.mode === 'manage') return;
@@ -2161,7 +2163,7 @@ function applyEditOp(c, m) {
     const text = typeof m.text === 'string' ? m.text.trim().slice(0, 500) : '';
     const issue = m.issue === true && okWeek;
     if (!text && !issue) return null;
-    addNote(d, i, text || 'تنبيه', new Date(), okWeek ? { week: w, issue } : {});
+    addNote(d, i, text || tr('تنبيه'), new Date(), okWeek ? { week: w, issue } : {});
     if (!okWeek) return { kind: 'note', i };
   } else if (m.kind === 'issue-off' && okWeek) {
     clearWeekIssues(d, w, i);
@@ -2274,14 +2276,14 @@ document.addEventListener('click', async (e) => {
     case 'go': go(el.dataset.to, el.dataset.id ? { id: el.dataset.id } : {}); break;
     case 'new-class': go('editor', {}); break;
     case 'import-classes': importClassesFromFile(); break;
-    case 'handover-pick': { const c = await pickClass('أي صف تريد تسليمه؟'); if (c) doHandover(c); break; }
+    case 'handover-pick': { const c = await pickClass(tr('أي صف تريد تسليمه؟')); if (c) doHandover(c); break; }
     case 'handover': doHandover(cls(el.dataset.id)); break;
-    case 'transfer-pick': { const c = await pickClass('نقل طلاب من أي صف؟'); if (c) go('transferOut', { id: c.id }); break; }
+    case 'transfer-pick': { const c = await pickClass(tr('نقل طلاب من أي صف؟')); if (c) go('transferOut', { id: c.id }); break; }
     case 'report-grades': printReport('grades', cls(el.dataset.id)); break;
     case 'report-attendance': printReport('attendance', cls(el.dataset.id)); break;
     case 'report-student': {
       const c = cls(el.dataset.id);
-      const i = await pickStudent(c, 'تقرير أي طالب؟');
+      const i = await pickStudent(c, tr('تقرير أي طالب؟'));
       if (i != null) printReport('student', c, i);
       break;
     }
@@ -2314,7 +2316,7 @@ document.addEventListener('click', async (e) => {
       setStar(d, w, i, on);
       markDirty(c.id); livePatchItems(c.id, w, i); haptic(on ? 'success' : 'light');
       { const row = main().querySelector(`[data-stu="${i}"]`); if (row && row.tagName === 'TR') rerenderList(); else if (row) row.outerHTML = stuRow(c, d, w, i); }
-      if (on) toast(`⭐ ${c.names[i].split(' ')[0]}: نجمة تميّز في الأسبوع ${ar(w)}`);
+      if (on) toast(T`⭐ ${c.names[i].split(' ')[0]}: نجمة تميّز في الأسبوع ${ar(w)}`);
       break;
     }
     case 'absent': {
@@ -2327,7 +2329,7 @@ document.addEventListener('click', async (e) => {
       if (row && row.tagName === 'TR') rerenderList(); else if (row) row.outerHTML = stuRow(c, d, w, i);
       refreshStudent(c, w, i);
       if (on) {
-        toast(`${c.names[i].split(' ')[0]}: غائب (أصفار)`, { ms: 10000, action: { label: 'تراجع', fn: () => {
+        toast(T`${c.names[i].split(' ')[0]}: غائب (أصفار)`, { ms: 10000, action: { label: tr('تراجع'), fn: () => {
           setAbsent(d, w, i, false); prev.forEach((v, k) => setItem(d, w, i, k, v));
           markDirty(c.id); livePatchItems(c.id, w, i);
           const r2 = main().querySelector(`[data-stu="${i}"]`); if (r2 && r2.tagName === 'TR') rerenderList(); else if (r2) r2.outerHTML = stuRow(c, d, w, i);
@@ -2341,17 +2343,17 @@ document.addEventListener('click', async (e) => {
       const c = cls(el.dataset.id); const i = +el.dataset.idx;
       const ta = document.querySelector(`[data-note-input="${i}"]`);
       const text = (ta && ta.value || '').trim();
-      if (!text) { toast('اكتب الملاحظة أولًا', { err: true }); break; }
+      if (!text) { toast(tr('اكتب الملاحظة أولًا'), { err: true }); break; }
       const iss = document.querySelector(`[data-note-issue="${i}"]`);
       addNote(dataOf(c.id), i, text, new Date(), iss ? { week: +iss.dataset.week, issue: iss.checked } : {});
       markDirty(c.id);
-      toast('أُضيفت الملاحظة ✓');
+      toast(tr('أُضيفت الملاحظة ✓'));
       if (route().name === 'student') render(); else refreshAside();
       break;
     }
     case 'note-del': {
       const c = cls(el.dataset.id); const i = +el.dataset.idx;
-      const ok = await confirmDialog({ title: 'حذف الملاحظة؟', ok: 'حذف', danger: true });
+      const ok = await confirmDialog({ title: tr('حذف الملاحظة؟'), ok: tr('حذف'), danger: true });
       if (!ok) break;
       deleteNote(dataOf(c.id), i, el.dataset.t); markDirty(c.id);
       if (route().name === 'student') render(); else refreshAside();
@@ -2394,7 +2396,7 @@ document.addEventListener('click', async (e) => {
       setWeekMeta(dataOf(p.id), p.tab, 'date', v);
       const inp = document.querySelector('[data-meta="date"]'); if (inp) inp.value = v;
       markDirty(p.id); livePatchMeta(p.id, p.tab); haptic('light');
-      toast('أُضيف تاريخ اليوم');
+      toast(tr('أُضيف تاريخ اليوم'));
       break;
     }
     case 'export-xlsx': exportXlsx(el.dataset.id); break;
@@ -2407,6 +2409,18 @@ document.addEventListener('click', async (e) => {
     case 'report-class-pick': pickClassSheet(S.ui.reportClass, (id) => { S.ui.reportClass = id; render(); }); break;
     case 'update-now': if (UPD.worker) UPD.worker.postMessage({ type: 'skip-waiting' }); else location.reload(); break;
     case 'dismiss-guide': try { sessionStorage.setItem('iosGuideSeen', '1'); } catch { /* */ } go('home'); break;
+    case 'set-lang': {
+      const v = el.dataset.v === 'en' ? 'en' : 'ar';
+      if (v === lang()) break;
+      S.settings.lang = v;
+      await saveSettingsNow();
+      rememberLang(v);
+      { let stored = null; try { stored = localStorage.getItem('gfu-lang'); } catch { /* */ }
+        const ok = (stored === 'en') === (v === 'en');
+        const q = new URLSearchParams(location.search); q.delete('lang'); if (!ok) q.set('lang', v);
+        location.replace(location.pathname + (q.toString() ? '?' + q : '') + location.hash); }
+      break;
+    }
     case 'set': {
       S.settings[el.dataset.key] = el.dataset.v;
       applyTheme();
@@ -2423,7 +2437,7 @@ document.addEventListener('click', async (e) => {
       break;
     }
     case 'add-one': {
-      if (p.draft.rows.length >= MAX_STUDENTS) { toast(`الحد الأقصى ${ar(MAX_STUDENTS)} طالبًا`, { err: true }); break; }
+      if (p.draft.rows.length >= MAX_STUDENTS) { toast(T`الحد الأقصى ${ar(MAX_STUDENTS)} طالبًا`, { err: true }); break; }
       p.draft.rows.push({ name: '', from: null }); p.dirty = true; render();
       const inputs = main().querySelectorAll('[data-name-row]');
       const last = inputs[inputs.length - 1]; if (last) { last.focus(); last.scrollIntoView({ block: 'center' }); }
@@ -2434,14 +2448,14 @@ document.addEventListener('click', async (e) => {
       const j = +el.dataset.row; const row = p.draft.rows[j];
       const c = p.id ? cls(p.id) : null;
       if (c && row.from != null && studentHasGrades(dataOf(c.id), row.from)) {
-        const ok = await confirmDialog({ title: `حذف «${row.name}»؟`, text: 'لهذا الطالب درجات مرصودة وستُحذف عند الحفظ. إن كان منتقلًا لمعلم آخر فاستعمل «نقل طلاب» لترسل درجاته.', ok: 'حذف', danger: true });
+        const ok = await confirmDialog({ title: T`حذف «${row.name}»؟`, text: tr('لهذا الطالب درجات مرصودة وستُحذف عند الحفظ. إن كان منتقلًا لمعلم آخر فاستعمل «نقل طلاب» لترسل درجاته.'), ok: tr('حذف'), danger: true });
         if (!ok) break;
       }
       p.draft.rows.splice(j, 1); p.dirty = true; render();
-      toast('حُذف الطالب من القائمة', { action: { label: 'تراجع', fn: () => { p.draft.rows.splice(j, 0, row); render(); } } });
+      toast(tr('حُذف الطالب من القائمة'), { action: { label: tr('تراجع'), fn: () => { p.draft.rows.splice(j, 0, row); render(); } } });
       break;
     }
-    case 'sort-az': p.draft.rows.sort((a, b) => arCompare(a.name, b.name)); p.dirty = true; render(); toast('رُتّبت الأسماء أبجديًا'); break;
+    case 'sort-az': p.draft.rows.sort((a, b) => arCompare(a.name, b.name)); p.dirty = true; render(); toast(tr('رُتّبت الأسماء أبجديًا')); break;
     case 'save-class': saveEditor(p); break;
     case 'delete-class': deleteClass(p.id); break;
     // النقل
@@ -2459,9 +2473,9 @@ document.addEventListener('click', async (e) => {
     case 'live-scan': L.phase = 'scan'; render(); break;
     case 'live-cancel': stopScanner(); L.phase = 'setup'; render(); break;
     case 'live-paste': {
-      const s = openSheet(`<h2>الصق رمز العرض</h2><p>على الكمبيوتر اضغط «نسخ رمز العرض» وأرسله لنفسك (واتساب مثلًا)، ثم الصقه هنا.</p>
+      const s = openSheet(T`<h2>الصق رمز العرض</h2><p>على الكمبيوتر اضغط «نسخ رمز العرض» وأرسله لنفسك (واتساب مثلًا)، ثم الصقه هنا.</p>
         <textarea class="textarea" dir="ltr" data-code style="min-height:120px" placeholder="الصق الرمز هنا"></textarea>
-        <div class="actions"><button type="button" class="btn" data-x="0">إلغاء</button><button type="button" class="btn primary" data-x="1">متابعة</button></div>`, { label: 'لصق الرمز' });
+        <div class="actions"><button type="button" class="btn" data-x="0">إلغاء</button><button type="button" class="btn primary" data-x="1">متابعة</button></div>`, { label: tr('لصق الرمز') });
       s.sheet.addEventListener('click', (ev) => {
         const b = ev.target.closest('[data-x]'); if (!b) return;
         const code = s.sheet.querySelector('[data-code]').value.trim();
@@ -2477,11 +2491,11 @@ document.addEventListener('click', async (e) => {
       document.body.classList.toggle('qr-fullscreen', box.classList.contains('full'));
       break;
     }
-    case 'live-copy': if (await platform.copyText(L.answer || '')) toast('نُسخ الرمز ✓ الصقه في صفحة العرض («لصق الرد»)'); break;
-    case 'copy-view': if (await platform.copyText(S.settings.viewUrl || defaultViewUrl())) toast('نُسخ الرابط ✓'); break;
+    case 'live-copy': if (await platform.copyText(L.answer || '')) toast(tr('نُسخ الرمز ✓ الصقه في صفحة العرض («لصق الرد»)')); break;
+    case 'copy-view': { let u = S.settings.viewUrl || defaultViewUrl(); if (lang() === 'en' && u) u += (u.includes('?') ? '&' : '?') + 'lang=en'; if (await platform.copyText(u)) toast(tr('نُسخ الرابط ✓')); break; }
     case 'live-blank': L.blank = !L.blank; liveSend({ type: 'blank', on: L.blank }); haptic('light'); render(); break;
-    case 'live-stop': liveStop(); render(); toast('أُوقف العرض'); break;
-    case 'live-stop-quick': liveStop(); renderShareBar(); toast('أُوقفت المشاركة'); break;
+    case 'live-stop': liveStop(); render(); toast(tr('أُوقف العرض')); break;
+    case 'live-stop-quick': liveStop(); renderShareBar(); toast(tr('أُوقفت المشاركة')); break;
     case 'live-reset': L.phase = 'setup'; L.state = 'idle'; render(); break;
     default: break;
   }
@@ -2495,13 +2509,13 @@ function showWeekPicker(p) {
     const rem = weekRemaining(d, w, n);
     const started = rem < n;
     const meta = getWeekMeta(d, w);
-    return `<button type="button" class="wk ${done ? 'done' : ''} ${p.tab === w ? 'on' : ''}" data-act="tab" data-tab="${w}">
-      <b>أسبوع ${ar(w)}</b><small>${done ? '✓ مكتمل' : started ? `باقي ${ar(rem)}` : 'لم يبدأ'}${meta.date ? ` · ${esc(meta.date)}` : ''}</small></button>`;
+    return T`<button type="button" class="wk ${done ? 'done' : ''} ${p.tab === w ? 'on' : ''}" data-act="tab" data-tab="${w}">
+      <b>أسبوع ${ar(w)}</b><small>${done ? tr('✓ مكتمل') : started ? T`باقي ${ar(rem)}` : tr('لم يبدأ')}${meta.date ? ` · ${esc(meta.date)}` : ''}</small></button>`;
   };
   const finDone = !finalsRemaining(d, n);
-  const s = openSheet(`<h2>اختر الأسبوع</h2>
+  const s = openSheet(T`<h2>اختر الأسبوع</h2>
     <div class="wk-grid">${[...Array(WEEKS).keys()].map((x) => cell(x + 1)).join('')}</div>
-    <button type="button" class="wk wide ${finDone ? 'done' : ''} ${p.tab === 'fin' ? 'on' : ''}" data-act="tab" data-tab="fin"><b>الدرجات النهائية</b><small>${finDone ? '✓ مكتملة' : `باقي ${ar(finalsRemaining(d, n))}`}</small></button>`, { label: 'اختر الأسبوع' });
+    <button type="button" class="wk wide ${finDone ? 'done' : ''} ${p.tab === 'fin' ? 'on' : ''}" data-act="tab" data-tab="fin"><b>الدرجات النهائية</b><small>${finDone ? tr('✓ مكتملة') : T`باقي ${ar(finalsRemaining(d, n))}`}</small></button>`, { label: tr('اختر الأسبوع') });
   s.sheet.addEventListener('click', (e) => { if (e.target.closest('[data-act="tab"]')) setTimeout(() => s.close(), 0); });
 }
 
@@ -2509,7 +2523,7 @@ function showWeekTools(p) {
   const c = cls(p.id); const d = dataOf(c.id);
   if (p.tab === 'fin') return;
   const meta = getWeekMeta(d, p.tab);
-  const s = openSheet(`<h2>أدوات الأسبوع ${ar(p.tab)}</h2>
+  const s = openSheet(T`<h2>أدوات الأسبوع ${ar(p.tab)}</h2>
     <div class="stack">
       <div class="field"><label for="wdate">التاريخ</label><div class="row"><input id="wdate" class="input grow" data-meta="date" value="${esc(meta.date)}" placeholder="مثال: ١٢/١٠" autocomplete="off"><button type="button" class="btn" data-act="today">${icon('calendar')} اليوم</button></div></div>
       <div class="field"><label for="wlesson">عنوان الدرس</label><input id="wlesson" class="input" data-meta="lesson" value="${esc(meta.lesson)}" placeholder="اكتب عنوان الدرس" autocomplete="off"></div>
@@ -2517,7 +2531,7 @@ function showWeekTools(p) {
         <div class="fill-grid">${CRIT.map((cr, k) => `<button type="button" class="btn soft" data-act="fill" data-k="${k}">${esc(cr.label)} ${ar(CONFIG.itemMax)}</button>`).join('')}
         <button type="button" class="btn success" data-act="fill" data-k="all">${icon('check')} الكل ${ar(CONFIG.itemMax)}</button></div></div>
     </div>
-    <div class="actions"><button type="button" class="btn primary" data-x autofocus>تم</button></div>`, { label: 'أدوات الأسبوع', onClose: () => {
+    <div class="actions"><button type="button" class="btn primary" data-x autofocus>تم</button></div>`, { label: tr('أدوات الأسبوع'), onClose: () => {
     // نحفظ قيم الحقول عند الإغلاق أيضًا (لو أُغلقت النافذة قبل وصول حدث الكتابة)
     let changed = false;
     s.sheet.querySelectorAll('[data-meta]').forEach((inp) => { if (getWeekMeta(d, p.tab)[inp.dataset.meta] !== inp.value) { setWeekMeta(d, p.tab, inp.dataset.meta, inp.value); changed = true; } });
@@ -2532,16 +2546,16 @@ function showWeekTools(p) {
 function showClassMenu(p) {
   const c = cls(p.id);
   const item = (act, ic, t, sub, extra = '') => `<button type="button" class="list-item" data-act="${act}" data-id="${c.id}" ${extra}>${icon(ic)}<span class="grow"><strong>${t}</strong><small>${sub}</small></span></button>`;
-  const s = openSheet(`<h2>${esc(c.label)}</h2>
+  const s = openSheet(T`<h2>${esc(c.label)}</h2>
     <div class="list">
-      ${item('edit-class', 'users', 'الطلاب', 'إضافة، تعديل الأسماء، حذف، ترتيب')}
-      ${item('export-xlsx', 'sheet', 'تصدير Excel', 'كشف المتابعة الرسمي للطباعة')}
-      ${item('go-live', 'monitor', 'عرض على الكمبيوتر', 'اعرض الدرجات على البروجكتر')}
-      ${item('handover', 'send', 'تسليم الصف لمعلم آخر', 'كل الطلاب مع الدرجات والغياب والملاحظات')}
-      ${item('go', 'move', 'نقل طلاب', 'طالب أو أكثر لمعلم آخر أو لصف آخر', 'data-to="transferOut"')}
-      ${item('go', 'inbox', 'استقبال طلاب منقولين', 'من ملف أرسله معلم آخر', 'data-to="transferIn"')}
+      ${item('edit-class', 'users', tr('الطلاب'), tr('إضافة، تعديل الأسماء، حذف، ترتيب'))}
+      ${item('export-xlsx', 'sheet', tr('تصدير Excel'), tr('كشف المتابعة الرسمي للطباعة'))}
+      ${item('go-live', 'monitor', tr('عرض على الكمبيوتر'), tr('اعرض الدرجات على البروجكتر'))}
+      ${item('handover', 'send', tr('تسليم الصف لمعلم آخر'), tr('كل الطلاب مع الدرجات والغياب والملاحظات'))}
+      ${item('go', 'move', tr('نقل طلاب'), tr('طالب أو أكثر لمعلم آخر أو لصف آخر'), 'data-to="transferOut"')}
+      ${item('go', 'inbox', tr('استقبال طلاب منقولين'), tr('من ملف أرسله معلم آخر'), 'data-to="transferIn"')}
     </div>
-    <div class="actions"><button type="button" class="btn" data-x>إغلاق</button></div>`, { label: 'خيارات الصف' });
+    <div class="actions"><button type="button" class="btn" data-x>إغلاق</button></div>`, { label: tr('خيارات الصف') });
   s.sheet.addEventListener('click', (e) => { if (e.target.closest('[data-act]') || e.target.closest('[data-x]')) setTimeout(() => s.close(), 0); });
 }
 
@@ -2557,7 +2571,7 @@ function rerenderList() {
   if (active) { const s = box.querySelector('[data-search]'); s.focus(); try { s.setSelectionRange(pos, pos); } catch { /* */ } }
   const sub = document.getElementById('week-sub');
   if (sub) { const d = dataOf(c.id); const n = c.names.length; const w = r.p.tab;
-    sub.textContent = w === 'fin' ? (finalsRemaining(d, n) ? `باقي ${ar(finalsRemaining(d, n))}` : 'مكتملة ✓') : (weekComplete(d, w, n) ? 'مكتمل ✓' : `باقي ${ar(weekRemaining(d, w, n))} من ${ar(n)}`); }
+    sub.textContent = w === 'fin' ? (finalsRemaining(d, n) ? T`باقي ${ar(finalsRemaining(d, n))}` : tr('مكتملة ✓')) : (weekComplete(d, w, n) ? tr('مكتمل ✓') : T`باقي ${ar(weekRemaining(d, w, n))} من ${ar(n)}`); }
 }
 
 async function onScoreAction(act, el, p) {
@@ -2570,7 +2584,7 @@ async function onScoreAction(act, el, p) {
     markDirty(c.id); livePatchItems(c.id, w, i);
     haptic('success');
     refreshStudent(c, w, i, { rerenderInputs: true });
-    toast(`${c.names[i].split(' ')[0]}: كامل`, { ms: 6000, action: { label: 'تراجع', fn: () => { prev.forEach((v, k) => setItem(d, w, i, k, v)); markDirty(c.id); livePatchItems(c.id, w, i); const row = main().querySelector(`[data-stu="${i}"]`); if (row && row.tagName !== 'TR') row.outerHTML = stuRow(c, d, w, i); else refreshStudent(c, w, i, { rerenderInputs: true }); refreshStudent(c, w, i); } } });
+    toast(T`${c.names[i].split(' ')[0]}: كامل`, { ms: 6000, action: { label: tr('تراجع'), fn: () => { prev.forEach((v, k) => setItem(d, w, i, k, v)); markDirty(c.id); livePatchItems(c.id, w, i); const row = main().querySelector(`[data-stu="${i}"]`); if (row && row.tagName !== 'TR') row.outerHTML = stuRow(c, d, w, i); else refreshStudent(c, w, i, { rerenderInputs: true }); refreshStudent(c, w, i); } } });
     if (!wasDone) { advanceFrom(c, w, i); hideIfMissingOnly(i); }
     return;
   }
@@ -2599,10 +2613,10 @@ async function quickFill(p, which) {
     const vals = getItems(d, w, i);
     ks.forEach((k) => { if (vals[k] == null) plan.push([i, k]); });
   });
-  if (!plan.length) { toast('لا توجد خانات فارغة لتعبئتها'); return; }
-  const label = which === 'all' ? 'كل البنود' : CRIT[+which].label;
+  if (!plan.length) { toast(tr('لا توجد خانات فارغة لتعبئتها')); return; }
+  const label = which === 'all' ? tr('كل البنود') : CRIT[+which].label;
   const who = new Set(plan.map(([i]) => i)).size;
-  const ok = await confirmDialog({ title: `تعبئة ${label} بـ ${ar(CONFIG.itemMax)}؟`, text: `سيوضع ${ar(CONFIG.itemMax)} في ${cells(plan.length)} فارغة لـ ${students(who)} في الأسبوع ${ar(w)}. الخانات التي فيها درجات والطلاب الغائبون لا يتغيرون، ويمكنك التراجع بعدها.`, ok: 'عبّئ' });
+  const ok = await confirmDialog({ title: T`تعبئة ${label} بـ ${ar(CONFIG.itemMax)}؟`, text: T`سيوضع ${ar(CONFIG.itemMax)} في ${cells(plan.length)} فارغة لـ ${students(who)} في الأسبوع ${ar(w)}. الخانات التي فيها درجات والطلاب الغائبون لا يتغيرون، ويمكنك التراجع بعدها.`, ok: tr('عبّئ') });
   if (!ok) return;
   plan.forEach(([i, k]) => setItem(d, w, i, k, CONFIG.itemMax));
   markDirty(c.id);
@@ -2615,12 +2629,12 @@ async function quickFill(p, which) {
     touched.forEach((i) => livePatchItems(c.id, w, i));
     S.ui.undo = null;
     rerenderList(); refreshChip(c, w); refreshAside();
-    toast('تم التراجع');
+    toast(tr('تم التراجع'));
   };
   // يبقى زر التراجع ظاهرًا في شريط الإجراءات حتى تعبئة أخرى أو تغيير الأسبوع
-  S.ui.undo = { classId: c.id, week: w, label: which === 'all' ? `الكل ${ar(CONFIG.itemMax)}` : `${CRIT[+which].short} ${ar(CONFIG.itemMax)}`, fn: undo };
+  S.ui.undo = { classId: c.id, week: w, label: which === 'all' ? T`الكل ${ar(CONFIG.itemMax)}` : `${CRIT[+which].short} ${ar(CONFIG.itemMax)}`, fn: undo };
   rerenderList(); refreshChip(c, w); refreshAside();
-  toast(`عُبّئت ${cells(plan.length)} (${label})`, { action: { label: 'تراجع', fn: () => S.ui.undo && S.ui.undo.fn === undo && undo() } });
+  toast(T`عُبّئت ${cells(plan.length)} (${label})`, { action: { label: tr('تراجع'), fn: () => S.ui.undo && S.ui.undo.fn === undo && undo() } });
 }
 
 // إدخال الحقول (الأرقام، البيانات، الإعدادات، البحث)
@@ -2742,7 +2756,7 @@ function maybeNagBackup() {
   S.meta.nagDay = today;
   store.setMeta('nagDay', today).catch(() => {});
   setTimeout(async () => {
-    const ok = await confirmDialog({ title: 'مرّ أكثر من أسبوع بدون نسخة احتياطية', text: 'درجاتك محفوظة على هذا الجوال فقط. احفظ نسخة الآن (ضغطة واحدة) حتى لا تضيع إن ضاع الجوال أو حُذف التطبيق.', ok: 'احفظ نسخة الآن', cancel: 'لاحقًا' });
+    const ok = await confirmDialog({ title: tr('مرّ أكثر من أسبوع بدون نسخة احتياطية'), text: tr('درجاتك محفوظة على هذا الجوال فقط. احفظ نسخة الآن (ضغطة واحدة) حتى لا تضيع إن ضاع الجوال أو حُذف التطبيق.'), ok: tr('احفظ نسخة الآن'), cancel: tr('لاحقًا') });
     if (ok) doBackup();
   }, 600);
 }
@@ -2760,7 +2774,7 @@ function registerSW() {
       // نسخة جاهزة من قبل: نطبّقها فور الفتح (قبل أن يبدأ المعلم أي شيء). نسخة نزلت للتو: إشعار فقط
       if (atBoot && Date.now() - bootAt < 3000 && safeToApply()) { w.postMessage({ type: 'skip-waiting' }); return; }
       UPD.state = 'ready'; UPD.worker = w; paintUpdate();
-      toast('تحديث متوفر، أعد التشغيل', { ms: 0, action: { label: 'أعد التشغيل', fn: () => w.postMessage({ type: 'skip-waiting' }) } });
+      toast(tr('تحديث متوفر، أعد التشغيل'), { ms: 0, action: { label: tr('أعد التشغيل'), fn: () => w.postMessage({ type: 'skip-waiting' }) } });
     };
     if (reg.waiting && hadController) ask(reg.waiting, true);
     reg.addEventListener('updatefound', () => {
@@ -2785,10 +2799,21 @@ async function boot() {
   try {
     await loadState();
   } catch {
-    main().innerHTML = `<div class="wrap"><div class="alert err">${icon('warn')}<div class="grow"><strong>تعذّر فتح التخزين</strong><p>قد يكون المتصفح في وضع التصفح الخاص أو يمنع حفظ البيانات. افتح التطبيق في وضع عادي.</p></div></div></div>`;
+    main().innerHTML = T`<div class="wrap"><div class="alert err">${icon('warn')}<div class="grow"><strong>تعذّر فتح التخزين</strong><p>قد يكون المتصفح في وضع التصفح الخاص أو يمنع حفظ البيانات. افتح التطبيق في وضع عادي.</p></div></div></div>`;
     return;
   }
   S.booted = true;
+  if (!REMOTE && (S.settings.lang === 'en') !== (lang() === 'en') && !new URLSearchParams(location.search).has('lang')) {
+    // اللغة المحفوظة في الإعدادات تختلف (مثلًا بعد استرجاع نسخة): نطابقها مرة واحدة.
+    // إن تعذّر حفظ التفضيل (تصفح خاص) نضعها في الرابط بدل إعادة التحميل بلا نهاية.
+    const want = S.settings.lang === 'en' ? 'en' : 'ar';
+    rememberLang(want);
+    let stored = null; try { stored = localStorage.getItem('gfu-lang'); } catch { /* */ }
+    if ((stored === 'en') === (want === 'en')) location.reload();
+    else location.replace(location.pathname + '?lang=' + want + location.hash);
+    return;
+  }
+  translateStatic(document.body);
   applyTheme();
   if (REMOTE) {
     // على الكمبيوتر: لا تخزين، لا جولة، لا Service Worker — البيانات في الجوال

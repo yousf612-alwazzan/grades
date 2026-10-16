@@ -4,6 +4,7 @@ import {
   getItems, getFin, getWeekMeta, emptyClassData, cleanName, nameKey, remapData, isAbsent, getNotes, noteShape, isStar,
 } from './grades-core.js';
 import { sanitizeScore, sanitizeNotes } from './store.js';
+import { T, tr } from './i18n.js';
 
 const clone = v => JSON.parse(JSON.stringify(v));
 
@@ -41,19 +42,19 @@ export function buildClassHandover({ classLabel, names, data, settings }) {
 }
 
 export function handoverFileName(classLabel) {
-  const label = String(classLabel || 'صف').replace(/[\\/:*?"<>|\u0000-\u001F]+/g, '').trim().replace(/\s+/g, '_') || 'صف';
-  return `تسليم_عهدة_${label}.json`;
+  const label = String(classLabel || tr('صف')).replace(/[\\/:*?"<>|\u0000-\u001F]+/g, '').trim().replace(/\s+/g, '_') || tr('صف');
+  return T`تسليم_عهدة_${label}.json`;
 }
 
 export function transferFileName(classLabel, count) {
-  const label = String(classLabel || 'صف').replace(/[\\/:*?"<>|\u0000-\u001F]+/g, '').trim().replace(/\s+/g, '_') || 'صف';
-  return `نقل_طلاب_${label}_${count}.json`;
+  const label = String(classLabel || tr('صف')).replace(/[\\/:*?"<>|\u0000-\u001F]+/g, '').trim().replace(/\s+/g, '_') || tr('صف');
+  return T`نقل_طلاب_${label}_${count}.json`;
 }
 
-const ERR_READ = 'تعذّرت قراءة ملف النقل. تأكد أنه ملف (json) صدّره تطبيق متابعة الدرجات.';
-const ERR_BACKUP = 'هذا ملف نسخة احتياطية وليس ملف نقل طلاب. استخدم «استرجاع نسخة احتياطية» من الإعدادات.';
-const ERR_APP = 'هذا الملف ليس ملف نقل طلاب من تطبيق متابعة الدرجات.';
-const ERR_EMPTY = 'ملف النقل لا يحتوي على أي طالب.';
+const ERR_READ = tr('تعذّرت قراءة ملف النقل. تأكد أنه ملف (json) صدّره تطبيق متابعة الدرجات.');
+const ERR_BACKUP = tr('هذا ملف نسخة احتياطية وليس ملف نقل طلاب. استخدم «استرجاع نسخة احتياطية» من الإعدادات.');
+const ERR_APP = tr('هذا الملف ليس ملف نقل طلاب من تطبيق متابعة الدرجات.');
+const ERR_EMPTY = tr('ملف النقل لا يحتوي على أي طالب.');
 
 export function parseTransfer(textOrObj) {
   let obj = textOrObj;

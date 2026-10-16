@@ -11,20 +11,21 @@ import {
   WEEKS, ITEMS, ITEM_MAX, FIN_MAX, getItems, getWeekMeta, studentSummary, isAbsent, attendanceStatus,
   attendanceSummary, getNotes, toArabicDigits, fmt,
 } from './grades-core.js';
+import { T, tr, trCrit } from './i18n.js';
 
 const WEEK_MAX = ITEMS * ITEM_MAX;                 // ٢٠
 const HALF = Math.ceil(WEEKS / 2);                 // ٥
 const FORMATIVE_MAX = WEEK_MAX * 2;                // ٤٠
 const TOTAL_MAX = FORMATIVE_MAX + FIN_MAX.reduce((a, b) => a + b, 0); // ١٠٠
 const DASH = '—';
-const ABS = 'غ';
+const ABS = tr('غ');
 const PRESENT = '✓';
 
 const ar = toArabicDigits;
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
-const of = m => `<span class="max">(من ${ar(m)})</span>`;
+const of = m => T`<span class="max">(من ${ar(m)})</span>`;
 
 function dateText(d = new Date()) {
   const p = n => String(n).padStart(2, '0');
@@ -39,13 +40,13 @@ function shortDate(s) {
 
 function headerBlock({ title, subtitle, classLabel, settings }) {
   const st = settings || {};
-  const right = ['دولة الكويت', 'وزارة التربية', st.school ? String(st.school) : '']
+  const right = [tr('دولة الكويت'), tr('وزارة التربية'), st.school ? String(st.school) : '']
     .filter(Boolean).map(x => `<div>${esc(x)}</div>`).join('');
   const info = [
-    ['الصف', classLabel],
-    ['المادة', st.subject],
-    ['المعلم', st.teacher],
-    ['العام الدراسي', st.year],
+    [tr('الصف'), classLabel],
+    [tr('المادة'), st.subject],
+    [tr('المعلم'), st.teacher],
+    [tr('العام الدراسي'), st.year],
   ].map(([k, v]) => `<div><span class="k">${k}:</span> <span class="v">${v ? esc(ar(v)) : '<span class="blank-line"></span>'}</span></div>`).join('');
   return `<header class="r-head">
   <div class="r-org">${right}</div>
@@ -55,15 +56,15 @@ function headerBlock({ title, subtitle, classLabel, settings }) {
 }
 
 function footerBlock(date) {
-  const sig = ['المعلم', 'رئيس القسم', 'مدير المدرسة']
-    .map(x => `<div class="sig"><div class="sig-k">${x}</div><div class="sig-line"></div><div class="sig-n">التوقيع</div></div>`).join('');
-  return `<footer class="r-foot"><div class="sigs">${sig}</div><div class="r-date">تاريخ الطباعة: ${dateText(date)}</div></footer>`;
+  const sig = [tr('المعلم'), tr('رئيس القسم'), tr('مدير المدرسة')]
+    .map(x => T`<div class="sig"><div class="sig-k">${x}</div><div class="sig-line"></div><div class="sig-n">التوقيع</div></div>`).join('');
+  return T`<footer class="r-foot"><div class="sigs">${sig}</div><div class="r-date">تاريخ الطباعة: ${dateText(date)}</div></footer>`;
 }
 
 function weekHead(w, data, extra = '', short = false) {
   const raw = getWeekMeta(data, w).date;
   const d = short ? shortDate(raw) : weekDate(raw);
-  return `<th class="wk"${extra}><span class="wk-n">الأسبوع ${ar(w)}</span>${d ? `<span class="wk-d">${d}</span>` : ''}</th>`;
+  return T`<th class="wk"${extra}><span class="wk-n">الأسبوع ${ar(w)}</span>${d ? `<span class="wk-d">${d}</span>` : ''}</th>`;
 }
 
 const cleanNames = names => (Array.isArray(names) ? names : []);
@@ -72,10 +73,10 @@ const nameCell = name => `<td class="name">${esc(name)}</td>`;
 const numCell = (v, cls = '') => `<td class="${('num ' + cls).trim()}">${fmt(v)}</td>`;
 
 const PARTS = {
-  p1: { title: 'الفترة الأولى', weeks: [1, HALF] },
-  p2: { title: 'الفترة الثانية', weeks: [HALF + 1, WEEKS] },
-  final: { title: 'رصد الدرجات النهائية' },
-  all: { title: 'الكشف الشامل' },
+  p1: { title: tr('الفترة الأولى'), weeks: [1, HALF] },
+  p2: { title: tr('الفترة الثانية'), weeks: [HALF + 1, WEEKS] },
+  final: { title: tr('رصد الدرجات النهائية') },
+  all: { title: tr('الكشف الشامل') },
 };
 
 /** كشف الدرجات. p1/p2: البنود الأربعة ومجموع كل أسبوع ودرجة الفترة. final: الفترتان والبنائي والنهائي.
@@ -86,44 +87,44 @@ export function gradesReportHTML({ classLabel = '', names = [], data, settings =
   names = cleanNames(names);
   data = data || { weeks: {}, fin: {}, t: 0 };
   const sub = P === 'p1' || P === 'p2'
-    ? `${PARTS[P].title} (الأسابيع ${ar(PARTS[P].weeks[0])}–${ar(PARTS[P].weeks[1])})`
+    ? T`${PARTS[P].title} (الأسابيع ${ar(PARTS[P].weeks[0])}–${ar(PARTS[P].weeks[1])})`
     : PARTS[P].title;
   let head, rows = [];
-  const finHeads = CONFIG.finals.map(f => `<th class="col-fin">${esc(f.label)} ${of(f.max)}</th>`).join('');
+  const finHeads = CONFIG.finals.map(f => `<th class="col-fin">${esc(trCrit(f.label))} ${of(f.max)}</th>`).join('');
 
   if (P === 'p1' || P === 'p2') {
     const [w0, w1] = PARTS[P].weeks;
     const ws = []; for (let w = w0; w <= w1; w++) ws.push(w);
-    head = `<tr><th rowspan="2" class="col-m">م</th><th rowspan="2" class="col-name">اسم الطالب</th>${ws.map(w => weekHead(w, data, ` colspan="${ITEMS + 1}"`)).join('')}<th rowspan="2" class="col-p">${PARTS[P].title} ${of(WEEK_MAX)}</th></tr>
-<tr>${ws.map(() => CONFIG.criteria.map(c => `<th class="crit">${esc(c.short)}</th>`).join('') + `<th class="crit tot">المجموع</th>`).join('')}</tr>`;
+    head = T`<tr><th rowspan="2" class="col-m">م</th><th rowspan="2" class="col-name">اسم الطالب</th>${ws.map(w => weekHead(w, data, ` colspan="${ITEMS + 1}"`)).join('')}<th rowspan="2" class="col-p">${PARTS[P].title} ${of(WEEK_MAX)}</th></tr>
+<tr>${ws.map(() => CONFIG.criteria.map(c => `<th class="crit">${esc(trCrit(c.short))}</th>`).join('') + T`<th class="crit tot">المجموع</th>`).join('')}</tr>`;
     for (let i = 0; i < n; i++) {
       const s = studentSummary(data, i);
       const cells = ws.map(w => {
-        if (isAbsent(data, w, i)) return `<td class="abs" colspan="${ITEMS}">غائب</td><td class="num tot abs-t">${ABS}</td>`;
+        if (isAbsent(data, w, i)) return T`<td class="abs" colspan="${ITEMS}">غائب</td><td class="num tot abs-t">${ABS}</td>`;
         return getItems(data, w, i).map(v => numCell(v)).join('') + numCell(s.weeks[w - 1], 'tot');
       }).join('');
       rows.push(`<tr><td class="num m">${ar(i + 1)}</td>${nameCell(names[i])}${cells}${numCell(P === 'p1' ? s.p1 : s.p2, 'strong')}</tr>`);
     }
   } else if (P === 'final') {
-    head = `<tr><th class="col-m">م</th><th class="col-name">اسم الطالب</th><th>الفترة الأولى ${of(WEEK_MAX)}</th><th>الفترة الثانية ${of(WEEK_MAX)}</th><th>التقويم البنائي ${of(FORMATIVE_MAX)}</th>${finHeads}<th>المجموع ${of(TOTAL_MAX)}</th></tr>`;
+    head = T`<tr><th class="col-m">م</th><th class="col-name">اسم الطالب</th><th>الفترة الأولى ${of(WEEK_MAX)}</th><th>الفترة الثانية ${of(WEEK_MAX)}</th><th>التقويم البنائي ${of(FORMATIVE_MAX)}</th>${finHeads}<th>المجموع ${of(TOTAL_MAX)}</th></tr>`;
     for (let i = 0; i < n; i++) {
       const s = studentSummary(data, i);
       rows.push(`<tr><td class="num m">${ar(i + 1)}</td>${nameCell(names[i])}${numCell(s.p1)}${numCell(s.p2)}${numCell(s.formative, 'tot')}${s.fin.map(v => numCell(v)).join('')}${numCell(s.total, 'strong')}</tr>`);
     }
   } else {
     const ws = []; for (let w = 1; w <= WEEKS; w++) ws.push(w);
-    head = `<tr><th class="col-m">م</th><th class="col-name">اسم الطالب</th>${ws.map(w => weekHead(w, data, '', true)).join('')}<th>الفترة الأولى ${of(WEEK_MAX)}</th><th>الفترة الثانية ${of(WEEK_MAX)}</th><th>التقويم البنائي ${of(FORMATIVE_MAX)}</th>${finHeads}<th>المجموع ${of(TOTAL_MAX)}</th></tr>`;
+    head = T`<tr><th class="col-m">م</th><th class="col-name">اسم الطالب</th>${ws.map(w => weekHead(w, data, '', true)).join('')}<th>الفترة الأولى ${of(WEEK_MAX)}</th><th>الفترة الثانية ${of(WEEK_MAX)}</th><th>التقويم البنائي ${of(FORMATIVE_MAX)}</th>${finHeads}<th>المجموع ${of(TOTAL_MAX)}</th></tr>`;
     for (let i = 0; i < n; i++) {
       const s = studentSummary(data, i);
       const wk = ws.map(w => (isAbsent(data, w, i) ? `<td class="num abs-t">${ABS}</td>` : numCell(s.weeks[w - 1]))).join('');
       rows.push(`<tr><td class="num m">${ar(i + 1)}</td>${nameCell(names[i])}${wk}${numCell(s.p1, 'tot')}${numCell(s.p2, 'tot')}${numCell(s.formative, 'tot')}${s.fin.map(v => numCell(v)).join('')}${numCell(s.total, 'strong')}</tr>`);
     }
   }
-  if (!rows.length) rows.push(`<tr><td class="empty" colspan="99">لا يوجد طلاب في هذا الصف</td></tr>`);
+  if (!rows.length) rows.push(T`<tr><td class="empty" colspan="99">لا يوجد طلاب في هذا الصف</td></tr>`);
   const note = P === 'p1' || P === 'p2' || P === 'all'
-    ? `<p class="r-legend">«${ABS}» = غائب في ذلك الأسبوع (درجاته أصفار) · «${DASH}» = لم تُرصد بعد · مجموع الأسبوع من ${ar(WEEK_MAX)}</p>` : '';
+    ? T`<p class="r-legend">«${ABS}» = غائب في ذلك الأسبوع (درجاته أصفار) · «${DASH}» = لم تُرصد بعد · مجموع الأسبوع من ${ar(WEEK_MAX)}</p>` : '';
   return `<div class="report report-grades report-${P}" dir="rtl" lang="ar">
-${headerBlock({ title: `كشف درجات الصف ${classLabel}`.trim(), subtitle: sub, classLabel, settings })}
+${headerBlock({ title: T`كشف درجات الصف ${classLabel}`.trim(), subtitle: sub, classLabel, settings })}
 <table class="r-table"><thead>${head}</thead><tbody>${rows.join('')}</tbody></table>
 ${note}
 ${footerBlock(date)}
@@ -137,7 +138,7 @@ export function attendanceReportHTML({ classLabel = '', names = [], data, settin
   data = data || { weeks: {}, fin: {}, t: 0 };
   const sum = attendanceSummary(data, n);
   const ws = []; for (let w = 1; w <= WEEKS; w++) ws.push(w);
-  const head = `<tr><th class="col-m">م</th><th class="col-name">اسم الطالب</th>${ws.map(w => weekHead(w, data)).join('')}<th>عدد أسابيع الغياب</th><th>نسبة الحضور</th></tr>`;
+  const head = T`<tr><th class="col-m">م</th><th class="col-name">اسم الطالب</th>${ws.map(w => weekHead(w, data)).join('')}<th>عدد أسابيع الغياب</th><th>نسبة الحضور</th></tr>`;
   const perWeek = ws.map(() => 0);
   const rows = [];
   for (let i = 0; i < n; i++) {
@@ -148,16 +149,16 @@ export function attendanceReportHTML({ classLabel = '', names = [], data, settin
     }).join('');
     const { count, present } = sum[i];
     const rec = count + present;
-    const pct = rec ? `${ar(Math.round((present / rec) * 100))}٪` : DASH;
+    const pct = rec ? T`${ar(Math.round((present / rec) * 100))}٪` : DASH;
     rows.push(`<tr><td class="num m">${ar(i + 1)}</td>${nameCell(names[i])}${cells}<td class="num tot">${ar(count)}</td><td class="num">${pct}</td></tr>`);
   }
-  if (!rows.length) rows.push(`<tr><td class="empty" colspan="99">لا يوجد طلاب في هذا الصف</td></tr>`);
+  if (!rows.length) rows.push(T`<tr><td class="empty" colspan="99">لا يوجد طلاب في هذا الصف</td></tr>`);
   else {
     const total = perWeek.reduce((a, b) => a + b, 0);
-    rows.push(`<tr class="sum-row"><td class="num m"></td><td class="name">عدد الغائبين</td>${perWeek.map(c => `<td class="num">${ar(c)}</td>`).join('')}<td class="num tot">${ar(total)}</td><td></td></tr>`);
+    rows.push(T`<tr class="sum-row"><td class="num m"></td><td class="name">عدد الغائبين</td>${perWeek.map(c => `<td class="num">${ar(c)}</td>`).join('')}<td class="num tot">${ar(total)}</td><td></td></tr>`);
   }
-  return `<div class="report report-attendance" dir="rtl" lang="ar">
-${headerBlock({ title: 'كشف الحضور والغياب', subtitle: classLabel ? `الصف ${classLabel}` : '', classLabel, settings })}
+  return T`<div class="report report-attendance" dir="rtl" lang="ar">
+${headerBlock({ title: tr('كشف الحضور والغياب'), subtitle: classLabel ? T`الصف ${classLabel}` : '', classLabel, settings })}
 <table class="r-table"><thead>${head}</thead><tbody>${rows.join('')}</tbody></table>
 <p class="r-legend">«${PRESENT}» = حاضر · «${ABS}» = غائب · خانة فارغة = لم يُرصد الأسبوع بعد</p>
 ${footerBlock(date)}
@@ -177,7 +178,7 @@ export function studentReportHTML({ classLabel = '', names = [], data, settings 
     const absent = isAbsent(data, w, idx);
     if (absent) absN++;
     const items = absent
-      ? `<td class="abs" colspan="${ITEMS}">غائب</td><td class="num tot abs-t">${ABS}</td>`
+      ? T`<td class="abs" colspan="${ITEMS}">غائب</td><td class="num tot abs-t">${ABS}</td>`
       : getItems(data, w, idx).map(v => numCell(v)).join('') + numCell(s.weeks[w - 1], 'tot');
     wrows.push(`<tr><td class="num">${ar(w)}</td><td class="num">${weekDate(m.date) || DASH}</td><td class="lesson">${m.lesson ? esc(m.lesson) : DASH}</td>${items}</tr>`);
   }
@@ -185,9 +186,9 @@ export function studentReportHTML({ classLabel = '', names = [], data, settings 
   const notes = getNotes(data, idx);
   const notesHtml = notes.length
     ? `<ul class="notes">${notes.map(x => `<li><span class="note-d">${dateText(new Date(x.t))}</span> ${esc(x.text)}</li>`).join('')}</ul>`
-    : '<p class="muted">لا توجد ملاحظات.</p>';
-  return `<div class="report report-student" dir="rtl" lang="ar">
-${headerBlock({ title: 'تقرير متابعة طالب', subtitle: `الطالب: ${names[idx] ?? ''}`, classLabel, settings })}
+    : tr('<p class="muted">لا توجد ملاحظات.</p>');
+  return T`<div class="report report-student" dir="rtl" lang="ar">
+${headerBlock({ title: tr('تقرير متابعة طالب'), subtitle: T`الطالب: ${names[idx] ?? ''}`, classLabel, settings })}
 <div class="st-grid">
 <section class="st-weeks"><h2>درجات الأسابيع</h2>
 <table class="r-table"><thead><tr><th>الأسبوع</th><th>التاريخ</th><th>الدرس</th>${crit}<th>المجموع ${of(WEEK_MAX)}</th></tr></thead><tbody>${wrows.join('')}</tbody></table></section>
@@ -208,7 +209,7 @@ ${footerBlock(date)}
 
 // اسم ملف/عنوان مقترح لمهمة الطباعة (يظهر اسمًا لملف PDF)
 export function reportTitle(kind, classLabel = '') {
-  const t = { p1: 'كشف_الفترة_الأولى', p2: 'كشف_الفترة_الثانية', final: 'كشف_الرصد_النهائي', all: 'كشف_الدرجات', attendance: 'كشف_الحضور_والغياب', student: 'تقرير_طالب' }[kind] || 'كشف';
+  const t = { p1: tr('كشف_الفترة_الأولى'), p2: tr('كشف_الفترة_الثانية'), final: tr('كشف_الرصد_النهائي'), all: tr('كشف_الدرجات'), attendance: tr('كشف_الحضور_والغياب'), student: tr('تقرير_طالب') }[kind] || tr('كشف');
   const label = String(classLabel || '').replace(/[\\/:*?"<>|\u0000-\u001F]+/g, '').trim().replace(/\s+/g, '_');
   return label ? `${t}_${label}` : t;
 }

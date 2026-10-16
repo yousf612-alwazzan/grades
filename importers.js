@@ -1,15 +1,16 @@
 // استيراد قوائم الأسماء من ملفات Excel (xlsx) و CSV و TXT و PDF.
 // يعمل في المتصفح: JSZip سكربت كلاسيكي (window.JSZip) و pdf.js وحدة ES تُحمَّل عند الحاجة.
 import { nameLikeness, isHeaderWord } from './grades-core.js';
+import { T, tr } from './i18n.js';
 
-const ERR_XLS = 'ملفات xls القديمة غير مدعومة. افتح الملف في Excel واحفظه بصيغة xlsx ثم أعد المحاولة.';
-const ERR_SCANNED = 'ملف PDF هذا صورة ممسوحة ولا يحوي نصًا يمكن قراءته. اطلب نسخة PDF مُصدَّرة من البرنامج أو ملف Excel.';
-const ERR_PDF = 'تعذّرت قراءة ملف PDF. جرّب ملف Excel أو انسخ الأسماء نصًا.';
-const ERR_PDF_PASS = 'ملف PDF محمي بكلمة مرور. احفظ نسخة بدون حماية ثم أعد المحاولة.';
-const ERR_XLSX = 'تعذّرت قراءة ملف Excel. تأكد أنه ملف xlsx سليم.';
-const ERR_EMPTY = 'لم يُعثر على أسماء في الملف.';
-const ERR_IMAGE = 'لم نتمكن من قراءة أسماء من هذه الصورة. صوّر القائمة بإضاءة جيدة ومن الأعلى مباشرة، أو استخدم ملف Excel.';
-const ERR_OCR = 'تعذّر تشغيل قارئ النصوص من الصور على هذا الجهاز. جرّب ملف Excel أو انسخ الأسماء نصًا.';
+const ERR_XLS = tr('ملفات xls القديمة غير مدعومة. افتح الملف في Excel واحفظه بصيغة xlsx ثم أعد المحاولة.');
+const ERR_SCANNED = tr('ملف PDF هذا صورة ممسوحة ولا يحوي نصًا يمكن قراءته. اطلب نسخة PDF مُصدَّرة من البرنامج أو ملف Excel.');
+const ERR_PDF = tr('تعذّرت قراءة ملف PDF. جرّب ملف Excel أو انسخ الأسماء نصًا.');
+const ERR_PDF_PASS = tr('ملف PDF محمي بكلمة مرور. احفظ نسخة بدون حماية ثم أعد المحاولة.');
+const ERR_XLSX = tr('تعذّرت قراءة ملف Excel. تأكد أنه ملف xlsx سليم.');
+const ERR_EMPTY = tr('لم يُعثر على أسماء في الملف.');
+const ERR_IMAGE = tr('لم نتمكن من قراءة أسماء من هذه الصورة. صوّر القائمة بإضاءة جيدة ومن الأعلى مباشرة، أو استخدم ملف Excel.');
+const ERR_OCR = tr('تعذّر تشغيل قارئ النصوص من الصور على هذا الجهاز. جرّب ملف Excel أو انسخ الأسماء نصًا.');
 
 // ---------- نقطة الدخول ----------
 
@@ -572,10 +573,10 @@ function wasmSimd() {
 }
 
 async function createOcrWorker(o, logger) {
-  const T = await loadTesseract();
+  const Tess = await loadTesseract();
   const base = new URL('./vendor/tesseract/', import.meta.url);
   const core = wasmSimd() ? 'core/tesseract-core-simd-lstm.wasm.js' : 'core/tesseract-core-lstm.wasm.js';
-  const worker = await T.createWorker('ara', 1 /* OEM.LSTM_ONLY */, {
+  const worker = await Tess.createWorker('ara', 1 /* OEM.LSTM_ONLY */, {
     workerPath: new URL('worker.min.js', base).href,
     corePath: new URL(core, base).href,
     langPath: new URL(o.lang, base).href.replace(/\/$/, ''),

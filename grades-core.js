@@ -1,5 +1,6 @@
 // منطق الدرجات الصافي: بلا DOM، قابل للاستيراد من Node للاختبارات.
 import CONFIG from './config.js';
+import { T, tr, isEn } from './i18n.js';
 
 export const WEEKS = CONFIG.weeks;
 export const ITEMS = CONFIG.criteria.length;
@@ -27,7 +28,8 @@ export function normalizeDigits(str) {
 }
 
 export function toArabicDigits(x) {
-  return String(x ?? '').replace(/[0-9]/g, d => '٠١٢٣٤٥٦٧٨٩'[d]).replace(/\./g, '٫');
+  if (isEn()) return String(x ?? '');
+  return String(x ?? '').replace(/[0-9]/g, d => tr('٠١٢٣٤٥٦٧٨٩')[d]).replace(/\./g, '٫');
 }
 
 export function round2(n) {
@@ -42,11 +44,11 @@ export function fmt(n) {
 export function parseScore(input, max) {
   const s = normalizeDigits(input).replace(/\s+/g, '');
   if (s === '') return { ok: true, value: null };
-  if (!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(s)) return { ok: false, error: 'ليست رقمًا' };
+  if (!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(s)) return { ok: false, error: tr('ليست رقمًا') };
   const v = Number(s);
-  if (!Number.isFinite(v)) return { ok: false, error: 'ليست رقمًا' };
-  if (v < 0) return { ok: false, error: 'قيمة سالبة' };
-  if (v > max) return { ok: false, error: `أكبر من ${toArabicDigits(max)}` };
+  if (!Number.isFinite(v)) return { ok: false, error: tr('ليست رقمًا') };
+  if (v < 0) return { ok: false, error: tr('قيمة سالبة') };
+  if (v > max) return { ok: false, error: T`أكبر من ${toArabicDigits(max)}` };
   return { ok: true, value: round2(v) };
 }
 
@@ -330,17 +332,17 @@ export function progress(data, n) {
 export function studentCardText({ name, classLabel, subject, teacher, data, idx }) {
   const s = studentSummary(data, idx);
   const weekParts = [];
-  s.weeks.forEach((t, i) => { if (t !== null) weekParts.push(`أسبوع ${toArabicDigits(i + 1)}: ${fmt(t)}`); });
-  const of = m => `من ${toArabicDigits(m)}`;
+  s.weeks.forEach((t, i) => { if (t !== null) weekParts.push(T`أسبوع ${toArabicDigits(i + 1)}: ${fmt(t)}`); });
+  const of = m => T`من ${toArabicDigits(m)}`;
   const lines = [
-    `الطالب: ${name}`,
-    subject ? `الصف: ${classLabel} · ${subject}` : `الصف: ${classLabel}`,
-    `درجات الأسابيع (${of(WEEK_MAX)}): ${weekParts.length ? weekParts.join('، ') : 'لا توجد بعد'}`,
-    `الفترة الأولى: ${fmt(s.p1)} ${of(WEEK_MAX)} / الفترة الثانية: ${fmt(s.p2)} ${of(WEEK_MAX)} / التقويم البنائي: ${fmt(s.formative)} ${of(FORMATIVE_MAX)}`,
+    T`الطالب: ${name}`,
+    subject ? T`الصف: ${classLabel} · ${subject}` : T`الصف: ${classLabel}`,
+    T`درجات الأسابيع (${of(WEEK_MAX)}): ${weekParts.length ? weekParts.join(tr('، ')) : tr('لا توجد بعد')}`,
+    T`الفترة الأولى: ${fmt(s.p1)} ${of(WEEK_MAX)} / الفترة الثانية: ${fmt(s.p2)} ${of(WEEK_MAX)} / التقويم البنائي: ${fmt(s.formative)} ${of(FORMATIVE_MAX)}`,
     CONFIG.finals.map((f, i) => `${f.label}: ${fmt(s.fin[i])} ${of(f.max)}`).join(' / '),
-    s.total === null ? 'المجموع النهائي: لم يكتمل بعد' : `المجموع النهائي: ${fmt(s.total)} ${of(TOTAL_MAX)}`,
+    s.total === null ? tr('المجموع النهائي: لم يكتمل بعد') : T`المجموع النهائي: ${fmt(s.total)} ${of(TOTAL_MAX)}`,
   ];
-  if (teacher) lines.push(`المعلم: ${teacher}`);
+  if (teacher) lines.push(T`المعلم: ${teacher}`);
   return lines.join('\n');
 }
 

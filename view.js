@@ -5,11 +5,13 @@ import {
   WEEKS, FIN_MAX, toArabicDigits, fmt, weekTotal, periodScore, formative, finalTotal,
   studentSummary, getItems, getFin, getWeekMeta, progress, weekRemaining, arCompare, round2,
 } from './grades-core.js';
+import { T, tr, trCrit, setLang, lang as curLang, translateStatic } from './i18n.js';
 
 const params = new URLSearchParams(location.search);
 const E2E = params.has('e2e');
 // رقم النسخة ظاهر في صفحة الربط حتى يعرف المعلم أن الصفحة محدّثة
-if (document.getElementById('ver-note')) document.getElementById('ver-note').textContent = 'نسخة صفحة العرض ' + toArabicDigits(CONFIG.version) + ' — إن لم تظهر الميزات الجديدة اضغط Ctrl+Shift+R مرة واحدة';
+function paintVerNote() { const el = document.getElementById('ver-note'); if (el) el.textContent = T`نسخة صفحة العرض ${toArabicDigits(CONFIG.version)} — إن لم تظهر الميزات الجديدة اضغط Ctrl+Shift+R مرة واحدة`; }
+paintVerNote();
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -21,7 +23,7 @@ function fmtDate(s, short = false) {
   if (!m) return ar(String(s || ''));
   const key = short ? 's' : 'l';
   try {
-    dateFmts[key] ||= new Intl.DateTimeFormat('ar-KW-u-nu-arab', short ? { day: 'numeric', month: 'short' } : { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    dateFmts[key] ||= new Intl.DateTimeFormat(curLang() === 'en' ? 'en-GB' : 'ar-KW-u-nu-arab', short ? { day: 'numeric', month: 'short' } : { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     return dateFmts[key].format(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
   } catch { return ar(s); }
 }
@@ -91,12 +93,12 @@ function toast(msg) {
 const btnHtml = (icon, label) => `${icon}<span>${esc(label)}</span>`;
 
 function criteriaLabels() {
-  const c = hello && Array.isArray(hello.criteria) && hello.criteria.length === CONFIG.criteria.length ? hello.criteria : CONFIG.criteria.map((x) => x.label);
+  const c = hello && Array.isArray(hello.criteria) && hello.criteria.length === CONFIG.criteria.length ? hello.criteria : CONFIG.criteria.map((x) => trCrit(x.label));
   return c.map((s) => String(s || ''));
 }
 function finalsMeta() {
   const f = hello && Array.isArray(hello.finals) && hello.finals.length === FIN_MAX.length ? hello.finals : CONFIG.finals;
-  return f.map((x, i) => ({ label: String(x?.label || CONFIG.finals[i].label), max: Number(x?.max) || FIN_MAX[i] }));
+  return f.map((x, i) => ({ label: String(x?.label || trCrit(CONFIG.finals[i].label)), max: Number(x?.max) || FIN_MAX[i] }));
 }
 
 // ---------- المظهر وملء الشاشة والتكبير ----------
@@ -106,8 +108,8 @@ function applyTheme() {
   if (ui.theme) document.documentElement.dataset.theme = ui.theme;
   else delete document.documentElement.dataset.theme;
   const dark = effectiveTheme() === 'dark';
-  $('btn-theme').innerHTML = btnHtml(dark ? I.sun : I.moon, dark ? 'فاتح' : 'داكن');
-  $('btn-theme').setAttribute('aria-label', dark ? 'التبديل إلى المظهر الفاتح' : 'التبديل إلى المظهر الداكن');
+  $('btn-theme').innerHTML = btnHtml(dark ? I.sun : I.moon, dark ? tr('فاتح') : tr('داكن'));
+  $('btn-theme').setAttribute('aria-label', dark ? tr('التبديل إلى المظهر الفاتح') : tr('التبديل إلى المظهر الداكن'));
   if (offerCode) drawFrame();
 }
 mqDark.addEventListener?.('change', applyTheme);
@@ -115,8 +117,8 @@ mqDark.addEventListener?.('change', applyTheme);
 function isFull() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
 function updateFullBtn() {
   const f = isFull();
-  $('btn-full').innerHTML = btnHtml(f ? I.exitFull : I.full, f ? 'خروج من ملء الشاشة' : 'ملء الشاشة');
-  $('btn-full').setAttribute('aria-label', f ? 'خروج من ملء الشاشة' : 'ملء الشاشة');
+  $('btn-full').innerHTML = btnHtml(f ? I.exitFull : I.full, f ? tr('خروج من ملء الشاشة') : tr('ملء الشاشة'));
+  $('btn-full').setAttribute('aria-label', f ? tr('خروج من ملء الشاشة') : tr('ملء الشاشة'));
 }
 async function toggleFull() {
   try {
@@ -125,7 +127,7 @@ async function toggleFull() {
       const el = document.documentElement;
       await (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
     }
-  } catch { toast('تعذر تفعيل ملء الشاشة في هذا المتصفح.'); }
+  } catch { toast(tr('تعذر تفعيل ملء الشاشة في هذا المتصفح.')); }
 }
 document.addEventListener('fullscreenchange', updateFullBtn);
 document.addEventListener('webkitfullscreenchange', updateFullBtn);
@@ -151,7 +153,7 @@ function onRelay(s) {
   if (ui.screen !== 'pair' || !offerCode) return;
   const t = RELAY_TEXT[s];
   if (!t) return;
-  setPairStatus(t[0], t[1]);
+  setPairStatus(tr(t[0]), t[1]);
   if (s === 'unreachable') { // أظهر خيار اللصق اليدوي
     $('help').open = true;
     try { document.querySelector('.manual').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch { /* */ }
@@ -166,7 +168,7 @@ function drawFrame() {
   const f = $('qr-frame');
   if (frames.length > 1) {
     f.hidden = false;
-    f.textContent = `الجزء ${ar(frameIdx + 1)} من ${ar(frames.length)}`;
+    f.textContent = T`الجزء ${ar(frameIdx + 1)} من ${ar(frames.length)}`;
   } else f.hidden = true;
 }
 
@@ -184,7 +186,7 @@ function showOffer(code) {
   if (link && link.room) onRelay(link.relayState === 'off' ? 'waiting' : link.relayState);
   else {
     // متصفح لا يدعم التشفير/الوسيط: اللصق اليدوي فقط
-    setPairStatus('امسح الرمز بالجوال، ثم الصق رمز الرد يدويًا', 'wait');
+    setPairStatus(tr('امسح الرمز بالجوال، ثم الصق رمز الرد يدويًا'), 'wait');
     $('help').open = true;
   }
 }
@@ -220,7 +222,7 @@ async function newOffer() {
   offerCode = ''; frames = [];
   $('qr-loading').hidden = false;
   $('qr-box').classList.add('loading');
-  setPairStatus('جارٍ تجهيز رمز جديد…');
+  setPairStatus(tr('جارٍ تجهيز رمز جديد…'));
   if (link) link.stop();
   link = makeLink();
   if (E2E) window.__e2e.link = link;
@@ -231,14 +233,14 @@ async function newOffer() {
   } catch (e) {
     if (seq !== offerSeq) return;
     $('qr-loading').hidden = true;
-    setPairStatus(e && e.message ? e.message : 'تعذر تجهيز رمز الاتصال.', 'error');
+    setPairStatus(e && e.message ? tr(e.message) : tr('تعذر تجهيز رمز الاتصال.'), 'error');
   }
 }
 
 async function acceptAnswer(code) {
   if (!link) throw new Error('أنشئ رمزًا جديدًا أولًا.');
   await link.acceptAnswer(code);
-  setPairStatus('جارٍ الاتصال بالجوال…', 'busy');
+  setPairStatus(tr('جارٍ الاتصال بالجوال…'), 'busy');
 }
 
 // ---------- حالة الاتصال ----------
@@ -247,7 +249,7 @@ function renderPill() {
   const p = $('conn-pill');
   const s = ui.connState === 'closed' ? 'disconnected' : ui.connState;
   p.dataset.state = s;
-  $('conn-text').textContent = CONN_TEXT[ui.connState] || '';
+  $('conn-text').textContent = tr(CONN_TEXT[ui.connState] || '');
   p.hidden = ui.screen === 'pair' && ui.connState !== 'connecting';
 }
 
@@ -271,7 +273,7 @@ function onConnState(s) {
     if (ui.screen !== 'pair' || model) {
       showBanner(ui.ended);
     } else if (s === 'disconnected') {
-      setPairStatus('تعذر الاتصال. راجع «مشاكل الاتصال؟» ثم أنشئ رمزًا جديدًا.', 'error');
+      setPairStatus(tr('تعذر الاتصال. راجع «مشاكل الاتصال؟» ثم أنشئ رمزًا جديدًا.'), 'error');
     }
     wakeLock(false);
   }
@@ -279,10 +281,10 @@ function onConnState(s) {
 }
 
 function showBanner(ended) {
-  $('banner-title').textContent = ended ? 'أنهى المعلم المشاركة' : 'انقطع الاتصال بالجوال';
+  $('banner-title').textContent = ended ? tr('أنهى المعلم المشاركة') : tr('انقطع الاتصال بالجوال');
   $('banner-sub').textContent = ended
-    ? 'تم مسح البيانات من هذه الشاشة. اضغط «إعادة الاتصال» لعرض صف آخر.'
-    : 'تأكد أن الجوال قريب وأن العرض ما زال مفتوحًا فيه، ثم أعد الاتصال.';
+    ? tr('تم مسح البيانات من هذه الشاشة. اضغط «إعادة الاتصال» لعرض صف آخر.')
+    : tr('تأكد أن الجوال قريب وأن العرض ما زال مفتوحًا فيه، ثم أعد الاتصال.');
   $('conn-banner').hidden = false;
   document.body.classList.add('has-banner');
 }
@@ -295,6 +297,20 @@ function hideBanner() {
 let mirror = null;      // {classes, grades, settings}
 let manageFrame = null; // إطار التطبيق الكامل (index.html?remote)
 let presenting = false;
+
+// تغيير لغة شاشة العرض (في الذاكرة فقط)
+function switchViewLang(l) {
+  setLang(l);
+  for (const k of Object.keys(dateFmts)) delete dateFmts[k];
+  translateStatic(document.body);
+  paintVerNote();
+  const b = $('btn-lang'); if (b) b.textContent = l === 'en' ? 'العربية' : 'English';
+  renderPill();
+  if (ui.screen === 'pair' && offerCode && link && link.relayState) onRelay(link.relayState);
+  if (hello) renderHeader();
+  if (model) render();
+  if (manageFrame && manageFrame.contentWindow) { /* الإطار يُفتح بلغة الجوال عند استلام البيانات */ }
+}
 
 function wipe() {
   model = null; hello = null;
@@ -394,6 +410,7 @@ function onMessage(m) {
       break;
     }
     case 'hello': {
+      if ((m.lang === 'en' || m.lang === 'ar') && m.lang !== curLang()) switchViewLang(m.lang);
       ui.mode = m.mode === 'manage' ? 'manage' : 'display';
       ui.allowEdit = m.allowEdit === true;
       ui.showIssues = m.showIssues === true;
@@ -487,7 +504,7 @@ function applyPatch(m) {
 // ---------- العرض ----------
 function renderHeader() {
   if (!hello) { $('class-info').hidden = true; return; }
-  $('class-label').textContent = hello.classLabel ? `الصف ${hello.classLabel}` : 'الصف';
+  $('class-label').textContent = hello.classLabel ? T`الصف ${hello.classLabel}` : tr('الصف');
   $('class-meta').textContent = [hello.teacher, hello.subject].filter(Boolean).join(' · ');
   $('class-info').hidden = ui.screen === 'pair';
 }
@@ -537,25 +554,25 @@ function renderGrid() {
   const fins = finalsMeta();
   let head = '';
   let body = '';
-  const numTh = `<th class="col-num sticky-a" scope="col">${sortHeader('num', 'م')}</th>`;
-  const nameTh = `<th class="col-name sticky-b" scope="col">${sortHeader('name', 'الاسم')}</th>`;
+  const numTh = `<th class="col-num sticky-a" scope="col">${sortHeader('num', tr('م'))}</th>`;
+  const nameTh = `<th class="col-name sticky-b" scope="col">${sortHeader('name', tr('الاسم'))}</th>`;
   const stars = (i) => {
-    if (ui.view === 'week') return (issueAt(d, ui.week, i) ? '<span class="issue-badge" title="تنبيه">!</span>' : '') + (starAt(d, ui.week, i) ? '<span class="star-badge" title="نجمة تميّز">${I.star}</span>' : '');
+    if (ui.view === 'week') return (issueAt(d, ui.week, i) ? tr('<span class="issue-badge" title="تنبيه">!</span>') : '') + (starAt(d, ui.week, i) ? tr('<span class="star-badge" title="نجمة تميّز">${I.star}</span>') : '');
     let n = 0; for (let w = 1; w <= WEEKS; w++) if (starAt(d, w, i)) n++;
     let k = 0; for (let w = 1; w <= WEEKS; w++) if (issueAt(d, w, i)) k++;
-    return (k ? '<span class="issue-badge" title="تنبيه">!</span>' : '') + (n ? `<span class="star-badge" title="نجوم التميّز">${I.star}${n > 1 ? `<small>${ar(n)}</small>` : ''}</span>` : '');
+    return (k ? tr('<span class="issue-badge" title="تنبيه">!</span>') : '') + (n ? T`<span class="star-badge" title="نجوم التميّز">${I.star}${n > 1 ? `<small>${ar(n)}</small>` : ''}</span>` : '');
   };
   const nameCell = (i) => `<td class="col-num sticky-a">${ar(i + 1)}</td><th class="col-name sticky-b" scope="row"><span class="name">${esc(model.names[i]) || '<span class="muted">—</span>'}</span>${stars(i)}</th>`;
 
   if (ui.view === 'summary') {
     let wk = '';
-    for (let w = 1; w <= WEEKS; w++) wk += `<th scope="col" class="c-week">${headSub('أسبوع', ar(w))}</th>`;
+    for (let w = 1; w <= WEEKS; w++) wk += `<th scope="col" class="c-week">${headSub(tr('أسبوع'), ar(w))}</th>`;
     head = `<tr>${numTh}${nameTh}${wk}
-      <th scope="col" class="c-sep">${headSub('الفترة ١', '/' + ar(WEEK_MAX))}</th>
-      <th scope="col">${headSub('الفترة ٢', '/' + ar(WEEK_MAX))}</th>
-      <th scope="col" class="c-strong">${headSub('البنائي', '/' + ar(FORM_MAX))}</th>
+      <th scope="col" class="c-sep">${headSub(tr('الفترة ١'), '/' + ar(WEEK_MAX))}</th>
+      <th scope="col">${headSub(tr('الفترة ٢'), '/' + ar(WEEK_MAX))}</th>
+      <th scope="col" class="c-strong">${headSub(tr('البنائي'), '/' + ar(FORM_MAX))}</th>
       ${fins.map((f, k) => `<th scope="col"${k === 0 ? ' class="c-sep"' : ''}>${headSub(esc(shortFinal(f.label)), '/' + ar(f.max))}</th>`).join('')}
-      <th scope="col" class="c-total">${sortHeader('total', headSub('المجموع', '/' + ar(TOTAL_MAX)))}</th></tr>`;
+      <th scope="col" class="c-total">${sortHeader('total', headSub(tr('المجموع'), '/' + ar(TOTAL_MAX)))}</th></tr>`;
     for (const i of order) {
       const s = studentSummary(d, i);
       body += `<tr data-idx="${i}">${nameCell(i)}${s.weeks.map((v, w) => (absentAt(d, w + 1, i) ? absCell('w' + (w + 1)) : cell(v, WEEK_MAX, '" data-k="w' + (w + 1)))).join('')}
@@ -565,33 +582,33 @@ function renderGrid() {
     }
   } else if (ui.view === 'week') {
     const w = ui.week;
-    const selAll = ui.editing && canEdit() ? `<th scope="col" class="c-sel"><input type="checkbox" data-sel-all ${n && ui.sel.size === n ? 'checked' : ''} aria-label="تحديد الكل"></th>` : '';
+    const selAll = ui.editing && canEdit() ? T`<th scope="col" class="c-sel"><input type="checkbox" data-sel-all ${n && ui.sel.size === n ? 'checked' : ''} aria-label="تحديد الكل"></th>` : '';
     head = `<tr>${selAll}${numTh}${nameTh}${crit.map((c) => `<th scope="col" class="c-crit">${headSub(esc(c), '/' + ar(CONFIG.itemMax))}</th>`).join('')}
-      <th scope="col" class="c-total">${sortHeader('total', headSub('المجموع', '/' + ar(WEEK_MAX)))}</th>${ui.editing && canEdit() ? '<th scope="col" class="c-tools">رصد</th>' : ''}</tr>`;
+      <th scope="col" class="c-total">${sortHeader('total', headSub(tr('المجموع'), '/' + ar(WEEK_MAX)))}</th>${ui.editing && canEdit() ? tr('<th scope="col" class="c-tools">رصد</th>') : ''}</tr>`;
     for (const i of order) {
       const items = getItems(d, w, i);
       const t = weekTotal(d, w, i);
       const ed = ui.editing && canEdit();
-      const selTd = ed ? `<td class="c-sel"><input type="checkbox" data-sel="${i}" ${ui.sel.has(i) ? 'checked' : ''} aria-label="تحديد ${esc(model.names[i] || '')}"></td>` : '';
-      const tools = ed ? `<td class="c-tools"><button type="button" class="ed-btn" data-ed="full">كامل</button><button type="button" class="ed-btn ${absentAt(d, w, i) ? 'on abs' : ''}" data-ed="absent">${absentAt(d, w, i) ? 'غائب ✓' : 'غياب'}</button><button type="button" class="ed-btn star ${starAt(d, w, i) ? 'on' : ''}" data-ed="star" aria-label="نجمة">${I.star}</button><button type="button" class="ed-btn note ${issueAt(d, w, i) ? 'issue' : ''}" data-ed="note" aria-label="ملاحظة أو تنبيه">${issueAt(d, w, i) ? '<b>!</b>' : I.note}</button></td>` : '';
+      const selTd = ed ? T`<td class="c-sel"><input type="checkbox" data-sel="${i}" ${ui.sel.has(i) ? 'checked' : ''} aria-label="تحديد ${esc(model.names[i] || '')}"></td>` : '';
+      const tools = ed ? T`<td class="c-tools"><button type="button" class="ed-btn" data-ed="full">كامل</button><button type="button" class="ed-btn ${absentAt(d, w, i) ? 'on abs' : ''}" data-ed="absent">${absentAt(d, w, i) ? tr('غائب ✓') : tr('غياب')}</button><button type="button" class="ed-btn star ${starAt(d, w, i) ? 'on' : ''}" data-ed="star" aria-label="نجمة">${I.star}</button><button type="button" class="ed-btn note ${issueAt(d, w, i) ? 'issue' : ''}" data-ed="note" aria-label="ملاحظة أو تنبيه">${issueAt(d, w, i) ? '<b>!</b>' : I.note}</button></td>` : '';
       body += absentAt(d, w, i)
-        ? `<tr data-idx="${i}" class="row-absent ${ui.sel.has(i) ? 'row-sel' : ''}">${selTd}${nameCell(i)}<td class="c-absent" colspan="${items.length}" data-k="ab">غائب</td>${totalCell(t, 'wt', WEEK_MAX)}${tools}</tr>`
+        ? T`<tr data-idx="${i}" class="row-absent ${ui.sel.has(i) ? 'row-sel' : ''}">${selTd}${nameCell(i)}<td class="c-absent" colspan="${items.length}" data-k="ab">غائب</td>${totalCell(t, 'wt', WEEK_MAX)}${tools}</tr>`
         : `<tr data-idx="${i}" class="${ui.sel.has(i) ? 'row-sel' : ''}">${selTd}${nameCell(i)}${items.map((v, k) => cell(v, CONFIG.itemMax, ' c-crit' + (ed ? ' editable' : '') + '" data-k="i' + k)).join('')}${totalCell(t, 'wt', WEEK_MAX)}${tools}</tr>`;
     }
   } else {
     head = `<tr>${numTh}${nameTh}
-      <th scope="col">${headSub('الفترة ١', '/' + ar(WEEK_MAX))}</th>
-      <th scope="col">${headSub('الفترة ٢', '/' + ar(WEEK_MAX))}</th>
-      <th scope="col" class="c-strong">${headSub('التقويم البنائي', '/' + ar(FORM_MAX))}</th>
+      <th scope="col">${headSub(tr('الفترة ١'), '/' + ar(WEEK_MAX))}</th>
+      <th scope="col">${headSub(tr('الفترة ٢'), '/' + ar(WEEK_MAX))}</th>
+      <th scope="col" class="c-strong">${headSub(tr('التقويم البنائي'), '/' + ar(FORM_MAX))}</th>
       ${fins.map((f, k) => `<th scope="col"${k === 0 ? ' class="c-sep"' : ''}>${headSub(esc(f.label), '/' + ar(f.max))}</th>`).join('')}
-      <th scope="col" class="c-total">${sortHeader('total', headSub('المجموع النهائي', '/' + ar(TOTAL_MAX)))}</th></tr>`;
+      <th scope="col" class="c-total">${sortHeader('total', headSub(tr('المجموع النهائي'), '/' + ar(TOTAL_MAX)))}</th></tr>`;
     for (const i of order) {
       const fin = getFin(d, i);
       body += `<tr data-idx="${i}">${nameCell(i)}${cell(periodScore(d, i, 1), WEEK_MAX, '" data-k="p1')}${cell(periodScore(d, i, 2), WEEK_MAX, '" data-k="p2')}
         ${cell(formative(d, i), FORM_MAX, ' c-strong" data-k="fo')}${fin.map((v, k) => cell(v, FIN_MAX[k], (k === 0 ? ' c-sep' : '') + (ui.editing && canEdit() ? ' editable' : '') + '" data-k="f' + k)).join('')}${totalCell(finalTotal(d, i), 'tt')}</tr>`;
     }
   }
-  if (!n) body = `<tr><td class="empty-row" colspan="30">لا يوجد طلاب في هذا الصف بعد.</td></tr>`;
+  if (!n) body = T`<tr><td class="empty-row" colspan="30">لا يوجد طلاب في هذا الصف بعد.</td></tr>`;
   return `<table class="grid view-${ui.view}" aria-rowcount="${n}"><thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
 
@@ -620,7 +637,7 @@ function updatePending() {
   const el = $('pending-ind');
   if (!el) return;
   el.hidden = !pending.size;
-  el.textContent = pending.size ? `⏳ ${ar(pending.size)} ${pending.size === 1 ? 'تعديل' : 'تعديلات'} بانتظار الجوال` : '';
+  el.textContent = pending.size ? T`⏳ ${ar(pending.size)} ${pending.size === 1 ? tr('تعديل') : tr('تعديلات')} بانتظار الجوال` : '';
 }
 setInterval(() => { if (pending.size && ui.connState === 'connected') resendPending(); }, 4000);
 
@@ -636,15 +653,15 @@ function openPop(td, i) {
   popEl = document.createElement('div');
   popEl.className = 'edit-pop';
   popEl.setAttribute('role', 'dialog');
-  const name = model.names[i] || `طالب ${ar(i + 1)}`;
+  const name = model.names[i] || T`طالب ${ar(i + 1)}`;
   if (isFin) {
-    popEl.innerHTML = `<div class="pop-head"><b>${esc(label)}</b><span class="muted">${esc(name)} — من ${ar(max)}</span></div>
+    popEl.innerHTML = T`<div class="pop-head"><b>${esc(label)}</b><span class="muted">${esc(name)} — من ${ar(max)}</span></div>
       <input class="pop-input" type="text" inputmode="decimal" autocomplete="off" aria-label="${esc(label)}">
       <span class="pop-err" hidden></span>
       <div class="pop-actions"><button type="button" class="btn primary" data-pv="save">حفظ</button><button type="button" class="btn" data-pv="clear">مسح</button><button type="button" class="btn ghost" data-pv="close">إلغاء</button></div>`;
   } else {
     const vals = []; for (let x = max * 2; x >= 0; x--) vals.push(x / 2);
-    popEl.innerHTML = `<div class="pop-head"><b>${esc(label)}</b><span class="muted">${esc(name)} — الأسبوع ${ar(ui.week)}</span></div>
+    popEl.innerHTML = T`<div class="pop-head"><b>${esc(label)}</b><span class="muted">${esc(name)} — الأسبوع ${ar(ui.week)}</span></div>
       <div class="pop-grid">${vals.map((v) => `<button type="button" class="pv${Number.isInteger(v) ? ' int' : ''}" data-pv="${v}">${ar(v)}</button>`).join('')}</div>
       <div class="pop-actions"><button type="button" class="btn" data-pv="clear">مسح</button><button type="button" class="btn ghost" data-pv="close">إلغاء</button></div>`;
   }
@@ -658,8 +675,8 @@ function openPop(td, i) {
   const submit = (raw) => {
     let value = null;
     if (raw != null) {
-      const n = Number(String(raw).replace(/[٠-٩]/g, (c) => '٠١٢٣٤٥٦٧٨٩'.indexOf(c)).replace(/[،٫,]/g, '.'));
-      if (!Number.isFinite(n) || n < 0 || n > max) { const e = popEl.querySelector('.pop-err'); if (e) { e.hidden = false; e.textContent = n > max ? `أكبر من ${ar(max)}` : 'ليست رقمًا'; } return; }
+      const n = Number(String(raw).replace(/[٠-٩]/g, (c) => tr('٠١٢٣٤٥٦٧٨٩').indexOf(c)).replace(/[،٫,]/g, '.'));
+      if (!Number.isFinite(n) || n < 0 || n > max) { const e = popEl.querySelector('.pop-err'); if (e) { e.hidden = false; e.textContent = n > max ? T`أكبر من ${ar(max)}` : tr('ليست رقمًا'); } return; }
       value = n;
     }
     if (isFin) sendEdit({ kind: 'fin', idx: i, k: idx, value });
@@ -689,7 +706,7 @@ function runBulk(kind, anchor) {
   else if (kind === 'star') { const allOn = idxs.every((i) => starAt(d, w, i)); idxs.forEach((i) => sendEdit({ kind: 'star', week: w, idx: i, on: !allOn })); }
   else if (kind === 'note') { openNotePop(anchor, idxs); return; }
   else if (kind === 'item') { openBulkItemPop(anchor, idxs); return; }
-  toast(`طُبّق على ${ar(idxs.length)} طالب`);
+  toast(T`طُبّق على ${ar(idxs.length)} طالب`);
 }
 // درجة بند واحد لكل المحددين (مثلًا سلوك ٤)
 function openBulkItemPop(anchor, idxs) {
@@ -701,7 +718,7 @@ function openBulkItemPop(anchor, idxs) {
   popEl.setAttribute('role', 'dialog');
   const vals = []; for (let x = CONFIG.itemMax * 2; x >= 0; x--) vals.push(x / 2);
   const paint = () => {
-    popEl.innerHTML = `<div class="pop-head"><b>درجة بند لـ ${ar(idxs.length)} طالب</b><span class="muted">الأسبوع ${ar(ui.week)}</span></div>
+    popEl.innerHTML = T`<div class="pop-head"><b>درجة بند لـ ${ar(idxs.length)} طالب</b><span class="muted">الأسبوع ${ar(ui.week)}</span></div>
       <div class="pop-tabs">${crit.map((c, j) => `<button type="button" class="ed-btn ${j === k ? 'on' : ''}" data-pk="${j}">${esc(c)}</button>`).join('')}</div>
       <div class="pop-grid">${vals.map((v) => `<button type="button" class="pv${Number.isInteger(v) ? ' int' : ''}" data-pv="${v}">${ar(v)}</button>`).join('')}</div>
       <div class="pop-actions"><button type="button" class="btn ghost" data-pv="close">إلغاء</button></div>`;
@@ -720,7 +737,7 @@ function openBulkItemPop(anchor, idxs) {
     const value = Number(b.dataset.pv);
     idxs.forEach((i) => { if (!absentAt(model.data, ui.week, i)) sendEdit({ kind: 'item', week: ui.week, idx: i, k, value }); });
     closePop();
-    toast(`${crit[k]} ${ar(value)} لـ ${ar(idxs.length)} طالب`);
+    toast(T`${crit[k]} ${ar(value)} لـ ${ar(idxs.length)} طالب`);
   });
 }
 
@@ -729,11 +746,11 @@ function openNotePop(anchor, i) {
   const w = ui.week;
   const list = Array.isArray(i) ? i : [i];
   const has = list.length === 1 && issueAt(model.data, w, list[0]);
-  const name = list.length === 1 ? (model.names[list[0]] || `طالب ${ar(list[0] + 1)}`) : `${ar(list.length)} طلاب`;
+  const name = list.length === 1 ? (model.names[list[0]] || T`طالب ${ar(list[0] + 1)}`) : T`${ar(list.length)} طلاب`;
   popEl = document.createElement('div');
   popEl.className = 'edit-pop';
   popEl.setAttribute('role', 'dialog');
-  popEl.innerHTML = `<div class="pop-head"><b>ملاحظة على ${esc(name)}</b><span class="muted">تُحفظ في جوال المعلم — لا تظهر على هذه الشاشة</span></div>
+  popEl.innerHTML = T`<div class="pop-head"><b>ملاحظة على ${esc(name)}</b><span class="muted">تُحفظ في جوال المعلم — لا تظهر على هذه الشاشة</span></div>
     <textarea class="pop-text" maxlength="500" rows="3" placeholder="اكتب الملاحظة…"></textarea>
     <label class="pop-check"><input type="checkbox" class="pop-issue" ${has ? 'checked' : ''}> تنبيه في الأسبوع ${ar(w)}</label>
     <div class="pop-actions"><button type="button" class="btn primary" data-pv="save">حفظ</button><button type="button" class="btn ghost" data-pv="close">إلغاء</button></div>`;
@@ -753,7 +770,7 @@ function openNotePop(anchor, i) {
       if (has && !issue) sendEdit({ kind: 'issue-off', week: w, idx: j });
     }
     closePop();
-    toast(issue && !ui.showIssues ? `حُفظ التنبيه في الجوال — علامة التنبيه مخفية عن الشاشة (فعّلها من ${presenting ? 'زر «التنبيهات» أعلاه' : 'الجوال: «علامات التنبيه»'})` : 'حُفظت الملاحظة في الجوال ✓');
+    toast(issue && !ui.showIssues ? T`حُفظ التنبيه في الجوال — علامة التنبيه مخفية عن الشاشة (فعّلها من ${presenting ? tr('زر «التنبيهات» أعلاه') : tr('الجوال: «علامات التنبيه»')})` : tr('حُفظت الملاحظة في الجوال ✓'));
   });
 }
 document.addEventListener('mousedown', (e) => { if (popEl && !popEl.contains(e.target) && !e.target.closest('td.editable') && !e.target.closest('[data-ed="note"]')) closePop(); });
@@ -784,8 +801,8 @@ async function autoResume() {
 function openManage() {
   if (!manageFrame) {
     manageFrame = document.createElement('iframe');
-    manageFrame.src = 'index.html?remote=1';
-    manageFrame.title = 'إدارة التطبيق';
+    manageFrame.src = 'index.html?remote=1&lang=' + curLang();
+    manageFrame.title = tr('إدارة التطبيق');
     manageFrame.className = 'manage-frame';
     $('screen-manage').innerHTML = '';
     $('screen-manage').appendChild(manageFrame);
@@ -837,7 +854,7 @@ function backToManage() {
 }
 
 function absentAt(d, w, i) { return !!(d.weeks[String(w)] && d.weeks[String(w)].abs && d.weeks[String(w)].abs[i]); }
-function absCell(k) { return `<td class="num c-absent" data-k="${k}" title="غائب">غ</td>`; }
+function absCell(k) { return T`<td class="num c-absent" data-k="${k}" title="غائب">غ</td>`; }
 
 function totalCell(v, k, max = TOTAL_MAX) {
   const cls = v == null ? 'missing' : v >= max ? 'complete full' : 'complete';
@@ -860,7 +877,7 @@ function stats() {
 function renderSidebar() {
   const s = stats();
   const pct = Math.round(s.ratio * 100);
-  $('stats').innerHTML = `
+  $('stats').innerHTML = T`
     <div class="stat"><span class="stat-icon">${I.users}</span><span class="stat-label">عدد الطلاب</span><strong class="stat-val" data-stat="n">${ar(s.n)}</strong></div>
     <div class="stat"><span class="stat-icon">${I.pie}</span><span class="stat-label">نسبة الاكتمال</span><strong class="stat-val" data-stat="ratio">${ar(pct)}٪</strong>
       <span class="meter" aria-hidden="true"><span style="inline-size:${pct}%"></span></span></div>
@@ -873,9 +890,9 @@ function renderSidebar() {
     const rem = weekRemaining(d, w, s.n);
     const state = s.n && rem === 0 ? 'done' : rem < s.n ? 'part' : 'none';
     const active = ui.view === 'week' && ui.week === w;
-    weeks += `<button type="button" class="wk ${state}${active ? ' active' : ''}" data-week="${w}" aria-pressed="${active}" title="${state === 'done' ? 'مكتمل' : state === 'part' ? `متبقٍ ${ar(rem)}` : 'لم يُرصد'}">${ar(w)}</button>`;
+    weeks += `<button type="button" class="wk ${state}${active ? ' active' : ''}" data-week="${w}" aria-pressed="${active}" title="${state === 'done' ? tr('مكتمل') : state === 'part' ? T`متبقٍ ${ar(rem)}` : tr('لم يُرصد')}">${ar(w)}</button>`;
   }
-  $('views').innerHTML = `
+  $('views').innerHTML = T`
     <span class="nav-title">طريقة العرض</span>
     <button type="button" class="nav-item${ui.view === 'summary' ? ' active' : ''}" data-view="summary" aria-pressed="${ui.view === 'summary'}">${I.table}<span>الملخص</span></button>
     <div class="nav-item static${ui.view === 'week' ? ' active' : ''}">${I.calendar}<span>أسبوع</span>
@@ -889,15 +906,15 @@ function renderSidebar() {
 
 function renderToolbar() {
   let title = '', sub = '';
-  if (ui.view === 'summary') { title = 'ملخص الدرجات'; sub = `مجموع كل أسبوع من ${ar(WEEK_MAX)} · الفترات · التقويم البنائي · الدرجات النهائية`; }
+  if (ui.view === 'summary') { title = tr('ملخص الدرجات'); sub = T`مجموع كل أسبوع من ${ar(WEEK_MAX)} · الفترات · التقويم البنائي · الدرجات النهائية`; }
   else if (ui.view === 'week') {
     const meta = getWeekMeta(model.data, ui.week);
-    title = `الأسبوع ${ar(ui.week)}`;
-    sub = [meta.date ? `<span class="tb-chip">${I.calendar}<span data-meta="date">${esc(fmtDate(meta.date))}</span></span>` : '', meta.lesson ? `<span class="tb-lesson" data-meta="lesson">${esc(meta.lesson)}</span>` : ''].filter(Boolean).join('') || '<span class="muted">لم يُحدَّد التاريخ أو الدرس بعد</span>';
-  } else { title = 'الدرجات النهائية'; sub = `التقويم البنائي من ${ar(FORM_MAX)} + المشاريع والاختبار العملي = ${ar(TOTAL_MAX)}`; }
-  const sorts = [['num', 'الترتيب'], ['name', 'الاسم'], ['total', 'المجموع']];
+    title = T`الأسبوع ${ar(ui.week)}`;
+    sub = [meta.date ? `<span class="tb-chip">${I.calendar}<span data-meta="date">${esc(fmtDate(meta.date))}</span></span>` : '', meta.lesson ? `<span class="tb-lesson" data-meta="lesson">${esc(meta.lesson)}</span>` : ''].filter(Boolean).join('') || tr('<span class="muted">لم يُحدَّد التاريخ أو الدرس بعد</span>');
+  } else { title = tr('الدرجات النهائية'); sub = T`التقويم البنائي من ${ar(FORM_MAX)} + المشاريع والاختبار العملي = ${ar(TOTAL_MAX)}`; }
+  const sorts = [['num', tr('الترتيب')], ['name', tr('الاسم')], ['total', tr('المجموع')]];
   const editBtn = canEdit() ? `<button type="button" class="btn ${ui.editing ? 'primary' : ''} edit-toggle" data-edit-toggle aria-pressed="${ui.editing}">${ui.editing ? I.check + ' إنهاء الرصد' : I.edit + ' وضع الرصد'}</button>` : '';
-  const bulk = ui.editing && canEdit() && ui.view === 'week' && ui.sel.size ? `<div class="bulk-bar" role="toolbar" aria-label="إجراءات للمحددين">
+  const bulk = ui.editing && canEdit() && ui.view === 'week' && ui.sel.size ? T`<div class="bulk-bar" role="toolbar" aria-label="إجراءات للمحددين">
       <strong>${ar(ui.sel.size)} محدد</strong>
       <button type="button" class="ed-btn" data-bulk="full">كامل</button>
       <button type="button" class="ed-btn" data-bulk="absent">غياب</button>
@@ -909,8 +926,8 @@ function renderToolbar() {
     </div>` : '';
   const po = ui.popts || {};
   const optBtn = (key, on, txt) => `<button type="button" class="ed-btn opt-btn ${on ? 'on' : ''}" data-popt="${key}" aria-pressed="${on}">${txt}</button>`;
-  const opts = presenting ? `<div class="present-opts" role="group" aria-label="ما يظهر للطلاب">${optBtn('liveShowStars', po.stars, I.star + ' النجوم')}${optBtn('liveShowIssues', po.issues, '<b class="ex">!</b> التنبيهات')}${optBtn('hide', po.hide, 'إخفاء الأسماء')}</div>` : '';
-  $('toolbar').innerHTML = `
+  const opts = presenting ? T`<div class="present-opts" role="group" aria-label="ما يظهر للطلاب">${optBtn('liveShowStars', po.stars, I.star + ' النجوم')}${optBtn('liveShowIssues', po.issues, tr('<b class="ex">!</b> التنبيهات'))}${optBtn('hide', po.hide, tr('إخفاء الأسماء'))}</div>` : '';
+  $('toolbar').innerHTML = T`
     <div class="tb-title"><h1>${title}</h1><div class="tb-sub">${sub}</div></div>
     <span class="pending-ind" id="pending-ind" hidden></span>${opts}${editBtn}${bulk}
     <div class="seg" role="group" aria-label="ترتيب الصفوف"><span class="seg-label">ترتيب حسب</span>${sorts.map(([k, l]) => `<button type="button" data-sort="${k}" class="${ui.sort.key === k ? 'active' : ''}" aria-pressed="${ui.sort.key === k}">${l}</button>`).join('')}</div>`;
@@ -956,14 +973,14 @@ function renderEmptyWaiting() {
   $('views').innerHTML = '';
   $('toolbar').innerHTML = '';
   $('grid-wrap').innerHTML = ui.ended ? '' : ui.waitError
-    ? `<div class="waiting error"><strong>${ui.waitError === 'render' ? 'تعذّر عرض البيانات' : 'لم تصل البيانات من الجوال'}</strong><span>${ui.waitError === 'render' ? 'حدّث صفحة العرض (F5) ثم أعد الاتصال.' : 'تأكد أن شاشة «العرض» مفتوحة في الجوال وأنه على نفس الشبكة، ثم أعد الاتصال.'}</span><button class="btn primary" type="button" id="btn-wait-reconnect">إعادة الاتصال</button></div>`
-    : `<div class="waiting"><span class="spinner" aria-hidden="true"></span><strong>تم الاتصال</strong><span>جارٍ استلام الدرجات من الجوال…</span></div>`;
+    ? T`<div class="waiting error"><strong>${ui.waitError === 'render' ? tr('تعذّر عرض البيانات') : tr('لم تصل البيانات من الجوال')}</strong><span>${ui.waitError === 'render' ? tr('حدّث صفحة العرض (F5) ثم أعد الاتصال.') : tr('تأكد أن شاشة «العرض» مفتوحة في الجوال وأنه على نفس الشبكة، ثم أعد الاتصال.')}</span><button class="btn primary" type="button" id="btn-wait-reconnect">إعادة الاتصال</button></div>`
+    : T`<div class="waiting"><span class="spinner" aria-hidden="true"></span><strong>تم الاتصال</strong><span>جارٍ استلام الدرجات من الجوال…</span></div>`;
   const wr = document.getElementById('btn-wait-reconnect');
   if (wr) wr.addEventListener('click', () => $('btn-reconnect').click());
 }
 
 function renderEnded() {
-  $('grid-wrap').innerHTML = `<div class="waiting ended"><span class="ended-icon">${I.unlink}</span><strong>انتهت المشاركة</strong><span>لا توجد أي بيانات محفوظة على هذا الكمبيوتر.</span></div>`;
+  $('grid-wrap').innerHTML = T`<div class="waiting ended"><span class="ended-icon">${I.unlink}</span><strong>انتهت المشاركة</strong><span>لا توجد أي بيانات محفوظة على هذا الكمبيوتر.</span></div>`;
 }
 
 // ---------- تفاصيل الطالب ----------
@@ -976,21 +993,21 @@ function studentDetail(i, big = false) {
   for (let w = 1; w <= WEEKS; w++) {
     const items = getItems(d, w, i);
     const meta = getWeekMeta(d, w);
-    rows += `<tr><th scope="row"><span class="wk-n">أسبوع ${ar(w)}</span>${meta.date ? `<span class="wk-d">${esc(fmtDate(meta.date, true))}</span>` : ''}</th>
-      ${absentAt(d, w, i) ? `<td class="c-absent" colspan="${items.length}">غائب</td>` : items.map((v, k) => cell(v, CONFIG.itemMax, '" data-k="w' + w + 'i' + k)).join('')}${totalCell(s.weeks[w - 1], 'w' + w + 't', WEEK_MAX)}</tr>`;
+    rows += T`<tr><th scope="row"><span class="wk-n">أسبوع ${ar(w)}</span>${meta.date ? `<span class="wk-d">${esc(fmtDate(meta.date, true))}</span>` : ''}</th>
+      ${absentAt(d, w, i) ? T`<td class="c-absent" colspan="${items.length}">غائب</td>` : items.map((v, k) => cell(v, CONFIG.itemMax, '" data-k="w' + w + 'i' + k)).join('')}${totalCell(s.weeks[w - 1], 'w' + w + 't', WEEK_MAX)}</tr>`;
   }
-  const tile = (label, v, max, k, strong = false) => `<div class="tile${strong ? ' strong' : ''}${v != null && v >= max ? ' full' : ''}" data-k="${k}"><span class="tile-label">${esc(label)}</span><strong>${fmt(v)}</strong><span class="tile-max">من ${ar(max)}</span></div>`;
+  const tile = (label, v, max, k, strong = false) => T`<div class="tile${strong ? ' strong' : ''}${v != null && v >= max ? ' full' : ''}" data-k="${k}"><span class="tile-label">${esc(label)}</span><strong>${fmt(v)}</strong><span class="tile-max">من ${ar(max)}</span></div>`;
   const total = s.total;
-  return `
+  return T`
     <div class="detail ${big ? 'big' : ''}" data-idx="${i}">
       <div class="detail-head">
         <span class="avatar" aria-hidden="true">${ar(i + 1)}</span>
-        <div><h2 id="drawer-title">${esc(model.names[i]) || 'طالب'}</h2>
+        <div><h2 id="drawer-title">${esc(model.names[i]) || tr('طالب')}</h2>
         <span class="muted">${esc(hello?.classLabel ? 'الصف ' + hello.classLabel : '')}${hello?.subject ? ' · ' + esc(hello.subject) : ''}</span></div>
       </div>
       <div class="total-banner ${total == null ? 'pending' : 'done'}" data-k="tt">
         <span>المجموع النهائي</span>
-        <strong>${total == null ? 'لم يكتمل بعد' : `${fmt(total)} <small>من ${ar(TOTAL_MAX)}</small>`}</strong>
+        <strong>${total == null ? tr('لم يكتمل بعد') : T`${fmt(total)} <small>من ${ar(TOTAL_MAX)}</small>`}</strong>
       </div>
       <div class="detail-body">
         <section class="detail-weeks">
@@ -1002,7 +1019,7 @@ function studentDetail(i, big = false) {
         </section>
         <section class="detail-side">
           <h3>التقويم البنائي</h3>
-          <div class="tiles">${tile('الفترة الأولى', s.p1, WEEK_MAX, 'p1')}${tile('الفترة الثانية', s.p2, WEEK_MAX, 'p2')}${tile('التقويم البنائي', s.formative, FORM_MAX, 'fo', true)}</div>
+          <div class="tiles">${tile(tr('الفترة الأولى'), s.p1, WEEK_MAX, 'p1')}${tile(tr('الفترة الثانية'), s.p2, WEEK_MAX, 'p2')}${tile(tr('التقويم البنائي'), s.formative, FORM_MAX, 'fo', true)}</div>
           <h3>الدرجات النهائية</h3>
           <div class="tiles">${fins.map((f, k) => tile(f.label, s.fin[k], f.max, 'f' + k)).join('')}</div>
         </section>
@@ -1015,7 +1032,7 @@ function openDrawer(i, refresh = false) {
   const dr = $('drawer');
   const before = refresh ? snapshotDetail(dr) : null;
   ui.drawerIdx = i;
-  dr.innerHTML = `<button class="btn ghost icon-only drawer-close" type="button" data-close-drawer aria-label="إغلاق">${I.close}</button>${studentDetail(i)}`;
+  dr.innerHTML = T`<button class="btn ghost icon-only drawer-close" type="button" data-close-drawer aria-label="إغلاق">${I.close}</button>${studentDetail(i)}`;
   if (before) flashDetail(dr, before);
   if (dr.hidden) {
     dr.hidden = false;
@@ -1087,17 +1104,17 @@ async function submitPaste() {
     const c = new FrameCollector();
     code = null;
     for (const part of raw.split(/\s+|(?=GF\d+\/\d+:)/)) { const r = c.push(part); if (r) code = r; }
-    if (!code) { errEl.textContent = 'الرمز ناقص: بعض الأجزاء غير موجودة.'; errEl.hidden = false; return; }
+    if (!code) { errEl.textContent = tr('الرمز ناقص: بعض الأجزاء غير موجودة.'); errEl.hidden = false; return; }
   }
   code = (code || '').replace(/\s+/g, '');
-  if (!code) { errEl.textContent = 'الصق رمز الرد أولًا.'; errEl.hidden = false; return; }
+  if (!code) { errEl.textContent = tr('الصق رمز الرد أولًا.'); errEl.hidden = false; return; }
   const btn = $('paste-submit');
   btn.disabled = true;
   try {
     await acceptAnswer(code);
     closeModals();
   } catch (e) {
-    errEl.textContent = e.message || 'رمز غير صالح.';
+    errEl.textContent = tr(e.message) || tr('رمز غير صالح.');
     errEl.hidden = false;
   } finally { btn.disabled = false; }
 }
@@ -1106,7 +1123,7 @@ async function copyOffer() {
   if (!offerCode) return;
   try {
     await navigator.clipboard.writeText(offerCode);
-    toast('تم نسخ رمز العرض. أرسله إلى الجوال والصقه في «لصق رمز العرض».');
+    toast(tr('تم نسخ رمز العرض. أرسله إلى الجوال والصقه في «لصق رمز العرض».'));
   } catch {
     // احتياط: تحديد النص يدويًا
     const ta = document.createElement('textarea');
@@ -1115,7 +1132,7 @@ async function copyOffer() {
     let ok = false;
     try { ok = document.execCommand('copy'); } catch { ok = false; }
     ta.remove();
-    toast(ok ? 'تم نسخ رمز العرض.' : 'تعذر النسخ في هذا المتصفح.');
+    toast(ok ? tr('تم نسخ رمز العرض.') : tr('تعذر النسخ في هذا المتصفح.'));
   }
 }
 
@@ -1127,11 +1144,11 @@ function disconnect() {
 
 // ---------- الأحداث ----------
 function bind() {
-  $('btn-paste').innerHTML = btnHtml(I.paste, 'لصق الرد يدويًا');
-  $('btn-copy').innerHTML = btnHtml(I.copy, 'نسخ رمز العرض');
-  $('btn-new').innerHTML = btnHtml(I.refresh, 'رمز جديد');
-  $('btn-disconnect').innerHTML = btnHtml(I.unlink, 'قطع الاتصال');
-  $('btn-disconnect').setAttribute('aria-label', 'قطع الاتصال');
+  $('btn-paste').innerHTML = btnHtml(I.paste, tr('لصق الرد يدويًا'));
+  $('btn-copy').innerHTML = btnHtml(I.copy, tr('نسخ رمز العرض'));
+  $('btn-new').innerHTML = btnHtml(I.refresh, tr('رمز جديد'));
+  $('btn-disconnect').innerHTML = btnHtml(I.unlink, tr('قطع الاتصال'));
+  $('btn-disconnect').setAttribute('aria-label', tr('قطع الاتصال'));
   document.querySelectorAll('.modal [data-close].icon-only').forEach((b) => { b.innerHTML = I.close; });
 
   $('btn-paste').addEventListener('click', openPaste);
@@ -1143,6 +1160,8 @@ function bind() {
   $('zoom-out').addEventListener('click', () => setZoom(ui.zoom - 0.1));
   $('btn-disconnect').addEventListener('click', disconnect);
   $('btn-manage-back').addEventListener('click', backToManage);
+  $('btn-lang').addEventListener('click', () => switchViewLang(curLang() === 'en' ? 'ar' : 'en'));
+  if (curLang() === 'en') switchViewLang('en');
   $('btn-soft-end').addEventListener('click', () => { setSoftPause(false); if (link) link.stop(); link = null; backToPairing(); });
   $('btn-reconnect').addEventListener('click', () => { if (link) link.stop(); link = null; backToPairing(); });
   $('paste-submit').addEventListener('click', submitPaste);
@@ -1198,9 +1217,9 @@ function bind() {
     if (e.target.closest('.c-sel')) return;
     if (ui.editing && canEdit()) {
       const btn = e.target.closest('[data-ed]');
-      const tr = e.target.closest('tr[data-idx]');
-      if (btn && tr) {
-        const i = Number(tr.dataset.idx); const w = ui.week; const d = model.data;
+      const row = e.target.closest('tr[data-idx]');
+      if (btn && row) {
+        const i = Number(row.dataset.idx); const w = ui.week; const d = model.data;
         const kind = btn.dataset.ed;
         if (kind === 'full') sendEdit({ kind: 'full', week: w, idx: i });
         else if (kind === 'absent') sendEdit({ kind: 'absent', week: w, idx: i, on: !absentAt(d, w, i) });
@@ -1209,10 +1228,10 @@ function bind() {
         return;
       }
       const td = e.target.closest('td.editable');
-      if (td && tr) { openPop(td, Number(tr.dataset.idx)); return; }
+      if (td && row) { openPop(td, Number(row.dataset.idx)); return; }
     }
-    const tr = e.target.closest('tr[data-idx]');
-    if (tr) openDrawer(Number(tr.dataset.idx));
+    const row = e.target.closest('tr[data-idx]');
+    if (row) openDrawer(Number(row.dataset.idx));
   });
 
   document.addEventListener('keydown', (e) => {

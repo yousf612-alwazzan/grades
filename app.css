@@ -1148,3 +1148,7 @@ b, strong, h1, h2, h3, .btn, .tab { font-weight: 700; }
 /* داخل شاشة الكمبيوتر: الاسم والشعار في الشريط العلوي فقط — بلا تكرار في القائمة الجانبية */
 body.remote .rail .brand { display: none; }
 body.remote .rail { padding-top: 16px; }
+
+/* الإنجليزية (من اليسار لليمين): الأسهم تنعكس */
+:root[dir="ltr"] svg.i.dir { transform: scaleX(-1); }
+:root[dir="ltr"] .flip-rtl { transform: none; }

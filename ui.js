@@ -1,6 +1,7 @@
 // أدوات الواجهة المشتركة: الأيقونات، الهروب من HTML، رسائل toast، النوافذ السفلية، التأكيد، لوحة الأرقام.
 import CONFIG from './config.js';
 import { toArabicDigits, parseScore } from './grades-core.js';
+import { T, tr } from './i18n.js';
 
 export const ar = (x) => toArabicDigits(x);
 
@@ -10,23 +11,23 @@ export function esc(s) {
 
 // عدد + تمييز عربي مبسّط: ١ طالب، ٢ طالبان، ٣–١٠ طلاب، ١١+ طالبًا
 export function students(n) {
-  if (n === 0) return 'لا يوجد طلاب';
-  if (n === 1) return 'طالب واحد';
-  if (n === 2) return 'طالبان';
-  if (n % 100 >= 3 && n % 100 <= 10) return `${ar(n)} طلاب`;
-  return `${ar(n)} طالبًا`;
+  if (n === 0) return tr('لا يوجد طلاب');
+  if (n === 1) return tr('طالب واحد');
+  if (n === 2) return tr('طالبان');
+  if (n % 100 >= 3 && n % 100 <= 10) return T`${ar(n)} طلاب`;
+  return T`${ar(n)} طالبًا`;
 }
 export function cells(n) {
-  if (n === 1) return 'خانة واحدة';
-  if (n === 2) return 'خانتان';
-  if (n % 100 >= 3 && n % 100 <= 10) return `${ar(n)} خانات`;
-  return `${ar(n)} خانة`;
+  if (n === 1) return tr('خانة واحدة');
+  if (n === 2) return tr('خانتان');
+  if (n % 100 >= 3 && n % 100 <= 10) return T`${ar(n)} خانات`;
+  return T`${ar(n)} خانة`;
 }
 export function names(n) {
-  if (n === 1) return 'اسم واحد';
-  if (n === 2) return 'اسمان';
-  if (n % 100 >= 3 && n % 100 <= 10) return `${ar(n)} أسماء`;
-  return `${ar(n)} اسمًا`;
+  if (n === 1) return tr('اسم واحد');
+  if (n === 2) return tr('اسمان');
+  if (n % 100 >= 3 && n % 100 <= 10) return T`${ar(n)} أسماء`;
+  return T`${ar(n)} اسمًا`;
 }
 
 const P = {
@@ -81,7 +82,9 @@ const P = {
   note: '<path d="M15.5 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z"/><path d="M15 3v5h5M8 13h8M8 17h5"/>',
 };
 
+const DIR_ICONS = new Set(['back', 'fwd', 'next', 'prev', 'send', 'undo']);
 export function icon(name, cls = '') {
+  if (DIR_ICONS.has(name)) cls += ' dir';
   return `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${P[name] || ''}</svg>`;
 }
 
@@ -90,7 +93,7 @@ export function toast(msg, opts = {}) {
   const host = document.getElementById('toasts');
   const el = document.createElement('div');
   el.className = 'toast' + (opts.err ? ' err' : '');
-  el.innerHTML = `<span>${esc(msg)}</span>`;
+  el.innerHTML = `<span>${esc(tr(msg))}</span>`;
   let timer;
   const close = () => {
     clearTimeout(timer);
@@ -121,7 +124,7 @@ export function openSheet(html, { wide = false, onClose, label = '' } = {}) {
   const root = document.getElementById('overlay-root');
   const bd = document.createElement('div');
   bd.className = 'backdrop';
-  bd.innerHTML = `<div class="sheet ${wide ? 'wide' : ''}" role="dialog" aria-modal="true" aria-label="${esc(label)}">${html}<button type="button" class="sheet-x" aria-label="إغلاق">${icon('x')}</button></div>`;
+  bd.innerHTML = T`<div class="sheet ${wide ? 'wide' : ''}" role="dialog" aria-modal="true" aria-label="${esc(label)}">${html}<button type="button" class="sheet-x" aria-label="إغلاق">${icon('x')}</button></div>`;
   const sheet = bd.firstElementChild;
   const entry = { bd, sheet, onClose };
   const prevFocus = document.activeElement;
@@ -151,7 +154,7 @@ export function closeTopSheet() {
 }
 export const hasSheet = () => stack.length > 0;
 
-export function confirmDialog({ title, text = '', ok = 'تأكيد', cancel = 'إلغاء', danger = false }) {
+export function confirmDialog({ title, text = '', ok = tr('تأكيد'), cancel = tr('إلغاء'), danger = false }) {
   return new Promise((resolve) => {
     let result = false;
     const s = openSheet(`
@@ -175,7 +178,7 @@ export function keypad({ title, max, value }) {
   return new Promise((resolve) => {
     let v = value == null ? '' : String(value);
     let result;
-    const s = openSheet(`
+    const s = openSheet(T`
       <h2>${esc(title)}</h2>
       <p class="hint">من ${ar(max)} — يقبل الكسور مثل ٣٫٥</p>
       <div class="keypad-display num" aria-live="polite"></div>

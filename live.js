@@ -5,6 +5,7 @@
 // الكمبيوتر (view.html) = صاحب العرض (offerer)، والجوال = المجيب (answerer) وهو مصدر البيانات الوحيد.
 // أمان: الجوال يتجاهل كل رسالة واردة عدا ping/pong (القراءة فقط مفروضة من جهة الجوال).
 import CONFIG from './config.js';
+import { T, tr } from './i18n.js';
 
 export const PROTO = 1;
 
@@ -14,7 +15,7 @@ const GATHER_MS = 3000;       // أقصى انتظار لجمع مسارات ا�
 const GATHER_SETTLE_MS = 500;  // بعد أول مسار نكتفي بانتظار قصير (شبكة المدرسة/نقطة الاتصال تكفيها المسارات المحلية)
 const CHUNK = 12000;           // حجم آمن لكل رسالة على كل الأجهزة (بعضها يرفض الرسائل الكبيرة بصمت)
 const MAX_CANDS = 4;
-const BAD_CODE = 'رمز الاتصال غير صالح أو ناقص. أعد المسح أو انسخ الرمز كاملًا مرة أخرى.';
+const BAD_CODE = tr('رمز الاتصال غير صالح أو ناقص. أعد المسح أو انسخ الرمز كاملًا مرة أخرى.');
 
 // ---------- وسيط المصافحة (رد الاتصال فقط، مشفّرًا) ----------
 export const RELAY = 'https://ntfy.sh';
@@ -340,10 +341,10 @@ export class QrScanner {
 
   async start(facing = 'environment') {
     if (typeof window !== 'undefined' && window.isSecureContext === false) {
-      throw scanError('insecure', 'الكاميرا تتطلب فتح الصفحة عبر رابط آمن (https).');
+      throw scanError('insecure', tr('الكاميرا تتطلب فتح الصفحة عبر رابط آمن (https).'));
     }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw scanError(window.isSecureContext === false ? 'insecure' : 'notfound', 'لا توجد كاميرا متاحة في هذا المتصفح.');
+      throw scanError(window.isSecureContext === false ? 'insecure' : 'notfound', tr('لا توجد كاميرا متاحة في هذا المتصفح.'));
     }
     this.stop();
     try {
@@ -354,9 +355,9 @@ export class QrScanner {
     } catch (e) {
       const n = e && e.name;
       if (n === 'NotAllowedError' || n === 'PermissionDeniedError' || n === 'SecurityError') {
-        throw scanError('denied', 'لم يُسمح باستخدام الكاميرا. اسمح بالوصول من إعدادات المتصفح ثم أعد المحاولة.');
+        throw scanError('denied', tr('لم يُسمح باستخدام الكاميرا. اسمح بالوصول من إعدادات المتصفح ثم أعد المحاولة.'));
       }
-      throw scanError('notfound', 'لم يتم العثور على كاميرا أو أنها مستخدمة في برنامج آخر.');
+      throw scanError('notfound', tr('لم يتم العثور على كاميرا أو أنها مستخدمة في برنامج آخر.'));
     }
     const v = this.video;
     v.setAttribute('playsinline', '');

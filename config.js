@@ -4,8 +4,8 @@
 
 export const CONFIG = {
   appName: 'متابعة الدرجات',
-  version: '2.9.0',
-  releaseDate: '2026-10-15',
+  version: '2.10.0',
+  releaseDate: '2026-10-16',
 
   // قواعد الدرجات
   weeks: 10,
@@ -41,7 +41,7 @@ export const CONFIG = {
 
   defaultSettings: {
     teacher: '', subject: '', year: '',
-    theme: 'auto', textScale: 'normal',
+    theme: 'auto', textScale: 'normal', lang: 'ar',
     inputMode: 'chips', autoAdvance: true, haptics: true,
     turnUrl: '', turnUser: '', turnPass: '',
     viewUrl: '', tourDone: false,
