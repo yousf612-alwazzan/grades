@@ -1177,3 +1177,8 @@ body.remote .rail { padding-top: 16px; }
 .pick-row .st-tgt { margin: 0 16px; width: auto; min-height: 40px; font-size: 14px; }
 @media (min-width: 600px) { .pick-row.split { grid-template-columns: minmax(0, 1fr) 220px; align-items: center; padding-bottom: 0; } .pick-row .st-tgt { margin: 0 12px; } }
 .toast span { white-space: pre-line; }
+
+/* حذف الصف: أحمر هادئ */
+.danger-list .list-item, .danger-list .list-item svg.i { color: var(--error); }
+.danger-list .list-item small { color: var(--muted); }
+@media (min-width: 900px) { .side-act[data-danger] { color: var(--error); background: none; grid-column: span 2; justify-content: center; } .side-act[data-danger] svg.i { color: var(--error); } }

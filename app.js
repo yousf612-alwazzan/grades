@@ -479,6 +479,7 @@ function Tools() {
     <div class="list">
       ${has ? item('handover-pick', 'send', tr('تسليم صف كامل لمعلم آخر'), tr('كل الطلاب مع الدرجات والغياب والملاحظات في ملف واحد')) : ''}
       ${has ? item('transfer-pick', 'move', tr('نقل طلاب'), tr('طالب أو أكثر لمعلم آخر أو لصف آخر عندك')) : ''}
+      ${has && !REMOTE ? item('delete-pick', 'trash', tr('حذف صف'), tr('اختر الصف — يُحذف مع درجاته، وتقدر تتراجع بعدها')) : ''}
       ${item('go', 'inbox', tr('استقبال صف أو طلاب'), tr('من ملف أرسله معلم آخر'), 'data-to="transferIn"')}
     </div>
     ${REMOTE ? T`<p class="hint">${icon('shield')} النسخ الاحتياطي والاسترجاع وحذف البيانات تتم من الجوال (البيانات محفوظة فيه).</p>` : T`<div class="section-title">النسخ الاحتياطي</div>
@@ -656,6 +657,7 @@ function deskSide(c, d, inner) {
       ${act('edit-class', 'users', tr('الطلاب'))}
       ${act('export-xlsx', 'sheet', tr('تصدير Excel'))}
       ${act('go', 'send', tr('نقل طلاب'), 'data-to="transferOut"')}
+      ${REMOTE ? '' : act('delete-class-id', 'trash', tr('حذف الصف'), 'data-danger')}
     </div>
     ${inner}
 
@@ -1223,20 +1225,23 @@ async function deleteClass(id, { skipConfirm = false } = {}) {
   if (!ok) return;
   const pos = S.classes.indexOf(c);
   const data = dataOf(id);
+  const sched = Array.isArray(S.settings.schedule) ? S.settings.schedule.slice() : [];
   S.classes.splice(pos, 1);
   delete S.grades[id];
   await saveClassesNow();
   await store.deleteGrades(id);
+  if (sched.some((x) => x && x.classId === id)) { S.settings.schedule = sched.filter((x) => !x || x.classId !== id); await saveSettingsNow(); syncReminders().catch(() => {}); }
   S.stack = [{ name: 'home', p: {} }];
   history.replaceState({ depth: 1 }, '');
   render({ scrollTop: true });
-  toast(T`حُذفت «${c.label}»`, {
+  toast(T`حُذف «${c.label}»`, {
     ms: CONFIG.undoDeleteMs,
     action: { label: tr('تراجع'), fn: async () => {
       S.classes.splice(Math.min(pos, S.classes.length), 0, c);
       S.grades[id] = data;
       await saveClassesNow();
       await store.saveGrades(id, data);
+      if (sched.length !== (S.settings.schedule || []).length) { S.settings.schedule = sched; await saveSettingsNow(); syncReminders().catch(() => {}); }
       render();
       toast(tr('أُعيد الصف ✓'));
     } },
@@ -2406,6 +2411,8 @@ document.addEventListener('click', async (e) => {
     case 'go': go(el.dataset.to, el.dataset.id ? { id: el.dataset.id } : {}); break;
     case 'new-class': go('editor', {}); break;
     case 'import-classes': importClassesFromFile(); break;
+    case 'delete-class-id': deleteClass(el.dataset.id); break;
+    case 'delete-pick': { const c = await pickClass(tr('أي صف تريد حذفه؟')); if (c) deleteClass(c.id); break; }
     case 'handover-pick': { const c = await pickClass(tr('أي صف تريد تسليمه؟')); if (c) doHandover(c); break; }
     case 'handover': doHandover(cls(el.dataset.id)); break;
     case 'transfer-pick': { const c = await pickClass(tr('نقل طلاب من أي صف؟')); if (c) go('transferOut', { id: c.id }); break; }
@@ -2696,6 +2703,9 @@ function showClassMenu(p) {
       ${item('handover', 'send', tr('تسليم الصف لمعلم آخر'), tr('كل الطلاب مع الدرجات والغياب والملاحظات'))}
       ${item('go', 'move', tr('نقل طلاب'), tr('طالب أو أكثر لمعلم آخر أو لصف آخر'), 'data-to="transferOut"')}
       ${item('go', 'inbox', tr('استقبال طلاب منقولين'), tr('من ملف أرسله معلم آخر'), 'data-to="transferIn"')}
+    </div>
+    <div class="list danger-list" style="margin-top:12px">
+      ${item('delete-class-id', 'trash', tr('حذف الصف'), tr('مع كل درجاته — تقدر تتراجع بعدها'))}
     </div>
     <div class="actions"><button type="button" class="btn" data-x>إغلاق</button></div>`, { label: tr('خيارات الصف') });
   s.sheet.addEventListener('click', (e) => { if (e.target.closest('[data-act]') || e.target.closest('[data-x]')) setTimeout(() => s.close(), 0); });
