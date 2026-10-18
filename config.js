@@ -4,7 +4,7 @@
 
 export const CONFIG = {
   appName: 'متابعة الدرجات',
-  version: '2.10.0',
+  version: '2.11.0',
   releaseDate: '2026-10-16',
 
   // قواعد الدرجات
@@ -42,6 +42,8 @@ export const CONFIG = {
   defaultSettings: {
     teacher: '', subject: '', year: '',
     theme: 'auto', textScale: 'normal', lang: 'ar',
+    // تذكير الحصص: الجدول الأسبوعي، والتنبيه قبل الحصة بكم دقيقة، وتشغيل/إيقاف التذكير
+    schedule: [], remindBefore: '10', remindersOn: true,
     inputMode: 'chips', autoAdvance: true, haptics: true,
     turnUrl: '', turnUser: '', turnPass: '',
     viewUrl: '', tourDone: false,

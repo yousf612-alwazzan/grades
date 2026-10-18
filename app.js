@@ -3,6 +3,7 @@
 // للتخصيص راجع CLAUDE.md و config.js.
 import CONFIG from './config.js';
 import { CHANGELOG } from './changelog.js';
+import { DAYS, SCHOOL_DAYS, REMIND_CHOICES, sanitizeSchedule, sortSchedule, nextOccurrence, buildICS, syncNativeReminders, minutesText } from './reminders.js';
 import {
   WEEKS, ITEMS, MAX_STUDENTS, parseScore, fmt, emptyClassData, getItems, setItem, getFin, setFin,
   getWeekMeta, setWeekMeta, weekTotal, periodScore, formative, finalTotal, studentSummary,
@@ -236,7 +237,7 @@ const main = () => document.getElementById('main');
 
 function render({ scrollTop = false } = {}) {
   const r = route();
-  const screens = { home: Home, reports: Reports, tools: Tools, class: ClassScreen, student: StudentScreen, editor: Editor, settings: Settings, live: Live, transferOut: TransferOut, transferIn: TransferIn, guide: Guide };
+  const screens = { schedule: Schedule, home: Home, reports: Reports, tools: Tools, class: ClassScreen, student: StudentScreen, editor: Editor, settings: Settings, live: Live, transferOut: TransferOut, transferIn: TransferIn, guide: Guide };
   const fn = screens[r.name] || Home;
   const isRoot = ROOTS.includes(r.name);
   main().className = 'main' + (isRoot ? '' : ' no-tabbar') + (r.name === 'class' && WIDE.matches && cls(r.p.id) && cls(r.p.id).names.length ? ' desk-class' : '');
@@ -356,6 +357,110 @@ function Home() {
 // =====================================================================
 // تبويب «الأدوات»: إنشاء الصفوف من ملف، النقل والتسليم، النسخ الاحتياطي
 // =====================================================================
+// ===================== جدول الحصص والتذكير =====================
+function remindMinutes() { const n = Number(S.settings.remindBefore); return REMIND_CHOICES.includes(n) ? n : 10; }
+function scheduleList() { return sanitizeSchedule(S.settings.schedule).filter((s) => cls(s.classId)); }
+
+function Schedule() {
+  const list = scheduleList();
+  const mins = remindMinutes();
+  const on = S.settings.remindersOn !== false;
+  const st = S.ui.remState;
+  let status = '';
+  if (platform.isNative) {
+    if (!on) status = T`<p class="hint">${icon('bell')} التذكير متوقف.</p>`;
+    else if (st && st.reason === 'denied') status = T`<div class="alert warn">${icon('warn')}<div class="grow"><strong>الإشعارات غير مسموحة</strong><p>اسمح للتطبيق بالإشعارات من إعدادات الجوال حتى يصلك التنبيه.</p><button type="button" class="btn sm soft" data-act="rem-retry">حاول مرة ثانية</button></div></div>`;
+    else if (st && st.ok && st.count) status = T`<p class="hint rem-ok">${icon('checkCircle')} مفعّل — يصلك تنبيه قبل كل حصة بـ ${minutesText(mins)}</p>`;
+  }
+  // الحصة القادمة
+  let next = null;
+  for (const s of list) { const at = nextOccurrence(s.day, s.time); if (!next || at < next.at) next = { s, at }; }
+  const nextHTML = next ? T`<div class="next-lesson"><small>الحصة القادمة</small><strong>${esc(cls(next.s.classId).label)}</strong><span>${tr(DAYS[next.s.day])} · ${ar(next.s.time)}${next.s.period ? T` · الحصة ${ar(next.s.period)}` : ''}</span></div>` : '';
+  // الحصص حسب اليوم
+  const days = [...new Set(list.map((s) => s.day))].sort((a, b) => ((a + 7) % 7) - ((b + 7) % 7));
+  const groups = days.map((d) => T`<div class="section-title">${tr(DAYS[d])}</div><div class="list">${list.filter((s) => s.day === d).map((s) => T`<div class="list-item slot"><span class="slot-time num">${ar(s.time)}</span><span class="grow"><strong>${esc(cls(s.classId).label)}</strong>${s.period ? T`<small>الحصة ${ar(s.period)}</small>` : ''}</span><button type="button" class="icon-btn" data-act="slot-del" data-sid="${s.id}" aria-label="حذف الحصة">${icon('trash')}</button></div>`).join('')}</div>`).join('');
+  const minSeg = `<div class="seg" role="group" aria-label="${tr('قبل الحصة بـ')}">${REMIND_CHOICES.map((n) => `<button type="button" data-act="remind-min" data-v="${n}" aria-pressed="${n === mins}">${minutesText(n)}</button>`).join('')}</div>`;
+  const icsBtn = list.length ? T`<button type="button" class="btn ${platform.isNative ? '' : 'primary'} block" data-act="slot-ics">${icon('calendar')} أضف الجدول لتقويم الجوال</button>` : '';
+  return T`${appbar({ title: tr('جدول الحصص والتذكير') })}
+  <div class="wrap stack">
+    ${!S.classes.length ? T`<div class="empty card"><h2>أضف صفًا أولًا</h2><p>بعدها تقدر تضيف أوقات حصصه هنا.</p><button type="button" class="btn primary" data-act="new-class">${icon('plus')} إضافة صف</button></div>` : T`
+    <div class="card stack">
+      ${platform.isNative ? T`<label class="list-item" style="padding:0;min-height:48px"><span class="grow"><strong>تذكير قبل الحصة</strong><small>إشعار على الجوال حتى لو التطبيق مغلق</small></span><input type="checkbox" class="switch" data-setting-bool="remindersOn" ${on ? 'checked' : ''}></label>` : T`<div class="alert info">${icon('info')}<div class="grow"><strong>التنبيه عن طريق تقويم الجوال</strong><p style="margin:0">بعد إضافة حصصك اضغط «أضف الجدول لتقويم الجوال» ثم «إضافة الكل» — يصلك تنبيه قبل كل حصة كل أسبوع، حتى بدون إنترنت.</p></div></div>`}
+      <div class="field"><span class="label">التنبيه قبل الحصة بـ</span>${minSeg}</div>
+      ${status}
+    </div>
+    ${nextHTML}
+    ${list.length ? groups : T`<p class="hint" style="text-align:center;padding:12px 0">لا توجد حصص بعد. أضف أوقات حصص صفوفك ليصلك تنبيه قبل كل حصة.</p>`}
+    <button type="button" class="btn primary lg block" data-act="slot-add">${icon('plus')} إضافة حصة</button>
+    ${icsBtn}
+    <p class="hint">${icon('shield')} الجدول والتنبيهات على جهازك فقط — لا شيء يُرسل لأي مكان.</p>`}
+  </div>`;
+}
+
+// نافذة إضافة حصة: الصف، اليوم، الوقت، رقم الحصة (اختياري)
+function openSlotSheet() {
+  const last = scheduleList().slice(-1)[0];
+  const d = { classId: (S.classes[0] || {}).id, day: last ? last.day : 0, time: last ? last.time : '07:30', period: '' };
+  const days = [...SCHOOL_DAYS, 5, 6];
+  const paint = () => T`<h2>إضافة حصة</h2>
+    <div class="field"><label for="sl-class">الصف</label><select id="sl-class" class="select" data-sl="classId">${S.classes.map((c) => `<option value="${c.id}" ${c.id === d.classId ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select></div>
+    <div class="field" style="margin-top:12px"><span class="label">اليوم</span><div class="day-grid">${days.map((x) => `<button type="button" class="day-btn ${SCHOOL_DAYS.includes(x) ? '' : 'weekend'}" data-sl-day="${x}" aria-pressed="${x === d.day}">${tr(DAYS[x])}</button>`).join('')}</div></div>
+    <div class="row" style="gap:12px;margin-top:12px;align-items:flex-end">
+      <div class="field grow"><label for="sl-time">وقت بداية الحصة</label><input id="sl-time" class="input" type="time" data-sl="time" value="${d.time}" required></div>
+      <div class="field grow"><label for="sl-period">رقم الحصة</label><select id="sl-period" class="select" data-sl="period"><option value="">—</option>${Array.from({ length: 8 }, (_, i) => `<option value="${i + 1}" ${String(i + 1) === String(d.period) ? 'selected' : ''}>${ar(i + 1)}</option>`).join('')}</select></div>
+    </div>
+    <div class="actions"><button type="button" class="btn" data-sl-act="cancel">إلغاء</button><button type="button" class="btn primary" data-sl-act="save">حفظ الحصة</button></div>`;
+  const s = openSheet('<div data-sl-body></div>', { label: tr('إضافة حصة') });
+  const body = s.sheet.querySelector('[data-sl-body]');
+  const draw = () => { body.innerHTML = paint(); };
+  draw();
+  s.sheet.addEventListener('change', (e) => { const k = e.target.dataset && e.target.dataset.sl; if (k) d[k] = e.target.value; });
+  s.sheet.addEventListener('input', (e) => { const k = e.target.dataset && e.target.dataset.sl; if (k) d[k] = e.target.value; });
+  s.sheet.addEventListener('click', async (e) => {
+    const day = e.target.closest('[data-sl-day]');
+    if (day) { d.day = Number(day.dataset.slDay); body.querySelectorAll('[data-sl-day]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.slDay) === d.day))); return; }
+    const b = e.target.closest('[data-sl-act]');
+    if (!b) return;
+    if (b.dataset.slAct === 'cancel') return s.close();
+    if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(d.time || '')) { toast(tr('اختر وقت الحصة'), { err: true }); return; }
+    const list = sanitizeSchedule(S.settings.schedule);
+    if (list.some((x) => x.classId === d.classId && x.day === d.day && x.time === d.time)) { toast(tr('هذه الحصة مضافة من قبل'), { err: true }); return; }
+    list.push({ id: 'r' + Math.random().toString(36).slice(2, 9), classId: d.classId, day: d.day, time: d.time, period: d.period ? Number(d.period) : null });
+    S.settings.schedule = sortSchedule(list);
+    await saveSettingsNow();
+    s.close();
+    toast(tr('أُضيفت الحصة ✓'));
+    await syncReminders();
+    render();
+  });
+}
+
+// أندرويد: يعيد جدولة الإشعارات حسب الجدول الحالي
+async function syncReminders() {
+  if (!platform.isNative || REMOTE) return null;
+  const r = await syncNativeReminders(platform.plugin('LocalNotifications'), {
+    schedule: scheduleList(), classes: S.classes, minutesBefore: remindMinutes(), enabled: S.settings.remindersOn !== false,
+  });
+  S.ui.remState = r;
+  return r;
+}
+
+// ملف التقويم (آيفون/المتصفح، وأندرويد كخيار إضافي)
+async function exportScheduleICS() {
+  const text = buildICS(scheduleList(), S.classes, remindMinutes());
+  const blob = new Blob([text], { type: 'text/calendar;charset=utf-8' });
+  const name = tr('جدول-الحصص') + '.ics';
+  if (platform.isIOS && !platform.isNative) {
+    // آيفون: فتح الملف يعرض «إضافة الكل» لتقويم الجوال
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, '_blank');
+    if (!w) location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    return;
+  }
+  await platform.saveFile(name, blob, 'text/calendar');
+}
+
 function Tools() {
   const item = (act, ic, t, sub, extra = '') => `<button type="button" class="list-item" data-act="${act}" ${extra}>${icon(ic)}<span class="grow"><strong>${t}</strong><small>${sub}</small></span>${icon('fwd')}</button>`;
   const has = S.classes.length > 0;
@@ -366,6 +471,10 @@ function Tools() {
       ${item('new-class', 'plus', tr('إضافة صف'), tr('بإدخال الأسماء أو لصقها'))}
       ${item('import-classes', 'upload', tr('إنشاء صفوف من ملف'), tr('كشف Excel أو PDF فيه صف أو أكثر — حتى الممسوح ضوئيًا'))}
     </div>
+    ${REMOTE ? '' : T`<div class="section-title">الحصص</div>
+    <div class="list">
+      ${item('go', 'bell', tr('جدول الحصص والتذكير'), platform.isNative ? tr('تنبيه قبل كل حصة بالوقت الذي تختاره') : tr('أضف حصصك لتقويم الجوال مع تنبيه قبل كل حصة'), 'data-to="schedule"')}
+    </div>`}
     <div class="section-title">النقل بين المعلمين</div>
     <div class="list">
       ${has ? item('handover-pick', 'send', tr('تسليم صف كامل لمعلم آخر'), tr('كل الطلاب مع الدرجات والغياب والملاحظات في ملف واحد')) : ''}
@@ -2409,6 +2518,18 @@ document.addEventListener('click', async (e) => {
     case 'report-class-pick': pickClassSheet(S.ui.reportClass, (id) => { S.ui.reportClass = id; render(); }); break;
     case 'update-now': if (UPD.worker) UPD.worker.postMessage({ type: 'skip-waiting' }); else location.reload(); break;
     case 'dismiss-guide': try { sessionStorage.setItem('iosGuideSeen', '1'); } catch { /* */ } go('home'); break;
+    case 'slot-add': openSlotSheet(); break;
+    case 'slot-del': {
+      const sid = el.dataset.sid;
+      const before = sanitizeSchedule(S.settings.schedule);
+      S.settings.schedule = before.filter((x) => x.id !== sid);
+      await saveSettingsNow(); await syncReminders(); render();
+      toast(tr('حُذفت الحصة'), { action: { label: tr('تراجع'), fn: async () => { S.settings.schedule = before; await saveSettingsNow(); await syncReminders(); render(); } } });
+      break;
+    }
+    case 'remind-min': S.settings.remindBefore = String(Number(el.dataset.v) || 10); await saveSettingsNow(); await syncReminders(); render(); break;
+    case 'rem-retry': await syncReminders(); render(); break;
+    case 'slot-ics': exportScheduleICS(); break;
     case 'set-lang': {
       const v = el.dataset.v === 'en' ? 'en' : 'ar';
       if (v === lang()) break;
@@ -2663,7 +2784,7 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', async (e) => {
   const t = e.target;
   const r = route();
-  if (t.matches('[data-setting-bool]')) { S.settings[t.dataset.settingBool] = t.checked; await saveSettingsNow(); return; }
+  if (t.matches('[data-setting-bool]')) { S.settings[t.dataset.settingBool] = t.checked; await saveSettingsNow(); if (t.dataset.settingBool === 'remindersOn') { await syncReminders(); render(); } return; }
   if (t.matches('[data-sel]')) { const i = +t.dataset.sel; if (t.checked) r.p.sel.add(i); else r.p.sel.delete(i); render(); return; }
   if (t.matches('[data-pick-st]')) { const i = +t.dataset.pickSt; if (t.checked) r.p.pick.add(i); else r.p.pick.delete(i); render(); return; }
   if (t.matches('[data-tgt]')) { r.p.target = t.dataset.tgt; render(); return; }
@@ -2815,6 +2936,18 @@ async function boot() {
   }
   translateStatic(document.body);
   applyTheme();
+  if (platform.isNative && !REMOTE) {
+    const LN = platform.plugin('LocalNotifications');
+    if (LN) {
+      try {
+        LN.addListener('localNotificationActionPerformed', (ev) => {
+          const id = ev && ev.notification && ev.notification.extra && ev.notification.extra.classId;
+          if (id && cls(id)) go('class', { id });
+        });
+      } catch { /* */ }
+      setTimeout(() => { syncReminders().catch(() => {}); }, 1500);
+    }
+  }
   if (REMOTE) {
     // على الكمبيوتر: لا تخزين، لا جولة، لا Service Worker — البيانات في الجوال
     S.stack = [{ name: 'home', p: {} }];

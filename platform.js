@@ -57,6 +57,7 @@ let lastFileInput = null;
 
 export const platform = {
   isNative, isIOS, isAndroid, isStandalone,
+  plugin: (name) => P(name),
 
   // حفظ ملف: أندرويد = حفظ في المستندات ثم قائمة المشاركة؛ الويب = مشاركة الملف إن أمكن وإلا تنزيل
   async saveFile(name, blob, mime) {

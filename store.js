@@ -217,6 +217,7 @@ function sanitizeSettings(raw) {
     if (typeof def === 'boolean') s[k] = raw[k] === true || raw[k] === 'true';
     else if (typeof raw[k] === 'string') s[k] = raw[k];
   }
+  s.schedule = Array.isArray(raw.schedule) ? raw.schedule.slice(0, 200) : [];
   if (!['auto', 'light', 'dark'].includes(s.theme)) s.theme = def('theme');
   if (!['normal', 'large'].includes(s.textScale)) s.textScale = def('textScale');
   if (!['chips', 'fields'].includes(s.inputMode)) s.inputMode = def('inputMode');

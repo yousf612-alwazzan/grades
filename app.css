@@ -1152,3 +1152,17 @@ body.remote .rail { padding-top: 16px; }
 /* الإنجليزية (من اليسار لليمين): الأسهم تنعكس */
 :root[dir="ltr"] svg.i.dir { transform: scaleX(-1); }
 :root[dir="ltr"] .flip-rtl { transform: none; }
+
+/* جدول الحصص */
+.next-lesson { display: grid; gap: 2px; padding: 16px; border-radius: var(--r-card); background: var(--primary-soft); color: var(--text); }
+.next-lesson small { color: var(--primary); font-weight: 600; font-size: 13px; }
+.next-lesson strong { font-size: 18px; }
+.next-lesson span { color: var(--muted); font-size: 14px; }
+.slot .slot-time { min-width: 64px; font-weight: 700; font-size: 17px; color: var(--primary); }
+.rem-ok { color: var(--success); font-weight: 600; }
+.rem-ok svg.i { width: 18px; height: 18px; vertical-align: -4px; }
+.day-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.day-btn { min-height: 44px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text); font-weight: 600; font-size: 13.5px; padding: 0 2px; }
+.day-btn.weekend { color: var(--muted); }
+.day-btn[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); }
+.seg button { white-space: nowrap; }
