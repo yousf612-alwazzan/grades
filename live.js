@@ -11,6 +11,8 @@ export const PROTO = 1;
 
 const HEARTBEAT_MS = 5000;
 const DEAD_MS = 12000;
+// الجوال مقفل أو في تطبيق آخر: نظام الجوال يبطّئ مؤقّتاته فتتأخر النبضات — نصبر أكثر ونعتمد على حالة الاتصال الفعلية
+const AWAY_DEAD_MS = 10 * 60 * 1000;
 const GATHER_MS = 3000;       // أقصى انتظار لجمع مسارات الشبكة
 const GATHER_SETTLE_MS = 500;  // بعد أول مسار نكتفي بانتظار قصير (شبكة المدرسة/نقطة الاتصال تكفيها المسارات المحلية)
 const CHUNK = 12000;           // حجم آمن لكل رسالة على كل الأجهزة (بعضها يرفض الرسائل الكبيرة بصمت)
@@ -510,7 +512,17 @@ class BaseLink {
     this.hb = 0;
     this.lastSeen = 0;
     this.stopped = false;
+    this.peerAway = false; // الطرف الآخر أخبرنا أنه في الخلفية (شاشة مقفلة/تطبيق آخر)
   }
+
+  /** هل انقطع النقل فعلًا؟ (قناة مغلقة أو اتصال فاشل) — بغض النظر عن تأخر النبضات */
+  transportDown() {
+    const pc = this.pc; const dc = this.dc;
+    return !dc || dc.readyState !== 'open' || !pc || pc.connectionState === 'failed' || pc.connectionState === 'closed';
+  }
+
+  /** يخبر الطرف الآخر أننا في الخلفية (true) أو رجعنا (false). */
+  setAway(on) { return this.rawSend({ v: PROTO, type: 'away', on: !!on }); }
 
   setState(s) {
     if (this.state === s) return;
@@ -579,7 +591,11 @@ class BaseLink {
   startHeartbeat() {
     this.stopHeartbeat();
     this.hb = setInterval(() => {
-      if (Date.now() - this.lastSeen > DEAD_MS) { this.setState('disconnected'); return; }
+      if (this.transportDown()) { this.setState('disconnected'); return; }
+      // في الخلفية (نحن أو الطرف الآخر) تتأخر النبضات طبيعيًا: لا نقطع اتصالًا ما زال مفتوحًا
+      const hidden = typeof document !== 'undefined' && document.hidden;
+      const limit = this.peerAway || hidden ? AWAY_DEAD_MS : DEAD_MS;
+      if (Date.now() - this.lastSeen > limit) { this.setState('disconnected'); return; }
       this.rawSend({ v: PROTO, type: 'ping', t: Date.now() });
     }, HEARTBEAT_MS);
   }
@@ -595,6 +611,11 @@ class BaseLink {
       this.lastSeen = Date.now();
       if (this.state !== 'connected' && this.state !== 'closed') this.setState('connected');
       this.rawSend({ v: PROTO, type: 'pong', t: Number(msg.t) || 0 });
+      return { msg, control: true };
+    }
+    if (msg.type === 'away') {
+      this.peerAway = msg.on === true;
+      this.lastSeen = Date.now();
       return { msg, control: true };
     }
     if (msg.type === 'pong') {

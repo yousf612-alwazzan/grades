@@ -2129,6 +2129,7 @@ function setLiveState(st) {
     stopScanner(); stopFrames();
     sendHello();
     if (L.mode === 'manage') sendState(); else sendSnapshot();
+    if (document.hidden && L.link.setAway) L.link.setAway(true);
     if (L.link && L.link.room) L.room = L.link.room;
     const c0 = cls(L.classId);
     if (platform.sharingStart) platform.sharingStart(L.mode === 'manage' ? tr('متصل بالكمبيوتر — اضغط للعودة') : T`${c0 ? c0.label : tr('الصف')} — اضغط للعودة`);
@@ -2156,10 +2157,13 @@ async function tryResume() {
   if (route().name === 'live') render(); else renderShareBar();
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden || REMOTE) return;
-  // رجع المعلم للتطبيق: إن كان الاتصال قد انقطع نعيده تلقائيًا
+  if (REMOTE) return;
+  // نخبر الكمبيوتر أن الجوال في الخلفية/رجع، فلا يظن تأخر النبضات انقطاعًا
+  if (L.link && L.state === 'connected' && L.link.setAway) L.link.setAway(document.hidden);
+  if (document.hidden) return;
+  // رجع المعلم للتطبيق: إن كان الاتصال قد انقطع فعلًا نعيده تلقائيًا (ولا نقطع اتصالًا ما زال مفتوحًا)
   if (L.phase === 'lost') tryResume();
-  else if (L.phase === 'connected' && L.link && Date.now() - L.link.lastSeen > 12000) { L.phase = 'lost'; L.state = 'disconnected'; tryResume(); }
+  else if (L.phase === 'connected' && L.link && L.link.transportDown && L.link.transportDown()) { L.phase = 'lost'; L.state = 'disconnected'; tryResume(); }
 });
 // إيقاف من إشعار أندرويد
 window.__gfuStopSharing = () => { liveStop(); render(); toast(tr('أُوقفت المشاركة')); };

@@ -131,6 +131,7 @@ export default {
   "إرشادات التثبيت": "Installation guide",
   "إزالة خيار «طالب واحد» من العرض — التعديل على طالب بعينه من داخل الشعبة": "Removed the \"single student\" display option — edit one student from inside the class",
   "إشعار على الجوال حتى لو التطبيق مغلق": "A phone notification, even when the app is closed",
+  "إصلاح انقطاع الاتصال عند قفل شاشة الجوال: تأخر النبضات في الخلفية لم يعد يُعتبر انقطاعًا": "Fix: locking the phone screen no longer drops the connection (delayed background heartbeats are no longer treated as a disconnect)",
   "إصلاح: الكمبيوتر يبقى «بانتظار البيانات» بعد الاتصال — البيانات تُرسل مقسّمة ويُعاد طلبها تلقائيًا": "Fix: the computer stuck on \"Waiting for data\" after connecting — data is now sent in parts and re-requested automatically",
   "إضافة": "Add",
   "إضافة الآن": "Add now",
