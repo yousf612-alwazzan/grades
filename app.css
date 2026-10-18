@@ -1182,3 +1182,8 @@ body.remote .rail { padding-top: 16px; }
 .danger-list .list-item, .danger-list .list-item svg.i { color: var(--error); }
 .danger-list .list-item small { color: var(--muted); }
 @media (min-width: 900px) { .side-act[data-danger] { color: var(--error); background: none; grid-column: span 2; justify-content: center; } .side-act[data-danger] svg.i { color: var(--error); } }
+
+/* سجل الاتصال */
+.conn-log summary { font-weight: 700; cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 8px; }
+.conn-log ul { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 4px; font-size: 13px; color: var(--muted); max-height: 260px; overflow: auto; }
+.conn-log li .num { color: var(--text); font-weight: 600; margin-inline-end: 6px; }

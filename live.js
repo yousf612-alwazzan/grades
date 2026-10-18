@@ -536,10 +536,10 @@ class BaseLink {
     const pc = new RTCPeerConnection({ iceServers: this.iceServers });
     pc.addEventListener('iceconnectionstatechange', () => {
       const s = pc.iceConnectionState;
-      if (s === 'failed') this.setState('disconnected');
+      if (s === 'failed') { this.reason = 'ice-failed'; this.setState('disconnected'); }
     });
     pc.addEventListener('connectionstatechange', () => {
-      if (pc.connectionState === 'failed') this.setState('disconnected');
+      if (pc.connectionState === 'failed') { this.reason = 'pc-failed'; this.setState('disconnected'); }
     });
     this.pc = pc;
     return pc;
@@ -552,7 +552,7 @@ class BaseLink {
       this.setState('connected');
       this.startHeartbeat();
     });
-    dc.addEventListener('close', () => { this.stopHeartbeat(); if (!this.stopped) this.setState('disconnected'); });
+    dc.addEventListener('close', () => { this.stopHeartbeat(); if (!this.stopped) { this.reason = this.reason || 'channel-closed'; this.setState('disconnected'); } });
     dc.addEventListener('message', (e) => this.receive(e.data));
   }
 
@@ -591,11 +591,11 @@ class BaseLink {
   startHeartbeat() {
     this.stopHeartbeat();
     this.hb = setInterval(() => {
-      if (this.transportDown()) { this.setState('disconnected'); return; }
+      if (this.transportDown()) { this.reason = 'transport-down'; this.setState('disconnected'); return; }
       // في الخلفية (نحن أو الطرف الآخر) تتأخر النبضات طبيعيًا: لا نقطع اتصالًا ما زال مفتوحًا
       const hidden = typeof document !== 'undefined' && document.hidden;
       const limit = this.peerAway || hidden ? AWAY_DEAD_MS : DEAD_MS;
-      if (Date.now() - this.lastSeen > limit) { this.setState('disconnected'); return; }
+      if (Date.now() - this.lastSeen > limit) { this.reason = 'no-heartbeat'; this.setState('disconnected'); return; }
       this.rawSend({ v: PROTO, type: 'ping', t: Date.now() });
     }, HEARTBEAT_MS);
   }
@@ -817,9 +817,19 @@ export class ViewerLink extends BaseLink {
     if (this.pc !== pc) return code; // أُلغي أثناء التجهيز
     this.room = room;
     // ننشر الرمز الجديد مشفّرًا ليأخذه الجوال تلقائيًا عند رجوعه للتطبيق (بلا مسح QR)
-    if (room && publish) relayPost(room, code).catch(() => {});
+    if (room && publish) this.publishUntilDone(room, code);
     if (room && autoRelay) this.waitForRelayAnswer();
     return code;
+  }
+
+  /** ينشر رمز الكمبيوتر الجديد في غرفة الوسيط، ويعيد المحاولة إن تعذّر (شبكة/وسيط) حتى ينجح أو يتصل الجوال أو يُلغى. */
+  async publishUntilDone(room, code) {
+    const t0 = Date.now();
+    while (!this.stopped && this.room === room && this.state !== 'connected' && Date.now() - t0 < this.relayTimeoutMs) {
+      try { if (await relayPost(room, code)) return true; } catch { /* نعيد المحاولة */ }
+      await sleep(3000);
+    }
+    return false;
   }
 
   /** يستطلع غرفة الوسيط حتى يصل رد صالح فيقبله تلقائيًا (acceptAnswer). يتجاهل كل رسالة لا تُفك بالمفتاح.

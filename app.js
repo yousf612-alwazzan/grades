@@ -1898,6 +1898,29 @@ const L = {
   link: null, state: 'idle', classId: null, scope: { kind: 'class', idx: 0 }, hideNames: false, blank: false,
   phase: 'setup', answer: null, frames: [], frameTimer: null, scanner: null, collector: null, mod: null,
 };
+// سجل الاتصال: أحداث الربط وأسباب الانقطاع (في الذاكرة فقط — لا أسماء ولا درجات) لتشخيص أي انقطاع
+L.log = [];
+function llog(ev) {
+  L.log.push({ t: Date.now(), ev: String(ev) });
+  if (L.log.length > 80) L.log.shift();
+}
+const LOG_TEXT = {
+  connected: 'اتصل بالكمبيوتر', disconnected: 'انقطع', 'app-background': 'خرجت من التطبيق / قفلت الشاشة', 'app-foreground': 'رجعت للتطبيق',
+  'resume-try': 'محاولة إعادة الاتصال', 'resume-offer': 'وُجد رمز الكمبيوتر — جارٍ الاتصال', 'resume-none': 'لم يُعثر على رمز الكمبيوتر بعد',
+  'ice-failed': 'فشل مسار الشبكة', 'pc-failed': 'فشل الاتصال', 'channel-closed': 'أُغلقت القناة', 'transport-down': 'الشبكة غير متاحة', 'no-heartbeat': 'لا رد من الكمبيوتر',
+  stopped: 'أوقفت المشاركة',
+};
+function logHTML() {
+  if (!L.log.length) return '';
+  const rows = L.log.slice(-30).reverse().map((e) => {
+    const d = new Date(e.t);
+    const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+    const [k, why] = e.ev.split(':');
+    return `<li><span class="num">${time}</span> ${esc(tr(LOG_TEXT[k] || k))}${why ? ` — ${esc(tr(LOG_TEXT[why] || why))}` : ''}</li>`;
+  }).join('');
+  return T`<details class="card conn-log"><summary>${icon('info')} سجل الاتصال</summary><ul>${rows}</ul><button type="button" class="btn sm" data-act="log-copy">${icon('copy')} نسخ السجل</button></details>`;
+}
+
 function defaultViewUrl() {
   if (CONFIG.viewUrl) return CONFIG.viewUrl;
   if (platform.isNative) return '';
@@ -1992,7 +2015,7 @@ function Live() {
       <li>بعض شبكات المدارس تمنع اتصال الأجهزة ببعضها: شغّل «نقطة الاتصال» من الجوال ووصّل الكمبيوتر بها.</li>
       <li>الدرجات تنتقل مباشرة ومشفّرة بين الجهازين، ولا تُحفظ على الكمبيوتر.</li>
       <li>إن خرجت من التطبيق يبقى العرض على الكمبيوتر، ويعود الاتصال تلقائيًا عند رجوعك (في أندرويد يبقى متصلًا ويظهر إشعار فيه «إيقاف المشاركة»).</li>
-    </ul></details>`;
+    </ul></details>${logHTML()}`;
 
   return `${appbar({ title: tr('العرض على الكمبيوتر'), backBtn: false, actions: pill })}
   <div class="wrap stack live-page">${step1}${step2}${step3}${help}</div>`;
@@ -2123,6 +2146,7 @@ afterRender.live = () => {
 function setLiveState(st) {
   if (st === 'closed') { if (route().name === 'live') render(); return; }
   if (!L.link) return;
+  if (st !== L.state && (st === 'connected' || st === 'disconnected')) llog(st === 'disconnected' && L.link.reason ? 'disconnected:' + L.link.reason : st);
   L.state = st;
   if (st === 'connected') {
     L.phase = 'connected';
@@ -2136,34 +2160,60 @@ function setLiveState(st) {
     toast(tr('تم الاتصال بالكمبيوتر ✓'));
   } else if (st === 'disconnected' && (L.phase === 'connected' || L.phase === 'answer')) {
     L.phase = 'lost';
-    // نحاول الرجوع تلقائيًا (الآن إن كان التطبيق ظاهرًا، أو عند العودة إليه)
-    if (!document.hidden) tryResume();
+    // نحاول الرجوع تلقائيًا ونستمر بالمحاولة (في أندرويد يعمل حتى والجوال في الجيب)
+    tryResume();
   }
   if (route().name === 'live') render(); else renderShareBar();
 }
 
 // الرجوع التلقائي: نجلب رمز الكمبيوتر الجديد من الوسيط (بنفس المفتاح) ونتصل بلا مسح
 async function tryResume() {
-  if (!L.room || L.phase === 'resuming' || L.state === 'connected') return;
-  L.phase = 'resuming';
-  if (route().name === 'live') render(); else renderShareBar();
+  if (!L.room || L.resumeLoop || L.state === 'connected') return;
+  L.resumeLoop = true;
   const m = await liveMod();
-  const ac = new AbortController();
-  L.resumeAbort = ac;
-  const code = await m.fetchLatestOffer(L.room, L.usedOffers, { timeoutMs: 25000, signal: ac.signal });
-  if (L.phase !== 'resuming') return; // أُلغي
-  if (code) { startLiveFromCode(code); return; }
-  L.phase = 'lost';
-  if (route().name === 'live') render(); else renderShareBar();
+  const t0 = Date.now();
+  try {
+    // نكرر المحاولة حتى يعود الاتصال (٣٠ دقيقة كحد أقصى) — لا ننتظر رجوع المعلم للتطبيق
+    while (L.room && L.state !== 'connected' && (L.phase === 'lost' || L.phase === 'resuming') && Date.now() - t0 < 30 * 60 * 1000) {
+      L.phase = 'resuming';
+      if (route().name === 'live') render(); else renderShareBar();
+      llog('resume-try');
+      const ac = new AbortController();
+      L.resumeAbort = ac;
+      const code = await m.fetchLatestOffer(L.room, L.usedOffers, { timeoutMs: 15000, signal: ac.signal });
+      if (L.phase !== 'resuming') return; // أُلغي
+      if (code) {
+        llog('resume-offer');
+        await startLiveFromCode(code);
+        // ننتظر الاتصال؛ إن لم يتم (رد لم يصل للوسيط مثلًا) نعيد المحاولة بنفس الرمز
+        const t1 = Date.now();
+        while (L.room && L.state !== 'connected' && Date.now() - t1 < 20000 && (L.phase === 'answer' || L.phase === 'connecting')) await new Promise((res) => setTimeout(res, 500));
+        if (L.state === 'connected' || !L.room || L.phase === 'setup') return;
+        L.usedOffers.delete(code);
+        llog('resume-none');
+        L.phase = 'lost';
+        continue;
+      }
+      llog('resume-none');
+      L.phase = 'lost';
+      if (route().name === 'live') render(); else renderShareBar();
+      await new Promise((res) => setTimeout(res, document.hidden ? 6000 : 2500));
+    }
+  } finally { L.resumeLoop = false; }
+}
+// أندرويد: النظام يخبرنا بالخروج من التطبيق والرجوع إليه (الصفحة تبقى «ظاهرة» عمدًا حتى لا يتوقف الاتصال)
+function onAppActive(active) {
+  llog(active ? 'app-foreground' : 'app-background');
+  if (L.link && L.state === 'connected' && L.link.setAway) L.link.setAway(!active);
+  if (active && L.phase === 'lost') tryResume();
+  else if (active && L.phase === 'connected' && L.link && L.link.transportDown && L.link.transportDown()) { L.phase = 'lost'; L.state = 'disconnected'; tryResume(); }
+}
+if (platform.isNative && !REMOTE) {
+  try { const A = platform.plugin('App'); if (A) A.addListener('appStateChange', (s) => onAppActive(!!(s && s.isActive))); } catch { /* */ }
 }
 document.addEventListener('visibilitychange', () => {
-  if (REMOTE) return;
-  // نخبر الكمبيوتر أن الجوال في الخلفية/رجع، فلا يظن تأخر النبضات انقطاعًا
-  if (L.link && L.state === 'connected' && L.link.setAway) L.link.setAway(document.hidden);
-  if (document.hidden) return;
-  // رجع المعلم للتطبيق: إن كان الاتصال قد انقطع فعلًا نعيده تلقائيًا (ولا نقطع اتصالًا ما زال مفتوحًا)
-  if (L.phase === 'lost') tryResume();
-  else if (L.phase === 'connected' && L.link && L.link.transportDown && L.link.transportDown()) { L.phase = 'lost'; L.state = 'disconnected'; tryResume(); }
+  if (REMOTE || platform.isNative) return; // أندرويد: appStateChange أعلاه
+  onAppActive(!document.hidden);
 });
 // إيقاف من إشعار أندرويد
 window.__gfuStopSharing = () => { liveStop(); render(); toast(tr('أُوقفت المشاركة')); };
@@ -2392,6 +2442,7 @@ function liveStop() {
   L.link = null;
   L.room = null; L.usedOffers = new Set();
   if (L.resumeAbort) { L.resumeAbort.abort(); L.resumeAbort = null; }
+  if (link) llog('stopped');
   if (platform.sharingStop) platform.sharingStop();
   L.state = 'idle'; L.phase = 'setup'; L.blank = false;
   if (link) { try { link.stop(); } catch { /* */ } }
@@ -2551,6 +2602,11 @@ document.addEventListener('click', async (e) => {
     case 'update-now': if (UPD.worker) UPD.worker.postMessage({ type: 'skip-waiting' }); else location.reload(); break;
     case 'dismiss-guide': try { sessionStorage.setItem('iosGuideSeen', '1'); } catch { /* */ } go('home'); break;
     case 'slot-add': openSlotSheet(); break;
+    case 'log-copy': {
+      const txt = L.log.map((e) => new Date(e.t).toISOString().slice(11, 19) + ' ' + e.ev).join('\n');
+      if (await platform.copyText(txt)) toast(tr('نُسخ السجل ✓'));
+      break;
+    }
     case 'slot-del': {
       const sid = el.dataset.sid;
       const before = sanitizeSchedule(S.settings.schedule);
