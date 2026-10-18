@@ -3,6 +3,7 @@
 // للتخصيص راجع CLAUDE.md و config.js.
 import CONFIG from './config.js';
 import { CHANGELOG } from './changelog.js';
+import { PLAN_NAME, planFor, gradeOf } from './lesson-plans.js';
 import { DAYS, SCHOOL_DAYS, REMIND_CHOICES, sanitizeSchedule, sortSchedule, nextOccurrence, buildICS, syncNativeReminders, minutesText } from './reminders.js';
 import {
   WEEKS, ITEMS, MAX_STUDENTS, parseScore, fmt, emptyClassData, getItems, setItem, getFin, setFin,
@@ -175,7 +176,64 @@ function paintSave(el) {
   el.className = 'save-state' + (st === 'saved' ? ' ok' : '');
   el.innerHTML = st === 'saving' ? tr('جارٍ الحفظ…') : st === 'error' ? T`${icon('warn')} لم يُحفظ` : st === 'saved' ? T`${icon('check')} محفوظ` : '';
 }
-async function saveClassesNow() { noteChange(); await store.saveClasses(S.classes); }
+async function saveClassesNow() { noteChange(); await store.saveClasses(S.classes); autoPlans(); }
+
+// ===== خطة توزيع المنهج: عنوان الدرس لكل أسبوع حسب الصف =====
+// تملأ الأسابيع الفارغة فقط (أو كلها عند overwrite). ترجع عدد الأسابيع التي عُبّئت.
+function fillLessons(c, overwrite = false) {
+  const lessons = planFor(c.label);
+  if (!lessons) return 0;
+  const d = dataOf(c.id);
+  let n = 0;
+  lessons.forEach((text, i) => {
+    const w = i + 1;
+    if (w > WEEKS || !text) return;
+    const cur = getWeekMeta(d, w).lesson;
+    if (cur === text || (cur && !overwrite)) return;
+    setWeekMeta(d, w, 'lesson', text);
+    n++;
+  });
+  if (n) markDirty(c.id);
+  return n;
+}
+// تلقائيًا: مرة واحدة لكل صف (الصفوف الجديدة أيضًا) — لا تعيد ما مسحه المعلم بنفسه
+function autoPlans() {
+  if (REMOTE || !S.booted) return 0;
+  const done = new Set(Array.isArray(S.meta.planDone) ? S.meta.planDone : []);
+  let n = 0; let changed = false;
+  for (const c of S.classes) {
+    if (done.has(c.id)) continue;
+    done.add(c.id); changed = true;
+    n += fillLessons(c, false);
+  }
+  if (changed) { S.meta.planDone = [...done]; store.setMeta('planDone', S.meta.planDone).catch(() => {}); }
+  return n;
+}
+function openPlanSheet() {
+  const rows = S.classes.map((c) => {
+    const g = gradeOf(c.label);
+    const ok = g && planFor(c.label);
+    return `<div class="list-item"><span class="grow"><strong>${esc(c.label)}</strong><small>${ok ? `${tr('خطة الصف')} ${g}` : tr('لا توجد خطة لهذا الصف')}</small></span>${ok ? icon('check') : ''}</div>`;
+  }).join('');
+  const s = openSheet(T`<h2>عناوين الدروس من خطة المنهج</h2>
+    <p>${esc(PLAN_NAME)} — الأسابيع ١ إلى ١٠. يُعرف الصف من اسمه (السادس، السابع، الثامن، التاسع).</p>
+    <div class="list">${rows || `<p class="hint" style="padding:12px">${tr('لا توجد صفوف بعد')}</p>`}</div>
+    <div class="actions" style="flex-direction:column">
+      <button type="button" class="btn primary" data-pl="fill">تعبئة الأسابيع الفارغة</button>
+      <button type="button" class="btn danger-ghost" data-pl="over">استبدال كل العناوين بالخطة</button>
+    </div>`, { label: tr('خطة المنهج') });
+  s.sheet.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-pl]');
+    if (!b) return;
+    const over = b.dataset.pl === 'over';
+    if (over && !(await confirmDialog({ title: tr('استبدال كل عناوين الدروس؟'), text: tr('ستُستبدل عناوين الأسابيع ١–١٠ بعناوين الخطة في كل الصفوف التي لها خطة، حتى التي كتبتها بنفسك.'), ok: tr('استبدال') }))) return;
+    let n = 0;
+    for (const c of S.classes) n += fillLessons(c, over);
+    s.close();
+    softRender();
+    toast(n ? T`عُبّئ عنوان الدرس في ${ar(n)} أسبوع` : tr('كل العناوين معبّأة من قبل'));
+  });
+}
 async function saveSettingsNow() { await store.saveSettings(S.settings); }
 window.addEventListener('pagehide', () => { if (S.dirty.size) flushSave(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && S.dirty.size) flushSave(); });
@@ -471,6 +529,10 @@ function Tools() {
       ${item('new-class', 'plus', tr('إضافة صف'), tr('بإدخال الأسماء أو لصقها'))}
       ${item('import-classes', 'upload', tr('إنشاء صفوف من ملف'), tr('كشف Excel أو PDF فيه صف أو أكثر — حتى الممسوح ضوئيًا'))}
     </div>
+    ${REMOTE || !S.classes.length ? '' : T`<div class="section-title">خطة المنهج</div>
+    <div class="list">
+      ${item('plan-sheet', 'calendar', tr('عناوين الدروس من خطة المنهج'), tr('تعبئة عنوان كل أسبوع (١–١٠) حسب الصف'))}
+    </div>`}
     ${REMOTE ? '' : T`<div class="section-title">الحصص</div>
     <div class="list">
       ${item('go', 'bell', tr('جدول الحصص والتذكير'), platform.isNative ? tr('تنبيه قبل كل حصة بالوقت الذي تختاره') : tr('أضف حصصك لتقويم الجوال مع تنبيه قبل كل حصة'), 'data-to="schedule"')}
@@ -2406,6 +2468,7 @@ async function applyRemoteOp(m) {
       for (const c of clean) if (!S.grades[c.id]) { S.grades[c.id] = emptyClassData(); await localStore.saveGrades(c.id, S.grades[c.id]); }
       S.classes = clean;
       await localStore.saveClasses(S.classes);
+      L.applyingRemote = false; autoPlans(); L.applyingRemote = true;
     } else if (m.type === 'put-grades' && typeof m.id === 'string' && cls(m.id)) {
       S.grades[m.id] = localStore.sanitizeClassData(m.data);
       await localStore.saveGrades(m.id, S.grades[m.id]);
@@ -2602,6 +2665,7 @@ document.addEventListener('click', async (e) => {
     case 'update-now': if (UPD.worker) UPD.worker.postMessage({ type: 'skip-waiting' }); else location.reload(); break;
     case 'dismiss-guide': try { sessionStorage.setItem('iosGuideSeen', '1'); } catch { /* */ } go('home'); break;
     case 'slot-add': openSlotSheet(); break;
+    case 'plan-sheet': openPlanSheet(); break;
     case 'log-copy': {
       const txt = L.log.map((e) => new Date(e.t).toISOString().slice(11, 19) + ' ' + e.ev).join('\n');
       if (await platform.copyText(txt)) toast(tr('نُسخ السجل ✓'));
@@ -3029,6 +3093,7 @@ async function boot() {
   }
   translateStatic(document.body);
   applyTheme();
+  autoPlans();
   if (platform.isNative && !REMOTE) {
     const LN = platform.plugin('LocalNotifications');
     if (LN) {
