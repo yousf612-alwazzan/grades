@@ -181,12 +181,12 @@ export function keypad({ title, max, value }) {
     let result;
     const s = openSheet(T`
       <h2>${esc(title)}</h2>
-      <p class="hint">من ${ar(max)} — يقبل الكسور مثل ٣٫٥</p>
+      <p class="hint">من ${ar(max)} — يقبل الكسور مثل 3.5</p>
       <div class="keypad-display num" aria-live="polite"></div>
       <div class="err-msg" data-err></div>
       <div class="keypad">
         ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => `<button type="button" data-k="${d}">${ar(d)}</button>`).join('')}
-        <button type="button" data-k=".">٫</button><button type="button" data-k="0">٠</button>
+        <button type="button" data-k=".">.</button><button type="button" data-k="0">0</button>
         <button type="button" data-k="del" aria-label="حذف">⌫</button>
       </div>
       <div class="actions">

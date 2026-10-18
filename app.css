@@ -1166,3 +1166,14 @@ body.remote .rail { padding-top: 16px; }
 .day-btn.weekend { color: var(--muted); }
 .day-btn[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); }
 .seg button { white-space: nowrap; }
+
+/* استقبال طلاب: صف لكل طالب */
+.split-toggle { margin: 4px 4px 0; flex-wrap: wrap; }
+.split-toggle small { font-weight: 400; }
+.pick-row { border-bottom: 1px solid var(--line); }
+.pick-row:last-child { border-bottom: 0; }
+.pick-row .pick { border-bottom: 0; }
+.pick-row.split { display: grid; grid-template-columns: minmax(0, 1fr); padding-bottom: 8px; }
+.pick-row .st-tgt { margin: 0 16px; width: auto; min-height: 40px; font-size: 14px; }
+@media (min-width: 600px) { .pick-row.split { grid-template-columns: minmax(0, 1fr) 220px; align-items: center; padding-bottom: 0; } .pick-row .st-tgt { margin: 0 12px; } }
+.toast span { white-space: pre-line; }

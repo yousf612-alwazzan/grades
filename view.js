@@ -23,7 +23,7 @@ function fmtDate(s, short = false) {
   if (!m) return ar(String(s || ''));
   const key = short ? 's' : 'l';
   try {
-    dateFmts[key] ||= new Intl.DateTimeFormat(curLang() === 'en' ? 'en-GB' : 'ar-KW-u-nu-arab', short ? { day: 'numeric', month: 'short' } : { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    dateFmts[key] ||= new Intl.DateTimeFormat(curLang() === 'en' ? 'en-GB' : 'ar-KW-u-nu-latn', short ? { day: 'numeric', month: 'short' } : { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     return dateFmts[key].format(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
   } catch { return ar(s); }
 }
@@ -135,7 +135,7 @@ document.addEventListener('webkitfullscreenchange', updateFullBtn);
 function setZoom(z) {
   ui.zoom = Math.min(2.2, Math.max(0.8, round2(z)));
   document.documentElement.style.setProperty('--zoom', String(ui.zoom));
-  $('zoom-val').textContent = ar(Math.round(ui.zoom * 100)) + '٪';
+  $('zoom-val').textContent = ar(Math.round(ui.zoom * 100)) + '%';
 }
 
 // ---------- الاقتران ----------
@@ -568,8 +568,8 @@ function renderGrid() {
     let wk = '';
     for (let w = 1; w <= WEEKS; w++) wk += `<th scope="col" class="c-week">${headSub(tr('أسبوع'), ar(w))}</th>`;
     head = `<tr>${numTh}${nameTh}${wk}
-      <th scope="col" class="c-sep">${headSub(tr('الفترة ١'), '/' + ar(WEEK_MAX))}</th>
-      <th scope="col">${headSub(tr('الفترة ٢'), '/' + ar(WEEK_MAX))}</th>
+      <th scope="col" class="c-sep">${headSub(tr('الفترة 1'), '/' + ar(WEEK_MAX))}</th>
+      <th scope="col">${headSub(tr('الفترة 2'), '/' + ar(WEEK_MAX))}</th>
       <th scope="col" class="c-strong">${headSub(tr('البنائي'), '/' + ar(FORM_MAX))}</th>
       ${fins.map((f, k) => `<th scope="col"${k === 0 ? ' class="c-sep"' : ''}>${headSub(esc(shortFinal(f.label)), '/' + ar(f.max))}</th>`).join('')}
       <th scope="col" class="c-total">${sortHeader('total', headSub(tr('المجموع'), '/' + ar(TOTAL_MAX)))}</th></tr>`;
@@ -597,8 +597,8 @@ function renderGrid() {
     }
   } else {
     head = `<tr>${numTh}${nameTh}
-      <th scope="col">${headSub(tr('الفترة ١'), '/' + ar(WEEK_MAX))}</th>
-      <th scope="col">${headSub(tr('الفترة ٢'), '/' + ar(WEEK_MAX))}</th>
+      <th scope="col">${headSub(tr('الفترة 1'), '/' + ar(WEEK_MAX))}</th>
+      <th scope="col">${headSub(tr('الفترة 2'), '/' + ar(WEEK_MAX))}</th>
       <th scope="col" class="c-strong">${headSub(tr('التقويم البنائي'), '/' + ar(FORM_MAX))}</th>
       ${fins.map((f, k) => `<th scope="col"${k === 0 ? ' class="c-sep"' : ''}>${headSub(esc(f.label), '/' + ar(f.max))}</th>`).join('')}
       <th scope="col" class="c-total">${sortHeader('total', headSub(tr('المجموع النهائي'), '/' + ar(TOTAL_MAX)))}</th></tr>`;
@@ -675,7 +675,7 @@ function openPop(td, i) {
   const submit = (raw) => {
     let value = null;
     if (raw != null) {
-      const n = Number(String(raw).replace(/[٠-٩]/g, (c) => tr('٠١٢٣٤٥٦٧٨٩').indexOf(c)).replace(/[،٫,]/g, '.'));
+      const n = Number(String(raw).replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660)).replace(/[،٫,]/g, '.'));
       if (!Number.isFinite(n) || n < 0 || n > max) { const e = popEl.querySelector('.pop-err'); if (e) { e.hidden = false; e.textContent = n > max ? T`أكبر من ${ar(max)}` : tr('ليست رقمًا'); } return; }
       value = n;
     }
@@ -862,7 +862,7 @@ function totalCell(v, k, max = TOTAL_MAX) {
 }
 
 function shortFinal(label) {
-  return String(label).replace('المشروع الأول', 'المشروع ١').replace('المشروع الثاني', 'المشروع ٢').replace('الاختبار العملي', 'العملي');
+  return String(label).replace('المشروع الأول', 'المشروع 1').replace('المشروع الثاني', 'المشروع 2').replace('الاختبار العملي', 'العملي');
 }
 
 function stats() {
@@ -879,7 +879,7 @@ function renderSidebar() {
   const pct = Math.round(s.ratio * 100);
   $('stats').innerHTML = T`
     <div class="stat"><span class="stat-icon">${I.users}</span><span class="stat-label">عدد الطلاب</span><strong class="stat-val" data-stat="n">${ar(s.n)}</strong></div>
-    <div class="stat"><span class="stat-icon">${I.pie}</span><span class="stat-label">نسبة الاكتمال</span><strong class="stat-val" data-stat="ratio">${ar(pct)}٪</strong>
+    <div class="stat"><span class="stat-icon">${I.pie}</span><span class="stat-label">نسبة الاكتمال</span><strong class="stat-val" data-stat="ratio">${ar(pct)}%</strong>
       <span class="meter" aria-hidden="true"><span style="inline-size:${pct}%"></span></span></div>
     <div class="stat"><span class="stat-icon">${I.avg}</span><span class="stat-label">متوسط المجموع</span><strong class="stat-val" data-stat="avg">${fmt(s.avg == null ? null : round2(s.avg))}<small> / ${ar(TOTAL_MAX)}</small></strong></div>
     <div class="stat"><span class="stat-icon">${I.check}</span><span class="stat-label">اكتمل مجموعهم</span><strong class="stat-val" data-stat="done">${ar(s.complete)}<small> من ${ar(s.n)}</small></strong></div>`;

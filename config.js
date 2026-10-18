@@ -4,8 +4,8 @@
 
 export const CONFIG = {
   appName: 'متابعة الدرجات',
-  version: '2.11.0',
-  releaseDate: '2026-10-16',
+  version: '2.12.0',
+  releaseDate: '2026-10-18',
 
   // قواعد الدرجات
   weeks: 10,
@@ -17,8 +17,8 @@ export const CONFIG = {
   ],
   itemMax: 5,
   finals: [
-    { key: 'p1', label: 'المشروع الأول', short: 'مشروع ١', max: 10 },
-    { key: 'p2', label: 'المشروع الثاني', short: 'مشروع ٢', max: 20 },
+    { key: 'p1', label: 'المشروع الأول', short: 'مشروع 1', max: 10 },
+    { key: 'p2', label: 'المشروع الثاني', short: 'مشروع 2', max: 20 },
     { key: 'pr', label: 'الاختبار العملي', short: 'العملي', max: 30 },
   ],
   maxStudents: 60,

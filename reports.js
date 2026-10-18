@@ -149,7 +149,7 @@ export function attendanceReportHTML({ classLabel = '', names = [], data, settin
     }).join('');
     const { count, present } = sum[i];
     const rec = count + present;
-    const pct = rec ? T`${ar(Math.round((present / rec) * 100))}٪` : DASH;
+    const pct = rec ? T`${ar(Math.round((present / rec) * 100))}%` : DASH;
     rows.push(`<tr><td class="num m">${ar(i + 1)}</td>${nameCell(names[i])}${cells}<td class="num tot">${ar(count)}</td><td class="num">${pct}</td></tr>`);
   }
   if (!rows.length) rows.push(T`<tr><td class="empty" colspan="99">لا يوجد طلاب في هذا الصف</td></tr>`);

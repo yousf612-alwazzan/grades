@@ -334,7 +334,7 @@ function Home() {
   if (!S.classes.length) {
     body = T`<div class="empty card">${ART_EMPTY}<h2>ابدأ بثلاث خطوات</h2>
       <ol class="steps">
-        <li><span class="n">${ar(1)}</span><span>أضف صفًا (مثل «العاشر / ٣»)</span></li>
+        <li><span class="n">${ar(1)}</span><span>أضف صفًا (مثل «العاشر / 3»)</span></li>
         <li><span class="n">${ar(2)}</span><span>الصق أسماء الطلاب أو استوردها من Excel أو PDF</span></li>
         <li><span class="n">${ar(3)}</span><span>ارصد الدرجات ثم صدّر الكشف</span></li>
       </ol>
@@ -519,7 +519,7 @@ function Reports() {
   const card = (act, ic, t, sub) => `<button type="button" class="report-card" data-act="${act}" data-id="${c.id}">${icon(ic)}<span><strong>${t}</strong><small>${sub}</small></span></button>`;
   return T`${appbar({ title: tr('التقارير'), backBtn: false })}
   <div class="wrap stack">
-    <button type="button" class="pick-btn" data-act="report-class-pick" aria-haspopup="dialog"><span class="pick-ico">${icon('users')}</span><span class="grow"><small>الصف</small><strong>${esc(c.label)}</strong><span class="pick-meta">${students(n)} · رصد ${ar(Math.round(pr.ratio * 100))}٪</span></span><span class="pick-chev" aria-hidden="true">تغيير</span></button>
+    <button type="button" class="pick-btn" data-act="report-class-pick" aria-haspopup="dialog"><span class="pick-ico">${icon('users')}</span><span class="grow"><small>الصف</small><strong>${esc(c.label)}</strong><span class="pick-meta">${students(n)} · رصد ${ar(Math.round(pr.ratio * 100))}%</span></span><span class="pick-chev" aria-hidden="true">تغيير</span></button>
     <p class="hint">التقارير تُطبع أو تُحفظ PDF من نافذة الطباعة.</p>
     <div class="report-grid">
       ${card('report-grades', 'sheet', tr('كشف الدرجات'), tr('الأسابيع والفترتان والنهائي — PDF منسّق للطباعة'))}
@@ -534,7 +534,7 @@ function Reports() {
 function pickClassSheet(current, done) {
   const items = S.classes.map((o) => {
     const p = Math.round(progress(dataOf(o.id), o.names.length).ratio * 100);
-    return T`<button type="button" role="radio" class="cp" aria-checked="${o.id === current}" data-pick="${o.id}"><span class="cp-dot" aria-hidden="true"></span><span class="grow"><strong>${esc(o.label)}</strong><small>${students(o.names.length)} · رصد ${ar(p)}٪</small></span></button>`;
+    return T`<button type="button" role="radio" class="cp" aria-checked="${o.id === current}" data-pick="${o.id}"><span class="cp-dot" aria-hidden="true"></span><span class="grow"><strong>${esc(o.label)}</strong><small>${students(o.names.length)} · رصد ${ar(p)}%</small></span></button>`;
   }).join('');
   const s = openSheet(T`<h2>اختر الصف</h2><div class="class-pick" role="radiogroup" aria-label="الصفوف">${items}</div>`, { label: tr('اختر الصف') });
   s.sheet.addEventListener('click', (e) => {
@@ -556,7 +556,7 @@ function classCard(c) {
     <div class="head"><span class="class-badge">${icon('users')}</span>
       <div class="grow"><h3>${esc(c.label)}</h3><div class="meta">${students(n)}${where ? ` · ${where}` : ''}</div></div>
     </div>
-    <div><div class="row" style="justify-content:space-between"><span class="meta">نسبة الرصد</span><b class="num">${ar(pct)}٪</b></div>
+    <div><div class="row" style="justify-content:space-between"><span class="meta">نسبة الرصد</span><b class="num">${ar(pct)}%</b></div>
       <div class="progress ${pct === 100 ? 'done' : ''}" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div></div>
     <div class="class-actions">
       ${n ? T`<button type="button" class="btn soft sm" data-act="resume" data-id="${c.id}">تابع الرصد ${icon('next')}</button>` : T`<button type="button" class="btn soft" data-act="edit-class" data-id="${c.id}">${icon('users')} أضف الطلاب</button>`}
@@ -674,7 +674,7 @@ function asideHTML(c, d, p) {
   return T`<div class="side-card">
     <div class="side-title">ملخص الصف</div>
     <div class="kv">
-      <div>نسبة الرصد</div><div class="num">${ar(Math.round(pr.ratio * 100))}٪</div>
+      <div>نسبة الرصد</div><div class="num">${ar(Math.round(pr.ratio * 100))}%</div>
       <div>اكتمل مجموعهم النهائي</div><div class="num">${ar(totals.length)} / ${ar(n)}</div>
       <div>متوسط المجموع النهائي</div><div class="num">${fmt(avg)}</div>
       ${p.tab !== 'fin' ? T`<div>باقي في الأسبوع ${ar(p.tab)}</div><div class="num">${ar(weekRemaining(d, p.tab, n))}</div>` : ''}
@@ -724,7 +724,7 @@ function weekTab(c, d, w) {
   const side = T`
     <div class="side-card">
       <div class="side-title">الأسبوع ${ar(w)}</div>
-      <div class="field"><label for="wdate">التاريخ</label><div class="row"><input id="wdate" class="input" data-meta="date" value="${esc(meta.date)}" placeholder="مثال: ١٢/١٠" autocomplete="off"><button type="button" class="btn sm" data-act="today" title="تاريخ اليوم">${icon('calendar')} اليوم</button></div></div>
+      <div class="field"><label for="wdate">التاريخ</label><div class="row"><input id="wdate" class="input" data-meta="date" value="${esc(meta.date)}" placeholder="مثال: 12/10" autocomplete="off"><button type="button" class="btn sm" data-act="today" title="تاريخ اليوم">${icon('calendar')} اليوم</button></div></div>
       <div class="field" style="margin-top:8px"><label for="wlesson">عنوان الدرس</label><input id="wlesson" class="input" data-meta="lesson" value="${esc(meta.lesson)}" placeholder="اكتب عنوان الدرس" autocomplete="off"></div>
     </div>
     <div class="side-card">
@@ -908,8 +908,8 @@ function finTab(c, d) {
   const search = T`<div class="search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب أو رقمه" value="${esc(q)}" aria-label="بحث"></div>`;
   let list;
   if (WIDE.matches) {
-    list = T`<div class="grid-wrap"><table class="grid"><thead><tr><th>م</th><th class="name">اسم الطالب</th><th>الفترة ١<br><small>/ ٢٠</small></th><th>الفترة ٢<br><small>/ ٢٠</small></th><th>البنائي<br><small>/ ٤٠</small></th>
-      ${FINS.map((f) => `<th>${esc(f.label)}<br><small>/ ${ar(f.max)}</small></th>`).join('')}<th>المجموع<br><small>/ ١٠٠</small></th></tr></thead><tbody>
+    list = T`<div class="grid-wrap"><table class="grid"><thead><tr><th>م</th><th class="name">اسم الطالب</th><th>الفترة 1<br><small>/ 20</small></th><th>الفترة 2<br><small>/ 20</small></th><th>البنائي<br><small>/ 40</small></th>
+      ${FINS.map((f) => `<th>${esc(f.label)}<br><small>/ ${ar(f.max)}</small></th>`).join('')}<th>المجموع<br><small>/ 100</small></th></tr></thead><tbody>
       ${idxs.map((i) => { const fin = getFin(d, i); return `<tr data-stu="${i}"><td class="num">${ar(i + 1)}</td><td class="name"><button type="button" class="stu-name" data-act="open-student" data-idx="${i}">${esc(c.names[i])}</button></td>
         <td class="num" data-p1>${fmt(periodScore(d, i, 1))}</td><td class="num" data-p2>${fmt(periodScore(d, i, 2))}</td><td class="num" data-form>${fmt(formative(d, i))}</td>
         ${FINS.map((f, k) => `<td><input class="score-input" inputmode="decimal" autocomplete="off" data-score="fin" data-idx="${i}" data-k="${k}" value="${fin[k] == null ? '' : ar(fin[k])}" placeholder="—" aria-label="${esc(f.label)} — ${esc(c.names[i])}"><span class="cell-err" data-err></span></td>`).join('')}
@@ -1092,9 +1092,9 @@ function studentCardBody(c, i, { compact: small = false, week = null } = {}) {
     const meta = getWeekMeta(d, w);
     const abs = isAbsent(d, w, i);
     rows.push(`<tr class="${abs ? 'abs-row' : ''}"><td class="start"><b>${ar(w)}</b></td>${compact ? '' : `<td class="muted">${esc(meta.date) || '—'}</td>`}${abs ? T`<td colspan="${ITEMS}" class="abs-cell">غائب</td>` : it.map((v) => `<td class="num">${fmt(v)}</td>`).join('')}<td class="num"><b>${fmt(sm.weeks[w - 1])}</b></td></tr>`);
-    if (w === 5) rows.push(T`<tr class="sum"><td class="start" colspan="${compact ? 5 : 6}">الفترة الأولى (من ٢٠)</td><td class="num">${fmt(sm.p1)}</td></tr>`);
+    if (w === 5) rows.push(T`<tr class="sum"><td class="start" colspan="${compact ? 5 : 6}">الفترة الأولى (من 20)</td><td class="num">${fmt(sm.p1)}</td></tr>`);
   }
-  rows.push(T`<tr class="sum"><td class="start" colspan="${compact ? 5 : 6}">الفترة الثانية (من ٢٠)</td><td class="num">${fmt(sm.p2)}</td></tr>`);
+  rows.push(T`<tr class="sum"><td class="start" colspan="${compact ? 5 : 6}">الفترة الثانية (من 20)</td><td class="num">${fmt(sm.p2)}</td></tr>`);
   return T`<div class="stack">
     <div><p class="big-name" ${small ? 'style="font-size:21px"' : ''}>${esc(c.names[i])}</p>
       <div class="meta">${esc(c.label)} — رقم ${ar(i + 1)}${S.settings.subject ? '، ' + esc(S.settings.subject) : ''}</div></div>
@@ -1150,7 +1150,7 @@ function Editor(p) {
   }).join('');
   return T`${appbar({ title: p.id ? tr('تعديل الصف') : tr('صف جديد'), actions: `<button type="button" class="btn primary sm" data-act="save-class">${p.id ? tr('حفظ') : tr('إنشاء')}</button>` })}
   <div class="wrap stack">
-    <div class="card"><div class="field"><label for="cls-label">اسم الصف</label><input id="cls-label" class="input" data-draft-label value="${esc(dr.label)}" placeholder="مثل: العاشر / ٣" autocomplete="off"></div></div>
+    <div class="card"><div class="field"><label for="cls-label">اسم الصف</label><input id="cls-label" class="input" data-draft-label value="${esc(dr.label)}" placeholder="مثل: العاشر / 3" autocomplete="off"></div></div>
     <div class="card stack">
       <h3>إضافة طلاب</h3>
       <div class="field"><label for="paste">الصق الأسماء (اسم في كل سطر)</label>
@@ -1258,7 +1258,7 @@ async function pickAndReadNames() {
     if (pct === lastPct || pct % 5) return;
     lastPct = pct;
     close();
-    close = toast(T`نقرأ الأسماء من الصورة… ${ar(pct)}٪ (صفحة ${ar(pr.page)} من ${ar(pr.pages)})`, { ms: 0 });
+    close = toast(T`نقرأ الأسماء من الصورة… ${ar(pct)}% (صفحة ${ar(pr.page)} من ${ar(pr.pages)})`, { ms: 0 });
   };
   try {
     const { readNamesFromFile } = await import('./importers.js');
@@ -1484,6 +1484,10 @@ function TransferIn(p) {
   p.pick ||= new Set(xfer.students.map((_, i) => i));
   p.target ||= p.id && cls(p.id) ? p.id : '__new';
   p.newLabel ??= xfer.from.classLabel || '';
+  p.per ||= {}; // صف كل طالب عند «التوزيع على أكثر من صف» (الفهرس ← معرّف الصف أو __new)
+  const tgtOf = (i) => (p.split && p.per[i]) || p.target;
+  const needNew = p.target === '__new' || (p.split && [...p.pick].some((i) => tgtOf(i) === '__new'));
+  const opts = (sel) => S.classes.map((o) => `<option value="${o.id}" ${sel === o.id ? 'selected' : ''}>${esc(o.label)}</option>`).join('') + `<option value="__new" ${sel === '__new' ? 'selected' : ''}>${tr('صف جديد')}</option>`;
   const count = (st) => { let n = 0; for (const w of Object.values(st.weeks || {})) n += (w || []).filter((v) => v != null).length; return n + (st.fin || []).filter((v) => v != null).length; };
   return T`${appbar({ title: tr('استقبال طلاب منقولين') })}
   <div class="wrap stack">
@@ -1498,10 +1502,11 @@ function TransferIn(p) {
       ${S.classes.map((o) => `<label class="pick"><input type="radio" name="tgt" data-tgt="${o.id}" ${p.target === o.id ? 'checked' : ''}><span class="grow"><strong>${esc(o.label)}</strong> <small class="muted">${students(o.names.length)}</small></span></label>`).join('')}
       <label class="pick"><input type="radio" name="tgt" data-tgt="__new" ${p.target === '__new' ? 'checked' : ''}><span class="grow"><strong>صف جديد</strong></span></label>
     </div>
-    ${p.target === '__new' ? T`<div class="field"><label for="new-label">اسم الصف الجديد</label><input id="new-label" class="input" data-new-label value="${esc(p.newLabel)}" placeholder="مثل: العاشر / ٣"></div>` : ''}
+    ${S.classes.length ? T`<label class="toggle-line split-toggle"><input type="checkbox" class="switch" data-split ${p.split ? 'checked' : ''}> توزيع على أكثر من صف <small class="muted">(اختر صف كل طالب)</small></label>` : ''}
+    ${needNew ? T`<div class="field"><label for="new-label">اسم الصف الجديد</label><input id="new-label" class="input" data-new-label value="${esc(p.newLabel)}" placeholder="مثل: العاشر / 3"></div>` : ''}
     <div class="row" style="justify-content:space-between;margin-top:12px"><span class="count-badge num">${ar(p.pick.size)} من ${ar(xfer.students.length)}</span>
       <span><button type="button" class="btn sm ghost" data-act="pick-all" data-v="1">تحديد الكل</button><button type="button" class="btn sm ghost" data-act="pick-all" data-v="0">إلغاء الكل</button></span></div>
-    <div class="list">${xfer.students.map((st, i) => `<label class="pick"><input type="checkbox" data-pick-st="${i}" ${p.pick.has(i) ? 'checked' : ''}><span class="grow">${esc(st.name)}</span><span class="meta">${count(st) ? T`${ar(count(st))} درجة` : tr('بدون درجات')}</span></label>`).join('')}</div>
+    <div class="list">${xfer.students.map((st, i) => `<div class="pick-row ${p.split ? 'split' : ''}"><label class="pick"><input type="checkbox" data-pick-st="${i}" ${p.pick.has(i) ? 'checked' : ''}><span class="grow">${esc(st.name)}</span><span class="meta">${count(st) ? T`${ar(count(st))} درجة` : tr('بدون درجات')}</span></label>${p.split ? `<select class="select st-tgt" data-st-tgt="${i}" aria-label="${tr('الصف')} — ${esc(st.name)}" ${p.pick.has(i) ? '' : 'disabled'}>${opts(tgtOf(i))}</select>` : ''}</div>`).join('')}</div>
     <button type="button" class="btn primary lg block" data-act="apply-transfer" ${p.pick.size ? '' : 'disabled'}>${icon('check')} إضافة ${students(p.pick.size)}</button>
   </div>`;
 }
@@ -1519,22 +1524,38 @@ async function pickTransfer(p) {
 }
 
 async function applyTransferUI(p) {
-  let target;
-  if (p.target === '__new') {
-    const label = (p.newLabel || '').trim() || tr('صف منقول');
-    target = { id: uid(), label, names: [] };
-    S.classes.push(target); S.grades[target.id] = emptyClassData();
-  } else target = cls(p.target);
-  const res = applyTransfer({ names: target.names, data: dataOf(target.id) }, p.tr, [...p.pick].sort((a, b) => a - b), MAX_STUDENTS);
-  target.names = res.names; S.grades[target.id] = res.data;
-  await saveClassesNow(); await store.saveGrades(target.id, res.data);
-  liveResync(target.id);
-  const parts = [T`أُضيف ${students(res.added)} إلى «${target.label}»`];
-  if (res.dup) parts.push(T`${ar(res.dup)} موجود مسبقًا`);
-  if (res.overLimit) parts.push(T`${ar(res.overLimit)} فوق الحد`);
-  toast(parts.join(' · '), { ms: 4500 });
-  S.stack = [{ name: 'home', p: {} }, { name: 'class', p: { id: target.id } }];
-  history.replaceState({ depth: 2 }, '');
+  // نجمع الطلاب المحددين حسب صف كل واحد (صف واحد للكل، أو صف لكل طالب عند التوزيع)
+  const groups = new Map();
+  for (const i of [...p.pick].sort((a, b) => a - b)) {
+    const t = (p.split && p.per && p.per[i]) || p.target;
+    if (!groups.has(t)) groups.set(t, []);
+    groups.get(t).push(i);
+  }
+  const parts = [];
+  let last = null;
+  for (const [t, idxs] of groups) {
+    let target;
+    if (t === '__new') {
+      const label = (p.newLabel || '').trim() || tr('صف منقول');
+      target = { id: uid(), label, names: [] };
+      S.classes.push(target); S.grades[target.id] = emptyClassData();
+    } else target = cls(t);
+    if (!target) continue;
+    const res = applyTransfer({ names: target.names, data: dataOf(target.id) }, p.tr, idxs, MAX_STUDENTS);
+    target.names = res.names; S.grades[target.id] = res.data;
+    await store.saveGrades(target.id, res.data);
+    liveResync(target.id);
+    let msg = T`أُضيف ${students(res.added)} إلى «${target.label}»`;
+    if (res.dup) msg += ' · ' + T`${ar(res.dup)} موجود مسبقًا`;
+    if (res.overLimit) msg += ' · ' + T`${ar(res.overLimit)} فوق الحد`;
+    parts.push(msg);
+    last = target;
+  }
+  await saveClassesNow();
+  toast(parts.join('\n'), { ms: 4500 + 1500 * (parts.length - 1) });
+  // صف واحد: افتحه. أكثر من صف: الرئيسية
+  S.stack = groups.size === 1 && last ? [{ name: 'home', p: {} }, { name: 'class', p: { id: last.id } }] : [{ name: 'home', p: {} }];
+  history.replaceState({ depth: S.stack.length }, '');
   render({ scrollTop: true });
 }
 
@@ -1555,14 +1576,14 @@ function Settings() {
     <div class="card stack">
       <div class="field"><label for="s-teacher">اسم المعلم</label><input id="s-teacher" class="input" data-setting="teacher" value="${esc(st.teacher)}" placeholder="مثل: يوسف أحمد" autocomplete="name"></div>
       <div class="field"><label for="s-subject">المادة (المجال الدراسي)</label><input id="s-subject" class="input" data-setting="subject" value="${esc(st.subject)}" placeholder="مثل: الحاسوب"></div>
-      <div class="field"><label for="s-year">العام الدراسي</label><input id="s-year" class="input" data-setting="year" value="${esc(st.year)}" placeholder="مثل: ٢٠٢٦ / ٢٠٢٧"></div>
+      <div class="field"><label for="s-year">العام الدراسي</label><input id="s-year" class="input" data-setting="year" value="${esc(st.year)}" placeholder="مثل: 2026 / 2027"></div>
       <p class="hint">تظهر في رأس الكشوف والتقارير وبطاقة الطالب.</p>
     </div>
 
     <div class="section-title">طريقة الرصد</div>
     <div class="card stack">
       <div class="field"><span class="label">إدخال الدرجة</span>${seg('inputMode', [['chips', tr('سلايدر')], ['fields', tr('كتابة الرقم')]])}
-        <p class="hint">السلايدر: اضغط المربع واسحب من ٠ إلى ٥. كتابة الرقم: اكتب ثم Enter. (على الكمبيوتر يظهر جدول دائمًا)</p></div>
+        <p class="hint">السلايدر: اضغط المربع واسحب من 0 إلى 5. كتابة الرقم: اكتب ثم Enter. (على الكمبيوتر يظهر جدول دائمًا)</p></div>
     </div>
     <div class="list">
       ${sw('autoAdvance', tr('الانتقال التلقائي للطالب التالي'), tr('بعد إكمال درجات طالب'))}
@@ -1654,9 +1675,9 @@ function onSettingInput(key, value) {
 // =====================================================================
 function Guide() {
   const ios = T`<ol class="ios-steps">
-    <li><span class="pic">${icon('shareIos')}</span><span><strong>١. اضغط زر المشاركة</strong><br><span class="muted">في أسفل Safari (مربع وسهم للأعلى)</span></span></li>
-    <li><span class="pic">${icon('plusSquare')}</span><span><strong>٢. اختر «إضافة إلى الشاشة الرئيسية»</strong><br><span class="muted">مرّر القائمة للأسفل إن لم تظهر</span></span></li>
-    <li><span class="pic">${icon('check')}</span><span><strong>٣. اضغط «إضافة»</strong><br><span class="muted">ثم افتح التطبيق دائمًا من أيقونته</span></span></li>
+    <li><span class="pic">${icon('shareIos')}</span><span><strong>1. اضغط زر المشاركة</strong><br><span class="muted">في أسفل Safari (مربع وسهم للأعلى)</span></span></li>
+    <li><span class="pic">${icon('plusSquare')}</span><span><strong>2. اختر «إضافة إلى الشاشة الرئيسية»</strong><br><span class="muted">مرّر القائمة للأسفل إن لم تظهر</span></span></li>
+    <li><span class="pic">${icon('check')}</span><span><strong>3. اضغط «إضافة»</strong><br><span class="muted">ثم افتح التطبيق دائمًا من أيقونته</span></span></li>
   </ol>`;
   const android = T`<ol class="ios-steps">
     <li><span class="pic">${icon('download')}</span><span><strong>تطبيق APK</strong><br><span class="muted">ثبّت ملف APK الذي يوزعه المعلم المسؤول (اسمح بالتثبيت من هذا المصدر).</span></span></li>
@@ -1676,7 +1697,7 @@ function Guide() {
 // الجولة التعريفية
 // =====================================================================
 const TOUR = [
-  { t: tr('ارصد بضغطة واحدة'), d: tr('لكل طالب زر «كامل» يضع ٥ في البنود الأربعة، وأزرار كبيرة لأي درجة أخرى. التطبيق يحفظ تلقائيًا ويعمل بدون إنترنت.'), art: ART_EMPTY },
+  { t: tr('ارصد بضغطة واحدة'), d: tr('لكل طالب زر «كامل» يضع 5 في البنود الأربعة، وأزرار كبيرة لأي درجة أخرى. التطبيق يحفظ تلقائيًا ويعمل بدون إنترنت.'), art: ART_EMPTY },
   { t: tr('أضف طلابك بسهولة'), d: tr('الصق الأسماء أو استوردها من Excel أو PDF. وإذا انتقل طالب، أرسل درجاته لمعلمه الجديد بملف.'), art: ART_USERS },
   { t: tr('صدّر واعرض'), d: tr('صدّر كشف الإكسل الرسمي بضغطة، واعرض الدرجات مباشرة على شاشة الكمبيوتر عبر رمز QR. لا تنسَ النسخة الاحتياطية الأسبوعية.'), art: `<svg class="art" viewBox="0 0 200 150" aria-hidden="true"><rect x="20" y="24" width="120" height="80" rx="10" fill="var(--primary-soft)"/><rect x="34" y="38" width="92" height="8" rx="4" fill="var(--primary)"/><rect x="34" y="54" width="70" height="6" rx="3" fill="var(--border)"/><rect x="34" y="66" width="80" height="6" rx="3" fill="var(--border)"/><rect x="66" y="110" width="28" height="6" rx="3" fill="var(--border)"/><rect x="140" y="50" width="42" height="76" rx="8" fill="var(--card)" stroke="var(--primary)" stroke-width="3"/><rect x="150" y="66" width="22" height="22" rx="2" fill="var(--primary)"/></svg>` },
 ];
@@ -1786,7 +1807,7 @@ async function doBackup() {
     if (r === 'cancelled') return;
     if (platform.isIOS && !platform.isNative && r === 'shared') {
       // النسخة الثانية تحتاج ضغطة جديدة (قيود آبل على المشاركة)
-      const second = await confirmDialog({ title: T`النسخة ١ ✓ — الآن النسخة ٢ في iCloud`, text: tr('اضغط «احفظ في iCloud» ثم اختر «حفظ في الملفات» ← «iCloud Drive» ← «حفظ».'), ok: tr('احفظ في iCloud'), cancel: tr('تخطَّ') });
+      const second = await confirmDialog({ title: T`النسخة 1 ✓ — الآن النسخة 2 في iCloud`, text: tr('اضغط «احفظ في iCloud» ثم اختر «حفظ في الملفات» ← «iCloud Drive» ← «حفظ».'), ok: tr('احفظ في iCloud'), cancel: tr('تخطَّ') });
       if (second) {
         const r2 = await platform.shareFile(blob, store.backupFileName(), 'application/json');
         if (r2 === 'shared') { S.meta.lastCloudBackupAt = new Date().toISOString(); await store.setMeta('lastCloudBackupAt', S.meta.lastCloudBackupAt); }
@@ -1920,8 +1941,8 @@ function Live() {
   // ٣) الربط
   let body = '';
   if (L.phase === 'setup') {
-    body = T`<p class="hint">١) افتح على الكمبيوتر: <b>شاشة العرض</b>${viewUrl ? T` — <button type="button" class="link-btn" data-act="copy-view">${icon('copy')} نسخ الرابط</button>` : ''}</p>
-      <p class="hint">٢) اضغط الزر وصوّر الرمز الظاهر على الكمبيوتر. يتصل الكمبيوتر بعدها تلقائيًا.</p>
+    body = T`<p class="hint">1) افتح على الكمبيوتر: <b>شاشة العرض</b>${viewUrl ? T` — <button type="button" class="link-btn" data-act="copy-view">${icon('copy')} نسخ الرابط</button>` : ''}</p>
+      <p class="hint">2) اضغط الزر وصوّر الرمز الظاهر على الكمبيوتر. يتصل الكمبيوتر بعدها تلقائيًا.</p>
       <button type="button" class="btn primary lg block" data-act="live-scan" ${L.mode === 'display' && !S.classes.length ? 'disabled' : ''}>${icon('camera')} صوّر رمز الكمبيوتر</button>
       <button type="button" class="link-btn" data-act="live-paste">لا تعمل الكاميرا؟ الصق الرمز بدلًا من ذلك</button>`;
   } else if (L.phase === 'scan') {
@@ -2646,7 +2667,7 @@ function showWeekTools(p) {
   const meta = getWeekMeta(d, p.tab);
   const s = openSheet(T`<h2>أدوات الأسبوع ${ar(p.tab)}</h2>
     <div class="stack">
-      <div class="field"><label for="wdate">التاريخ</label><div class="row"><input id="wdate" class="input grow" data-meta="date" value="${esc(meta.date)}" placeholder="مثال: ١٢/١٠" autocomplete="off"><button type="button" class="btn" data-act="today">${icon('calendar')} اليوم</button></div></div>
+      <div class="field"><label for="wdate">التاريخ</label><div class="row"><input id="wdate" class="input grow" data-meta="date" value="${esc(meta.date)}" placeholder="مثال: 12/10" autocomplete="off"><button type="button" class="btn" data-act="today">${icon('calendar')} اليوم</button></div></div>
       <div class="field"><label for="wlesson">عنوان الدرس</label><input id="wlesson" class="input" data-meta="lesson" value="${esc(meta.lesson)}" placeholder="اكتب عنوان الدرس" autocomplete="off"></div>
       <div class="field"><span class="label">تعبئة سريعة (الخانات الفارغة فقط)</span>
         <div class="fill-grid">${CRIT.map((cr, k) => `<button type="button" class="btn soft" data-act="fill" data-k="${k}">${esc(cr.label)} ${ar(CONFIG.itemMax)}</button>`).join('')}
@@ -2788,6 +2809,8 @@ document.addEventListener('change', async (e) => {
   if (t.matches('[data-sel]')) { const i = +t.dataset.sel; if (t.checked) r.p.sel.add(i); else r.p.sel.delete(i); render(); return; }
   if (t.matches('[data-pick-st]')) { const i = +t.dataset.pickSt; if (t.checked) r.p.pick.add(i); else r.p.pick.delete(i); render(); return; }
   if (t.matches('[data-tgt]')) { r.p.target = t.dataset.tgt; render(); return; }
+  if (t.matches('[data-split]')) { r.p.split = t.checked; render(); return; }
+  if (t.matches('[data-st-tgt]')) { (r.p.per ||= {})[t.dataset.stTgt] = t.value; render(); return; }
   if (t.matches('[data-report-class]')) { S.ui.reportClass = t.value; render(); return; }
   if (t.matches('[data-present-pick]')) { S.ui.presentPick = t.value; render(); return; }
   if (t.matches('[data-live="class"]')) { L.classId = t.value; L.scope.idx = 0; liveResync(L.classId); render(); return; }

@@ -27,9 +27,10 @@ export function normalizeDigits(str) {
     .trim();
 }
 
+// الأرقام تُعرض دائمًا بالإنجليزية (1 2 3) في اللغتين — قرار صاحب التطبيق.
+// الإدخال يقبل أي أرقام (normalizeDigits). الاسم باقٍ كما هو حتى لا تتغير الاستدعاءات.
 export function toArabicDigits(x) {
-  if (isEn()) return String(x ?? '');
-  return String(x ?? '').replace(/[0-9]/g, d => tr('٠١٢٣٤٥٦٧٨٩')[d]).replace(/\./g, '٫');
+  return String(x ?? '');
 }
 
 export function round2(n) {
