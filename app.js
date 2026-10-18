@@ -1970,7 +1970,7 @@ function Live() {
       <button type="button" class="btn ghost block" data-act="live-stop">إلغاء</button>`;
   } else if (L.phase === 'connected') {
     body = L.mode === 'manage'
-      ? T`<div class="alert ok">${icon('checkCircle')}<div class="grow"><strong>الكمبيوتر متصل</strong><p style="margin:0">اختر الصف من الكمبيوتر واعرضه للطلاب أو ارصد منها. ما تعدّله هناك يُحفظ هنا فورًا. تستطيع الخروج من التطبيق؛ عند رجوعك يعود الاتصال تلقائيًا.</p></div></div>
+      ? T`<div class="alert ok">${icon('checkCircle')}<div class="grow"><strong>الكمبيوتر متصل</strong><p style="margin:0">اختر الصف من الكمبيوتر واعرضه للطلاب أو ارصد منه. تقدر تقفل الجوال أو تستخدمه في شي ثاني — الكمبيوتر يكمل لحاله، وأول ما ترجع للتطبيق تنتقل كل تعديلاته هنا تلقائيًا.</p></div></div>
         <button type="button" class="btn danger block lg" data-act="live-stop">${icon('power')} إيقاف الاتصال</button>`
       : T`<div class="alert ok">${icon('checkCircle')}<div class="grow"><strong>العرض يعمل الآن</strong><p style="margin:0">أي درجة ترصدها تظهر فورًا. تستطيع الخروج للواتساب مثلًا؛ عند رجوعك يعود الاتصال تلقائيًا.</p></div></div>
         ${c ? T`<button type="button" class="btn block" data-act="open-class" data-id="${c.id}">${icon('edit')} ارصد «${esc(c.label)}»</button>` : ''}

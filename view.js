@@ -259,6 +259,7 @@ function onConnState(s) {
     wakeLock(true);
     hideBanner();
     setSoftPause(false);
+    if (flushOutbox()) afterFlush();
     if (!model) startDataWatch();
     if (ui.screen === 'pair') {
       closeModals();
@@ -397,6 +398,13 @@ function onMessage(m) {
   switch (m.type) {
     case 'state': {
       if (ui.mode !== 'manage') return;
+      if (outbox.size && mirror) {
+        // عندنا تعديلات لم تصل: لا نستبدلها ببيانات الجوال القديمة — نرسلها ثم نطلب النسخة المحدثة
+        if (flushOutbox()) afterFlush();
+        break;
+      }
+      if (freshState === 'flushed') break; // نسخة الجوال قبل وصول تعديلات الكمبيوتر — ننتظر المحدثة
+      freshState = '';
       mirror = { classes: Array.isArray(m.classes) ? m.classes : [], grades: m.grades && typeof m.grades === 'object' ? m.grades : {}, settings: m.settings || {}, lastBackupAt: m.lastBackupAt || null };
       openManage();
       toFrame(m);
@@ -776,9 +784,35 @@ function openNotePop(anchor, i) {
 document.addEventListener('mousedown', (e) => { if (popEl && !popEl.contains(e.target) && !e.target.closest('td.editable') && !e.target.closest('[data-ed="note"]')) closePop(); });
 
 // ===== الرجوع التلقائي =====
+// تعديلات الكمبيوتر أثناء غياب الجوال (في الذاكرة فقط — تُمسح بإغلاق الصفحة). نحتفظ بآخر نسخة لكل صف.
+const outbox = new Map();
+let freshState = ''; // بعد إرسال التعديلات: نتجاهل بيانات الجوال القديمة حتى تصل النسخة المحدثة
+function afterFlush() { freshState = 'flushed'; setTimeout(() => { if (link) { freshState = 'wanted'; link.requestData(); } }, 900); }
+const opKey = (m) => (m.type === 'put-grades' || m.type === 'del-grades' ? 'g:' + m.id : m.type);
+function queueOp(m) {
+  if (m.type === 'del-grades') outbox.delete('g:' + m.id);
+  outbox.set(opKey(m), m);
+  paintOutbox();
+}
+function flushOutbox() {
+  if (!outbox.size || !link || ui.connState !== 'connected') return false;
+  // الصفوف أولًا (صف جديد قبل درجاته)، ثم الإعدادات، ثم الدرجات
+  const order = (m) => (m.type === 'put-classes' ? 0 : m.type === 'put-settings' ? 1 : 2);
+  const list = [...outbox.values()].sort((a, b) => order(a) - order(b));
+  for (const m of list) { if (!link.sendOp(m)) return false; outbox.delete(opKey(m)); }
+  paintOutbox();
+  return true;
+}
+function paintOutbox() {
+  const el = $('soft-count');
+  if (el) { el.hidden = !outbox.size; el.textContent = outbox.size ? T`${ar(outbox.size)} تعديل بانتظار الجوال` : ''; }
+}
+window.addEventListener('beforeunload', (e) => { if (outbox.size) { e.preventDefault(); e.returnValue = ''; } });
+
 function setSoftPause(on) {
   ui.paused = on;
   $('soft-pause').hidden = !on;
+  paintOutbox();
   $('screen-manage').classList.toggle('paused', on);
 }
 async function autoResume() {
@@ -824,7 +858,12 @@ window.addEventListener('message', (e) => {
   const d = e.data;
   if (!d || typeof d !== 'object') return;
   if (d.gfu === 'ready') { if (mirror) toFrame({ type: 'state', ...mirror }); return; }
-  if (d.gfu === 'op' && d.msg && link) { applyMirror(d.msg); link.sendOp(d.msg); return; }
+  if (d.gfu === 'op' && d.msg) {
+    applyMirror(d.msg);
+    // الجوال متصل: يُرسل فورًا. غائب (قفل الشاشة/تطبيق آخر): ينتظر ويُرسل عند رجوعه
+    if (!(link && ui.connState === 'connected' && !outbox.size && link.sendOp(d.msg))) queueOp(d.msg);
+    return;
+  }
   if (d.gfu === 'present') {
     // عرض للطلاب من وضع الإدارة: بيانات العرض فقط (بلا ملاحظات)
     const was = presenting && model;

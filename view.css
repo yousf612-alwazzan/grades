@@ -527,7 +527,7 @@ textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 
 /* الرجوع التلقائي */
 .soft-pause { position: fixed; z-index: 45; inset-inline: 0; inset-block-end: 0; display: flex; align-items: center; justify-content: center; gap: 14px; padding: 12px 20px; background: var(--warning-soft, #fff4e5); color: var(--text); border-top: 1px solid var(--border); font-size: 1rem; }
 .soft-pause .spinner { width: 18px; height: 18px; }
-.manage.paused::after { content: 'انقطع الاتصال بالجوال — التعديل متوقف حتى يعود المعلم للتطبيق'; position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.45); color: #fff; font-size: 1.2rem; font-weight: 800; text-align: center; padding: 24px; }
+/* غياب الجوال لا يوقف العمل على الكمبيوتر */
 
 /* الرصد من شاشة العرض */
 .edit-toggle { margin-inline-start: 8px; }
@@ -768,3 +768,8 @@ body { font-family: 'IBM Plex Sans Arabic', system-ui, -apple-system, 'Segoe UI'
 .step-num { background: none !important; width: auto; min-width: 28px; height: auto; color: var(--primary) !important; font-size: 26px; font-weight: 700; }
 /* هوية واحدة: أيقونة التطبيق واسمه مرة واحدة */
 .logo-img { width: 38px; height: 38px; border-radius: 11px; flex: none; display: block; }
+
+.soft-pause { background: var(--card); border-top: 1px solid var(--line); box-shadow: 0 -6px 20px rgba(16, 18, 24, .06); font-size: .95rem; padding: 10px 16px; flex-wrap: wrap; }
+.soft-pause .spinner { border-color: var(--line); border-top-color: var(--primary); }
+.soft-count { font-weight: 700; color: var(--warning); background: var(--warning-soft); padding: 4px 12px; border-radius: 999px; }
+.manage.paused { bottom: 60px; } /* الشريط لا يغطي التطبيق */
