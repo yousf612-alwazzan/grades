@@ -866,15 +866,12 @@ function classCard(c) {
   const pct = Math.round(pr.ratio * 100);
   const fw = n ? firstIncompleteWeek(d, n) : null;
   const where = fw == null ? '' : fw === 'fin' ? (finalsRemaining(d, n) ? tr('الدرجات النهائية') : tr('اكتمل كل شيء ✓')) : T`الأسبوع ${ar(fw)}`;
-  return T`<article class="card class-card tap" data-act="open-class" data-id="${c.id}">
-    <div class="head"><span class="class-badge">${icon('users')}</span>
-      <div class="grow"><h3>${esc(c.label)}</h3><div class="meta">${students(n)}${where ? ` · ${where}` : ''}</div></div>
-    </div>
-    <div><div class="row" style="justify-content:space-between"><span class="meta">نسبة الرصد</span><b class="num">${ar(pct)}%</b></div>
-      <div class="progress ${pct === 100 ? 'done' : ''}" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div></div>
-    <div class="class-actions">
-      ${n ? T`<button type="button" class="btn soft sm" data-act="resume" data-id="${c.id}">تابع الرصد ${icon('next')}</button>` : T`<button type="button" class="btn soft" data-act="edit-class" data-id="${c.id}">${icon('users')} أضف الطلاب</button>`}
-    </div>
+  // البطاقة كلها تفتح الصف (بلا زر منفصل) — بطاقتان في كل سطر على الجوال
+  return T`<article class="card class-card tap" data-act="open-class" data-id="${c.id}" role="button" tabindex="0" aria-label="${esc(c.label)}">
+    <h3>${esc(c.label)}</h3>
+    <div class="cc-meta">${n ? students(n) : tr('بلا طلاب بعد')}</div>
+    <div class="cc-where ${pct === 100 ? 'done' : ''}">${n ? (where || '') : T`${icon('plus')} أضف الطلاب`}</div>
+    <div class="cc-foot"><div class="progress ${pct === 100 ? 'done' : ''}" role="progressbar" aria-label="نسبة الرصد" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div><b class="num">${ar(pct)}%</b></div>
   </article>`;
 }
 
@@ -3459,6 +3456,10 @@ function onScoreInput(t, p) {
 }
 
 // Enter ينقل للحقل التالي ثم للطالب التالي؛ ↑↓ في الجدول
+// بطاقة الصف (role=button): Enter أو مسافة تفتحها
+document.addEventListener('keydown', (e) => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('.class-card[data-act="open-class"]')) { e.preventDefault(); e.target.click(); }
+});
 document.addEventListener('keydown', (e) => {
   const t = e.target;
   if (!t.matches || !t.matches('input[data-score]')) return;

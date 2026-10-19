@@ -1356,3 +1356,19 @@ body.remote .rail { padding-top: 16px; }
   body.remote .rail .brand { display: flex; min-height: 36px; }
   body.remote .rail .brand > img, body.remote .rail .brand > span { display: none; }
 }
+
+/* ===== بطاقات الصفوف: البطاقة كلها تُضغط، وبطاقتان في السطر على الجوال ===== */
+.home-grid { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.home-grid > * + * { margin-top: 0 !important; }
+.class-card { display: flex !important; flex-direction: column; gap: 4px !important; padding: 14px !important; min-height: 116px; cursor: pointer; }
+.class-card h3 { font-size: 17px !important; font-weight: 800 !important; line-height: 1.3; margin: 0; overflow-wrap: anywhere; }
+.class-card .cc-meta { font-size: 13px; color: var(--muted); }
+.class-card .cc-where { font-size: 13px; font-weight: 600; color: var(--primary); display: flex; align-items: center; gap: 4px; min-height: 18px; }
+.class-card .cc-where.done { color: var(--success); }
+.class-card .cc-where svg.i { width: 14px; height: 14px; }
+.class-card .cc-foot { margin-top: auto; padding-top: 8px; display: flex; align-items: center; gap: 8px; }
+.class-card .cc-foot .progress { flex: 1; margin: 0; }
+.class-card .cc-foot b { font-size: 13px; min-width: 34px; text-align: end; }
+.class-card:active { transform: scale(.98); }
+.class-card:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+@media (min-width: 900px) { .home-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; } }
