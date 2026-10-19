@@ -655,7 +655,8 @@ function renderNav() {
         ${DESK_WEB ? T`<div class="ra-timer tab-label" title="${tr('تخرج تلقائيًا من حسابك بعد ساعة ونصف من الدخول')}">${icon('lock')}<span>خروج تلقائي بعد</span><b class="num" data-cloud-timer dir="ltr">${fmtLeft(cloudLeftMs())}</b></div>` : ''}
       </div>`
     : T`<button type="button" class="tab rail-acct login" data-act="cloud-login" title="${tr('تسجيل الدخول')}"><span class="tab-ico">${icon('user')}</span><span class="tab-label">تسجيل الدخول</span></button>`;
-  const foot = REMOTE ? T`<span class="remote-note">${icon('phone')} <span><b>متصل بجوالك</b> — كل التعديلات تُحفظ في جوالك</span></span>` : T`الإصدار ${ar(CONFIG.version)}`;
+  const foot = REMOTE ? T`<span class="remote-note">${icon('phone')} <span><b>متصل بجوالك</b> — كل التعديلات تُحفظ في جوالك</span></span>`
+    : platform.isNative ? T`الإصدار ${ar(CONFIG.version)}` : T`<button type="button" class="ver-check" data-act="update-check" title="${tr('ابحث عن تحديث')}">${icon('refresh')} الإصدار ${ar(CONFIG.version)} · تحديث</button>`;
   document.getElementById('rail').innerHTML = T`<div class="brand"><img src="icons/icon-192.png" alt=""><span>${esc(tr(CONFIG.appName))}</span>
       <button type="button" class="rail-toggle" data-act="rail-toggle" aria-expanded="${!mini}" title="${mini ? tr('إظهار القائمة') : tr('إخفاء القائمة')}" aria-label="${mini ? tr('إظهار القائمة') : tr('إخفاء القائمة')}">${icon(mini ? 'menu' : 'sidebar')}</button></div>
     <nav class="rail-nav">${btns}</nav>
@@ -748,7 +749,7 @@ function Home() {
     ${backupOk}
     ${alerts.join('')}
     ${body}
-    <p class="hint version-line num" data-testid="app-version">الإصدار ${ar(CONFIG.version)}</p>
+    <p class="hint version-line num" data-testid="app-version">${platform.isNative || REMOTE ? T`الإصدار ${ar(CONFIG.version)}` : T`<button type="button" class="ver-check" data-act="update-check">${icon('refresh')} الإصدار ${ar(CONFIG.version)} · ابحث عن تحديث</button>`}</p>
   </div>`;
 }
 
@@ -2163,22 +2164,42 @@ function paintUpdate() {
   const card = document.querySelector('[data-testid="update-card"]');
   if (card) card.innerHTML = updateCardHTML();
 }
-async function checkForUpdate() {
-  if (!('serviceWorker' in navigator)) { UPD.state = 'latest'; return paintUpdate(); }
-  if (!navigator.onLine) { UPD.state = 'offline'; return paintUpdate(); }
+// رقم الإصدار المنشور فعليًا (بلا ذاكرة مؤقتة) — حتى لو علق المتصفح على نسخة قديمة
+async function publishedVersion() {
+  try {
+    const t = await (await fetch('config.js?v=' + Date.now(), { cache: 'no-store' })).text();
+    const m = /version:\s*'([\d.]+)'/.exec(t);
+    return m ? m[1] : null;
+  } catch { return null; }
+}
+const newerThan = (a, b) => { const x = String(a).split('.').map(Number); const y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
+async function checkForUpdate({ quiet = false } = {}) {
+  if (!navigator.onLine) { UPD.state = 'offline'; paintUpdate(); if (!quiet) toast(tr('لا يوجد اتصال بالإنترنت'), { err: true }); return; }
   UPD.state = 'checking'; paintUpdate();
   try {
-    const reg = await navigator.serviceWorker.getRegistration();
-    if (!reg) { UPD.state = 'latest'; return paintUpdate(); }
-    await reg.update();
-    const w = reg.waiting || reg.installing;
-    if (w) {
-      if (w.state === 'installed') { UPD.state = 'ready'; UPD.worker = w; }
-      else await new Promise((res) => { w.addEventListener('statechange', () => { if (w.state === 'installed' || w.state === 'redundant') res(); }); setTimeout(res, 20000); });
-      if (w.state === 'installed') { UPD.state = 'ready'; UPD.worker = w; } else UPD.state = 'latest';
-    } else UPD.state = 'latest';
+    const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
+    if (reg) {
+      await reg.update();
+      const w = reg.waiting || reg.installing;
+      if (w && w.state !== 'installed') await new Promise((res) => { w.addEventListener('statechange', () => { if (w.state === 'installed' || w.state === 'redundant') res(); }); setTimeout(res, 20000); });
+      if (w && w.state === 'installed') { UPD.state = 'ready'; UPD.worker = w; }
+    }
+    if (UPD.state !== 'ready') {
+      const pub = await publishedVersion();
+      if (pub && newerThan(pub, CONFIG.version)) { UPD.state = 'ready'; UPD.worker = null; UPD.hard = true; } // المتصفح عالق: تحديث كامل
+      else UPD.state = 'latest';
+    }
   } catch { UPD.state = navigator.onLine ? 'latest' : 'offline'; }
   paintUpdate();
+  if (!quiet) toast(UPD.state === 'ready' ? tr('تحديث جديد جاهز — اضغط «حدّث الآن»') : UPD.state === 'latest' ? tr('عندك آخر إصدار ✓') : tr('لا يوجد اتصال بالإنترنت'), { err: UPD.state === 'offline', action: UPD.state === 'ready' ? { label: tr('حدّث الآن'), fn: applyUpdate } : undefined });
+}
+// تطبيق التحديث: عبر الـ Service Worker، أو تحديث كامل (مسح نسخ الملفات المخزّنة فقط — الدرجات لا تُلمس)
+async function applyUpdate() {
+  if (S.dirty.size) await flushSave();
+  if (UPD.worker && !UPD.hard) { UPD.worker.postMessage({ type: 'skip-waiting' }); return; }
+  try { if ('caches' in window) for (const k of await caches.keys()) if (k.startsWith('grades-')) await caches.delete(k); } catch { /* */ }
+  try { const reg = await navigator.serviceWorker.getRegistration(); if (reg) await reg.unregister(); } catch { /* */ }
+  location.replace(location.pathname + '?u=' + Date.now() + location.hash);
 }
 
 let settingsTimer = null;
@@ -3187,7 +3208,7 @@ document.addEventListener('click', async (e) => {
     case 'tour': showTour(); break;
     case 'update-check': checkForUpdate(); break;
     case 'report-class-pick': pickClassSheet(S.ui.reportClass, (id) => { S.ui.reportClass = id; render(); }); break;
-    case 'update-now': if (UPD.worker) UPD.worker.postMessage({ type: 'skip-waiting' }); else location.reload(); break;
+    case 'update-now': applyUpdate(); break;
     case 'dismiss-guide': try { sessionStorage.setItem('iosGuideSeen', '1'); } catch { /* */ } go('home'); break;
     case 'slot-add': openSlotSheet(); break;
     case 'plan-sheet': openPlanSheet(); break;

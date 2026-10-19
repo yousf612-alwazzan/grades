@@ -1391,3 +1391,7 @@ body.no-tabbar .school-secs .sticky-save { bottom: 12px; }
 .school-pick strong { display: block; color: var(--primary); font-size: 16px; }
 .school-pick small { display: block; color: var(--muted); font-size: 13px; }
 .school-pick > svg.i:first-child { width: 26px; height: 26px; color: var(--primary); }
+
+.ver-check { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; padding: 6px 4px; border-radius: 8px; cursor: pointer; min-height: 32px; }
+.ver-check:hover { color: var(--primary); background: var(--chip); }
+.ver-check svg.i { width: 14px; height: 14px; }
