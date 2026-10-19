@@ -4,7 +4,7 @@
 
 export const CONFIG = {
   appName: 'متابعة الدرجات',
-  version: '2.21.0',
+  version: '2.21.1',
   releaseDate: '2026-10-19',
 
   // قواعد الدرجات
@@ -41,6 +41,8 @@ export const CONFIG = {
   saveDebounceMs: 200,
   undoDeleteMs: 10000,
 
+  // المادة الافتراضية للجميع إن كانت فارغة (يقدر المعلم يغيّرها من الإعدادات)
+  defaultSubject: { ar: 'الحاسوب', en: 'Computer' },
   defaultSettings: {
     teacher: '', subject: '', year: '',
     theme: 'auto', textScale: 'normal', lang: 'ar',

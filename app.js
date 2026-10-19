@@ -702,7 +702,7 @@ function Home() {
   if (!REMOTE && platform.isIOS && !platform.isStandalone) {
     alerts.push(T`<div class="alert warn">${icon('warn')}<div class="grow"><strong>ثبّت التطبيق على الشاشة الرئيسية</strong><p>في وضع المتصفح قد يمسح آيفون البيانات. أضِفه للشاشة الرئيسية لحماية أفضل.</p><button type="button" class="btn sm soft" data-act="go" data-to="guide">اعرض الطريقة</button></div></div>`);
   }
-  if (!st.teacher || !st.subject) {
+  if (platform.isNative && (!st.teacher || !st.subject)) { // أندرويد فقط — الآيفون والكمبيوتر لا يُسألان
     alerts.push(T`<div class="alert info">${icon('info')}<div class="grow"><strong>أضف اسمك والمادة</strong><p>تظهر في كشف الإكسل وبطاقة الطالب.</p><button type="button" class="btn sm soft" data-act="nav" data-to="settings">إضافة الآن</button></div></div>`);
   }
   const last = S.meta.lastBackupAt ? new Date(S.meta.lastBackupAt) : null;
@@ -1601,7 +1601,7 @@ function studentCardBody(c, i, { compact: small = false, week = null } = {}) {
   rows.push(T`<tr class="sum"><td class="start" colspan="${compact ? 5 : 6}">الفترة الثانية (من 20)</td><td class="num">${fmt(sm.p2)}</td></tr>`);
   return T`<div class="stack">
     <div><p class="big-name" ${small ? 'style="font-size:21px"' : ''}>${esc(c.names[i])}</p>
-      <div class="meta">${esc(c.label)} — رقم ${ar(i + 1)}${S.settings.subject ? '، ' + esc(S.settings.subject) : ''}</div></div>
+      <div class="meta">${esc(c.label)} — رقم ${ar(i + 1)}${S.settings.subject ? tr('، ') + esc(S.settings.subject) : ''}</div></div>
     <div class="banner ${total != null ? 'ok' : ''}"><span>المجموع النهائي</span>${total != null ? `<b class="num">${fmt(total)} <small>/ ${ar(100)}</small></b>` : tr('<strong>لم يكتمل بعد</strong>')}</div>
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th class="start">الأسبوع</th>${compact ? '' : tr('<th>التاريخ</th>')}${CRIT.map((cr) => `<th>${esc(cr.short)}</th>`).join('')}<th>المجموع</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>
     <div class="card flat"><h3 style="margin-bottom:8px">الدرجات النهائية</h3><div class="kv">
@@ -3585,6 +3585,9 @@ async function loadState() {
   const all = await store.loadAll();
   S.classes = all.classes || [];
   S.settings = { ...CONFIG.defaultSettings, ...(all.settings || {}) };
+  // المادة الافتراضية «الحاسوب» (أو Computer في الواجهة الإنجليزية) إن كانت فارغة أو هي الافتراضية باللغة الأخرى
+  { const ds = CONFIG.defaultSubject; const want = ds[lang() === 'en' ? 'en' : 'ar'];
+    if (!S.settings.subject || (Object.values(ds).includes(S.settings.subject) && S.settings.subject !== want)) S.settings.subject = want; }
   S.grades = all.grades || {};
   S.meta = all.meta || {};
 }
@@ -3610,10 +3613,15 @@ function registerSW() {
   let hiddenAt = 0;
   // التحديث تلقائيًا في لحظة آمنة: عند فتح التطبيق، أو الرجوع له بعد غياب — إن لم يكن هناك حفظ معلّق أو اتصال بالكمبيوتر
   const safeToApply = () => !S.dirty.size && L.phase === 'setup' && route().name !== 'live' && !document.querySelector('.sheet');
+  // أول ضغطة من المعلم: بعدها لا نعيد التحميل فجأة (نعرض «تحديث متوفر» بدلًا من ذلك)
+  let touched = false;
+  window.addEventListener('pointerdown', () => { touched = true; }, { once: true, capture: true });
+  window.addEventListener('keydown', () => { touched = true; }, { once: true, capture: true });
   navigator.serviceWorker.register('sw.js').then((reg) => {
+    reg.update().catch(() => {}); // نفحص فور الفتح دائمًا
     const ask = (w, atBoot = false) => {
-      // نسخة جاهزة من قبل: نطبّقها فور الفتح (قبل أن يبدأ المعلم أي شيء). نسخة نزلت للتو: إشعار فقط
-      if (atBoot && Date.now() - bootAt < 3000 && safeToApply()) { w.postMessage({ type: 'skip-waiting' }); return; }
+      // نسخة جديدة عند الفتح (جاهزة من قبل أو نزلت للتو) والمعلم لم يبدأ بعد: نطبّقها فورًا. وإلا: إشعار فقط
+      if ((atBoot || Date.now() - bootAt < 15000) && !touched && safeToApply()) { w.postMessage({ type: 'skip-waiting' }); return; }
       UPD.state = 'ready'; UPD.worker = w; paintUpdate();
       toast(tr('تحديث متوفر، أعد التشغيل'), { ms: 0, action: { label: tr('أعد التشغيل'), fn: () => w.postMessage({ type: 'skip-waiting' }) } });
     };

@@ -422,6 +422,7 @@ export default {
   "اللغة الإنجليزية: الإعدادات ← اللغة (عربي/إنجليزي) للتطبيق كامل وشاشة الكمبيوتر": "English language: Settings → Language (Arabic/English) for the whole app and the computer screen",
   "المادة": "Subject",
   "المادة (المجال الدراسي)": "Subject (field of study)",
+  "المادة «الحاسوب» افتراضيًا للجميع، وسؤال الاسم والمادة للأندرويد فقط، والتحديث يُطبّق فور فتح التطبيق": "Subject defaults to Computer for everyone, the name/subject prompt is Android-only, and updates apply as soon as the app opens",
   "المادة:": "Subject:",
   "المتوسط": "Average",
   "المجموع": "Total",
