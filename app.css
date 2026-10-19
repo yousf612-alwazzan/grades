@@ -1146,7 +1146,7 @@ b, strong, h1, h2, h3, .btn, .tab { font-weight: 700; }
   .side-act[data-act="present"], .side-act[data-act="go-live"] { grid-column: span 2; background: var(--primary-soft); justify-content: center; }
 }
 /* داخل شاشة الكمبيوتر: الاسم والشعار في الشريط العلوي فقط — بلا تكرار في القائمة الجانبية */
-body.remote .rail .brand { display: none; }
+/* body.remote .rail .brand: انظر «ترتيب القائمة الجانبية» */
 body.remote .rail { padding-top: 16px; }
 
 /* الإنجليزية (من اليسار لليمين): الأسهم تنعكس */
@@ -1323,4 +1323,42 @@ body.remote .rail { padding-top: 16px; }
   .rail-timer b.soon { color: var(--error); }
   .rail .rail-logout { color: var(--error); min-height: 40px; }
   body.rail-mini .rail-timer { display: none; }
+}
+
+/* ===== ترتيب القائمة الجانبية: الشعار ← التنقل ← (تحت) الخصوصية والحساب ===== */
+@media (min-width: 900px) {
+  .rail .brand { position: relative; padding-inline-end: 44px; }
+  .rail .brand > span { flex: 1; min-width: 0; }
+  .rail .rail-toggle { position: absolute; inset-inline-end: 0; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 10px; background: transparent; color: var(--muted); cursor: pointer; }
+  .rail .rail-toggle:hover { background: var(--chip); color: var(--text); }
+  .rail .rail-toggle svg.i { width: 20px; height: 20px; }
+  .rail-nav { display: flex; flex-direction: column; gap: 4px; }
+  .rail-bottom { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding-top: 12px; }
+  .rail .rail-bottom .rail-foot { margin-top: 0; }
+  .rail .rail-priv { margin-top: 0; }
+  .rail .rail-acct.login { margin-bottom: 0; justify-content: center; }
+  .rail-account { border-radius: 14px; background: var(--chip); padding: 8px; display: grid; gap: 4px; }
+  .ra-row { display: flex; align-items: center; gap: 6px; }
+  .ra-user { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 6px; border: 0; background: transparent; color: var(--text); font: inherit; font-weight: 700; font-size: 15px; border-radius: 10px; cursor: pointer; text-align: start; }
+  .ra-user:hover { background: color-mix(in srgb, var(--chip) 60%, var(--line)); }
+  .ra-user .tab-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ra-avatar { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--primary-soft); color: var(--primary); }
+  .ra-avatar svg.i { width: 18px; height: 18px; }
+  .ra-logout { flex: none; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 10px; background: transparent; color: var(--error); cursor: pointer; }
+  .ra-logout:hover { background: var(--error-soft); }
+  .ra-logout svg.i { width: 20px; height: 20px; }
+  .ra-timer { display: flex; align-items: center; gap: 6px; padding: 0 8px 2px; font-size: 12.5px; color: var(--muted); }
+  .ra-timer svg.i { width: 14px; height: 14px; }
+  .ra-timer b { margin-inline-start: auto; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+  .ra-timer b.soon { color: var(--error); }
+  /* القائمة المصغّرة */
+  body.rail-mini .rail .brand { padding-inline-end: 0; flex-direction: column; gap: 8px; }
+  body.rail-mini .rail .rail-toggle { position: static; transform: none; }
+  body.rail-mini .ra-row { flex-direction: column; }
+  body.rail-mini .ra-user { justify-content: center; padding: 0; }
+  body.rail-mini .ra-timer { display: none; }
+  body.rail-mini .rail-account { padding: 6px 0; }
+  /* داخل شاشة الكمبيوتر (وضع الإدارة): بلا شعار مكرر، ويبقى زر الإخفاء */
+  body.remote .rail .brand { display: flex; min-height: 36px; }
+  body.remote .rail .brand > img, body.remote .rail .brand > span { display: none; }
 }

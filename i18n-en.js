@@ -526,6 +526,7 @@ export default {
   "تراجع": "Undo",
   "تراجع عن «{}»": "Undo \"{}\"",
   "ترتيب أبجدي": "Alphabetical order",
+  "ترتيب أوضح للقائمة الجانبية في الكمبيوتر: التنقل فوق، والحساب ووضع الخصوصية تحت": "Clearer computer sidebar: navigation on top, account and privacy mode at the bottom",
   "ترتيب الصفوف": "Class order",
   "ترتيب حسب": "Sort by",
   "تستطيع أيضًا إنشاء الصفوف من ملفات Excel وPDF الموجودة على الكمبيوتر.": "You can also create classes from Excel and PDF files on the computer.",

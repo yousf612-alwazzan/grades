@@ -558,17 +558,23 @@ function renderNav() {
   document.body.classList.toggle('rail-mini', mini);
   const priv = deskPref('gfu-privacy');
   document.body.classList.toggle('privacy', priv);
+  // الترتيب: الشعار (وزر إخفاء صغير) ← التنقل ← تحت: وضع الخصوصية ثم بطاقة الحساب ثم رقم الإصدار
+  const user = C.session ? esc(C.session.u) : '';
   const acct = !CLOUD_ON ? '' : C.session
-    ? (DESK_WEB ? T`<div class="rail-session"><button type="button" class="tab rail-acct" data-act="nav" data-to="settings" title="${esc(C.session.u)}"><span class="tab-ico">${icon('user')}</span><span class="tab-label" dir="ltr">${esc(C.session.u)}</span></button>
-        <div class="rail-timer tab-label" title="${tr('تخرج تلقائيًا من حسابك بعد ساعة ونصف من الدخول')}">${icon('lock')}<span>خروج تلقائي بعد</span><b class="num" data-cloud-timer dir="ltr">${fmtLeft(cloudLeftMs())}</b></div>
-        <button type="button" class="tab rail-logout" data-act="cloud-logout" title="${tr('تسجيل الخروج')}"><span class="tab-ico">${icon('logout')}</span><span class="tab-label">تسجيل الخروج</span></button></div>`
-      : `<button type="button" class="tab rail-acct" data-act="nav" data-to="settings" title="${esc(C.session.u)}"><span class="tab-ico">${icon('user')}</span><span class="tab-label" dir="ltr">${esc(C.session.u)}</span></button>`)
+    ? T`<div class="rail-account">
+        <div class="ra-row">
+          <button type="button" class="ra-user" data-act="nav" data-to="settings" title="${user}"><span class="ra-avatar">${icon('user')}</span><span class="tab-label" dir="ltr">${user}</span></button>
+          ${DESK_WEB ? T`<button type="button" class="ra-logout" data-act="cloud-logout" title="${tr('تسجيل الخروج')}" aria-label="${tr('تسجيل الخروج')}">${icon('logout')}</button>` : ''}
+        </div>
+        ${DESK_WEB ? T`<div class="ra-timer tab-label" title="${tr('تخرج تلقائيًا من حسابك بعد ساعة ونصف من الدخول')}">${icon('lock')}<span>خروج تلقائي بعد</span><b class="num" data-cloud-timer dir="ltr">${fmtLeft(cloudLeftMs())}</b></div>` : ''}
+      </div>`
     : T`<button type="button" class="tab rail-acct login" data-act="cloud-login" title="${tr('تسجيل الدخول')}"><span class="tab-ico">${icon('user')}</span><span class="tab-label">تسجيل الدخول</span></button>`;
   const privBtn = REMOTE || !platform.isNative ? T`<button type="button" class="tab rail-priv" data-act="privacy-toggle" aria-pressed="${priv}" title="${priv ? tr('إيقاف وضع الخصوصية') : tr('وضع الخصوصية (للشاشة المعروضة للطلاب)')}"><span class="tab-ico">${icon(priv ? 'eyeOff' : 'eye')}</span><span class="tab-label">${priv ? tr('الخصوصية مفعّلة') : tr('وضع الخصوصية')}</span></button>` : '';
-  const foot = REMOTE ? T`<span class="remote-note">${icon('phone')} <span><b>متصل بجوالك</b> — كل التعديلات تُحفظ في جوالك</span></span>` : T`الإصدار ${ar(CONFIG.version)}<br>بياناتك على هذا الجهاز فقط`;
-  document.getElementById('rail').innerHTML = T`<div class="brand"><img src="icons/icon-192.png" alt=""><span>${esc(tr(CONFIG.appName))}</span></div>
-    <button type="button" class="tab rail-toggle" data-act="rail-toggle" aria-expanded="${!mini}" title="${mini ? tr('إظهار القائمة') : tr('إخفاء القائمة')}"><span class="tab-ico">${icon(mini ? 'menu' : 'sidebar')}</span><span class="tab-label">إخفاء القائمة</span></button>
-    ${acct}${btns}${privBtn}<div class="rail-foot">${foot}</div>`;
+  const foot = REMOTE ? T`<span class="remote-note">${icon('phone')} <span><b>متصل بجوالك</b> — كل التعديلات تُحفظ في جوالك</span></span>` : T`الإصدار ${ar(CONFIG.version)}`;
+  document.getElementById('rail').innerHTML = T`<div class="brand"><img src="icons/icon-192.png" alt=""><span>${esc(tr(CONFIG.appName))}</span>
+      <button type="button" class="rail-toggle" data-act="rail-toggle" aria-expanded="${!mini}" title="${mini ? tr('إظهار القائمة') : tr('إخفاء القائمة')}" aria-label="${mini ? tr('إظهار القائمة') : tr('إخفاء القائمة')}">${icon(mini ? 'menu' : 'sidebar')}</button></div>
+    <nav class="rail-nav">${btns}</nav>
+    <div class="rail-bottom">${privBtn}${acct}<div class="rail-foot">${foot}</div></div>`;
 }
 
 function appbar({ title, sub = '', backBtn = true, actions = '', save = false }) {
