@@ -780,6 +780,7 @@ export default {
   "دقائق": "minutes",
   "دقيقة": "minutes",
   "دولة الكويت": "State of Kuwait",
+  "رأس الصف بالكمبيوتر: عنوان الدرس في الوسط بخط واضح، و«باقي X من Y» تحت اسم الصف": "Computer class header: the lesson title centered in a clear font, and “X of Y remaining” under the class name",
   "رئيس القسم": "Head of department",
   "رابط صفحة العرض": "Display page link",
   "رجعت للتطبيق": "Back in the app",

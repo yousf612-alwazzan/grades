@@ -1054,11 +1054,12 @@ function ClassScreen(p) {
     : weekStatusHTML(d, p.tab, n);
   // اللوحة مخفية: الأسابيع تظهر مختصرة في الرأس (لا طريقة أخرى لتغيير الأسبوع)
   const miniWeeks = S.ui.sideHidden ? `<select class="select hdr-week" data-week-select aria-label="${tr('الأسبوع')}">${Array.from({ length: WEEKS }, (_, k) => k + 1).map((x) => `<option value="${x}" ${p.tab === x ? 'selected' : ''}>${T`الأسبوع ${ar(x)}`}</option>`).join('')}<option value="fin" ${p.tab === 'fin' ? 'selected' : ''}>${tr('الدرجات النهائية')}</option></select>` : '';
-  const hdr = wide && n ? T`${miniWeeks}<span id="week-status" class="hdr-status">${statusNow}</span>
+  const lessonTxt = wide && n && typeof p.tab === 'number' ? getWeekMeta(d, p.tab).lesson : '';
+  const hdr = wide && n ? T`${miniWeeks}<span class="lesson-center" title="عنوان الدرس">${esc(lessonTxt)}</span>
     <div class="search hdr-search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب أو رقمه" value="${esc(S.ui.search)}" aria-label="بحث"></div>` : '';
   // الكمبيوتر: عنوان درس الأسبوع (من خطة المنهج) يظهر تلقائيًا تحت اسم الصف — للعرض فقط
-  const lessonNow = wide && n && typeof p.tab === 'number' ? getWeekMeta(d, p.tab).lesson : '';
-  const sub = students(n) + (lessonNow ? T` · <span class="lesson-now" title="عنوان الدرس">${icon('note')} ${esc(lessonNow)}</span>` : '');
+  // الكمبيوتر: تحت اسم الصف «باقي X من Y» (بدل عدد الطلاب)، وعنوان الدرس في وسط الرأس
+  const sub = wide && n ? `<span id="week-status" class="hdr-status">${statusNow}</span>` : students(n);
   return `<div class="cls-head">${appbar({ title: c.label, sub, save: true, actions: wide ? hdr : menuBtn })}${n && !wide ? weekbar : ''}</div>${body}`;
 }
 afterRender.class = (p) => {
