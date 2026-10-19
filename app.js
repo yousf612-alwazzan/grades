@@ -769,7 +769,46 @@ function stuStat(d, w, i, f, sc = S.ui.fscope) {
   if (f === 'notes') return getNotes(d, i).filter((nt) => sc === 'all' || nt.w === w).length;
   return 1;
 }
+const F_ICON = { all: 'users', missing: 'warn', absent: 'xCircle', star: 'star', notes: 'note' };
+function filterCount(c, d, w, k) {
+  return k === 'missing' ? weekRemaining(d, w, c.names.length) : k === 'all' ? c.names.length : c.names.reduce((s, _, i) => s + (stuStat(d, w, i, k) ? 1 : 0), 0);
+}
+// الجوال: شريط صغير يظهر فقط حين يكون فلتر مفعّلًا (الاختيار من نافذة «فلتر»)
+function filterStrip(c, d, w) {
+  const f = S.ui.filter || 'all';
+  if (f === 'all') return '';
+  const sc = f !== 'missing' && S.ui.fscope === 'all' ? tr('كل الأسابيع') : T`الأسبوع ${ar(w)}`;
+  return `<div class="fstrip f-${f}">
+    <button type="button" class="fstrip-main" data-act="filter-sheet">${icon(F_ICON[f])}<b>${fLabel(f)}</b><span class="num fc-n">${ar(filterCount(c, d, w, f))}</span><small>${sc}</small></button>
+    ${STAT_F.includes(f) ? `<button type="button" class="icon-btn" data-act="filter-share" aria-label="${tr('مشاركة القائمة')}">${icon('send')}</button>` : ''}
+    <button type="button" class="icon-btn" data-act="filter" data-f="all" aria-label="${tr('إلغاء الفلتر')}">${icon('x')}</button>
+  </div>`;
+}
+function openFilterSheet(c, w) {
+  const d = dataOf(c.id);
+  const s = openSheet('<div data-fs></div>', { label: tr('فلتر الطلاب') });
+  const paint = () => {
+    const f = S.ui.filter || 'all';
+    const sc = S.ui.fscope === 'all' ? 'all' : 'week';
+    s.sheet.querySelector('[data-fs]').innerHTML = T`<h2>عرض الطلاب</h2>
+      <div class="seg fscope" role="group" aria-label="النطاق"><button type="button" data-fsc="week" aria-pressed="${sc === 'week'}">الأسبوع ${ar(w)}</button><button type="button" data-fsc="all" aria-pressed="${sc === 'all'}">كل الأسابيع</button></div>
+      <div class="list fs-list">${FILTER_KEYS.map((k) => `<button type="button" class="list-item fs-opt f-${k}" data-fk="${k}" aria-pressed="${f === k}">
+        <span class="fs-ic">${icon(F_ICON[k])}</span><span class="grow"><strong>${fLabel(k)}</strong></span>
+        <span class="num fc-n">${ar(filterCount(c, d, w, k))}</span>${f === k ? icon('check', 'fs-on') : ''}</button>`).join('')}</div>`;
+  };
+  paint();
+  s.sheet.addEventListener('click', (e) => {
+    const sc = e.target.closest('[data-fsc]');
+    if (sc) { S.ui.fscope = sc.dataset.fsc === 'all' ? 'all' : 'week'; paint(); rerenderList(); return; }
+    const o = e.target.closest('[data-fk]');
+    if (!o) return;
+    setFilter(o.dataset.fk);
+    s.close();
+    rerenderList();
+  });
+}
 function filterBar(c, d, w) {
+  if (!WIDE.matches) return filterStrip(c, d, w);
   const f = S.ui.filter || 'all';
   const n = c.names.length;
   const cnt = (k) => (k === 'missing' ? weekRemaining(d, w, n) : c.names.reduce((s, _, i) => s + (stuStat(d, w, i, k) ? 1 : 0), 0));
@@ -839,14 +878,15 @@ function weekTab(c, d, w) {
       : T`<button type="button" class="meta-line muted" data-act="week-tools">${icon('calendar')} أضف التاريخ وعنوان الدرس</button>`;
     const rows = visible.map((i) => stuRow(c, d, w, i)).join('');
     return T`<div class="stack">
-      <div class="action-row two">
+      <div class="action-row">
         <button type="button" class="btn success" data-act="fill" data-k="all">${icon('check')} الكل ${ar(CONFIG.itemMax)}</button>
+        <button type="button" class="btn ${f !== 'all' ? 'primary' : ''}" data-act="filter-sheet" aria-pressed="${f !== 'all'}">${icon('filter')} فلتر</button>
         <button type="button" class="btn" data-act="week-tools">${icon('edit')} أدوات</button>
       </div>
       ${S.ui.undo && S.ui.undo.classId === c.id && S.ui.undo.week === w ? T`<button type="button" class="btn danger-ghost block" data-act="undo-bulk">${icon('undo')} تراجع عن «${S.ui.undo.label}»</button>` : ''}
       ${metaLine}
       <span id="week-status" hidden>${weekStatusHTML(d, w, n)}</span>
-      <div id="fbar" class="fbar">${filterBar(c, d, w)}</div>
+      <div id="fbar" class="fbar">${filterStrip(c, d, w)}</div>
       ${n > 12 ? T`<div class="search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب أو رقمه" value="${esc(q)}" aria-label="بحث"></div>` : ''}
       <div id="stu-list" class="slist">${rows || `<p class="hint" style="text-align:center;padding:24px">${f !== 'all' && !q ? filterEmpty(f) : tr('لا نتائج')}</p>`}</div>
       <p class="hint" style="text-align:center">${icon('info')} اضغط أي مربع لاختيار الدرجة، أو «كامل» لوضع ${ar(CONFIG.itemMax)} في الأربعة.</p>
@@ -2635,6 +2675,7 @@ document.addEventListener('click', async (e) => {
     case 'filter': setFilter(S.ui.filter === el.dataset.f ? 'all' : el.dataset.f); rerenderList(); break;
     case 'fscope': S.ui.fscope = el.dataset.s === 'all' ? 'all' : 'week'; rerenderList(); break;
     case 'filter-share': shareFilter(cls(p.id), p.tab); break;
+    case 'filter-sheet': openFilterSheet(cls(p.id), p.tab); break;
     case 'undo-bulk': if (S.ui.undo) S.ui.undo.fn(); break;
     case 'quick-note': quickNote(cls(p.id), typeof p.tab === 'number' ? p.tab : null, +el.dataset.idx); break;
     case 'star': {

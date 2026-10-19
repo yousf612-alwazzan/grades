@@ -1196,9 +1196,29 @@ body.remote .rail { padding-top: 16px; }
 .fchip { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 0; background: var(--card); color: var(--text); font: inherit; font-weight: 600; font-size: 14px; cursor: pointer; }
 .fchip .i { width: 16px; height: 16px; color: #c98a00; }
 .fchip .fc-n { font-size: 12.5px; font-weight: 700; color: var(--muted); }
-.fchip.f-absent .fc-n { color: var(--danger); }
+.fchip.f-absent .fc-n { color: var(--error); }
 .fchip[aria-pressed="true"] { background: var(--primary); color: var(--primary-ink); }
 .fchip[aria-pressed="true"] .fc-n, .fchip[aria-pressed="true"] .i { color: inherit; opacity: .9; }
 .fres { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); flex-wrap: wrap; }
 .fres .seg button { min-height: 38px; font-size: 13.5px; }
 .fbar.desk { flex: none; }
+
+/* فلتر الجوال: زر + نافذة + شريط صغير */
+.fbar:empty { display: none; }
+.fstrip { display: flex; align-items: center; gap: 4px; background: var(--card); border-radius: 14px; padding: 4px 6px; box-shadow: var(--shadow); }
+.fstrip-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 8px; border: 0; background: none; font: inherit; color: var(--text); text-align: start; }
+.fstrip-main .i { width: 18px; height: 18px; color: var(--primary); flex: none; }
+.fstrip.f-absent .fstrip-main .i { color: var(--error); }
+.fstrip.f-star .fstrip-main .i { color: #c98a00; }
+.fstrip-main b { font-weight: 700; }
+.fstrip-main .fc-n { font-weight: 700; color: var(--muted); }
+.fstrip-main small { margin-inline-start: auto; color: var(--muted); font-size: 13px; white-space: nowrap; }
+.fscope { display: flex; margin: 4px 0 12px; }
+.fscope button { flex: 1; }
+.fs-list .fs-opt { min-height: 56px; }
+.fs-ic { display: inline-grid; place-items: center; width: 28px; color: var(--muted); }
+.fs-opt.f-absent .fs-ic { color: var(--error); }
+.fs-opt.f-star .fs-ic { color: #c98a00; }
+.fs-opt .fc-n { color: var(--muted); font-weight: 700; min-width: 24px; text-align: center; }
+.fs-opt[aria-pressed="true"] strong { color: var(--primary); }
+.fs-opt .fs-on { color: var(--primary); width: 20px; height: 20px; }
