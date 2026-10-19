@@ -131,9 +131,7 @@ export async function changeAccount(sync, { user2, password }) {
   const s = sync.s;
   const u2 = normUser(user2 || s.u);
   if (!USER_RE.test(u2)) throw codeErr('bad-user');
-  await sync.flush();
-  await sync.pull();
-  if (sync.dirty.size || sync.state === 'offline') throw codeErr('offline');
+  if (!(await sync.settle())) throw codeErr('offline');
   const { proof, rawKey } = await deriveKeys(u2, password);
   const key = await importKey(rawKey);
   const docs = [];
@@ -291,6 +289,19 @@ export class CloudSync {
       this.pulling = false;
       if (this.pullAgain) { this.pullAgain = false; this.pull(); }
     }
+  }
+
+  /** ينتظر حتى يُرفع كل تعديل ويُجلب كل جديد (قبل تغيير كلمة السر مثلًا). true = متزامن تمامًا. */
+  async settle(ms = 20000) {
+    const t0 = Date.now();
+    let pulled = false;
+    while (Date.now() - t0 < ms && !this.stopped) {
+      if (this.busy || this.pulling) { await sleep(150); continue; }
+      if (this.dirty.size) { await this.flush(); if (this.state === 'offline') return false; continue; }
+      if (!pulled) { await this.pull(); pulled = true; continue; }
+      return this.state !== 'offline';
+    }
+    return false;
   }
 
   authLost() { this.stop(); this.setState('auth'); try { this.host.onAuthLost(); } catch { /* */ } }
