@@ -1463,3 +1463,10 @@ body.no-tabbar .school-secs .sticky-save { bottom: 12px; }
 .add-card:hover { border-color: var(--primary) !important; background: var(--primary-soft) !important; }
 @media (min-width: 900px) { .hdr-week { width: auto; min-height: 40px; padding-block: 0; font-weight: 700; } }
 .add-card { min-height: 116px; padding: 14px; border-radius: 16px; }
+
+/* رأس الصف (الكمبيوتر): «باقي X من Y» كلام عادي — بلا إطار ولا أيقونة */
+@media (min-width: 900px) {
+  .hdr-status .status-pill { background: none !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; min-height: 0; color: var(--muted); font-weight: 600; font-size: 14px; }
+  .hdr-status .status-pill svg.i { display: none; }
+  .hdr-status .status-pill.ok { color: var(--success); }
+}

@@ -50,6 +50,7 @@ export default {
   "«{}» = غائب في ذلك الأسبوع (درجاته أصفار) · «{}» = لم تُرصد بعد · مجموع الأسبوع من": "\"{}\" = absent that week (grades are zeros) · \"{}\" = not graded yet · week total out of",
   "«اعرض للطلاب وارصد»": "\"Show to students and grade\"",
   "«الكل 5» يسأل قبل التطبيق مع زر تراجع ظاهر": "\"All 5\" asks first and shows an Undo button",
+  "«باقي X من Y» في رأس الصف بالكمبيوتر صار كلامًا عاديًا بلا إطار ولا أيقونة": "“X of Y remaining” in the computer class header is now plain text without a frame or icon",
   "«حفظ في الملفات» ←": "\"Save to Files\" →",
   "«على الآيفون»": "\"On My iPhone\"",
   "· الحصة": "· Period",
