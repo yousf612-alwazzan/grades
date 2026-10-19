@@ -117,6 +117,7 @@ export default {
   "أي صف تريد حذفه؟": "Which class do you want to delete?",
   "أيقونات بلا إطار، والشريط السفلي يتلوّن فقط": "Icons without frames; the bottom bar only changes color",
   "أيقونة تطبيق جديدة": "New app icon",
+  "أيقونة جديدة للتطبيق: ورقة الكشف والختم الذهبي على كحلي": "New app icon: the grade sheet with a gold seal on navy",
   "أين تُحفظ النسخة؟": "Where is the backup saved?",
   "أُرسل للكمبيوتر ✓": "Sent to the computer ✓",
   "أُضيف": "Added",

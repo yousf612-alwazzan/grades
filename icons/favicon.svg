@@ -1,18 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2a2f52"/><stop offset="1" stop-color="#14172a"/>
+      <stop offset="0" stop-color="#2d3463"/><stop offset="1" stop-color="#121530"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e6eaf7"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffd977"/><stop offset="1" stop-color="#e9a93a"/>
     </linearGradient>
     <filter id="sh" x="-30%" y="-30%" width="160%" height="160%">
-      <feDropShadow dx="0" dy="2.2" stdDeviation="2.4" flood-color="#000000" flood-opacity="0.28"/>
+      <feDropShadow dx="0" dy="1.6" stdDeviation="1.8" flood-color="#000000" flood-opacity="0.3"/>
     </filter>
   </defs>
   <rect width="512" height="512" rx="115.2" fill="url(#bg)"/>
-  <g transform="translate(51.19999999999999 51.19999999999999) scale(4.096)">
+  <g transform="translate(51.19999999999999 51.19999999999999) scale(4.096)"><g transform="translate(50 50) scale(1.32) translate(-51.5 -50.5)">
   <g filter="url(#sh)">
-    <path d="M24 13 a7 7 0 0 1 7-7 h28 l17 17 v63 a7 7 0 0 1-7 7 h-38 a7 7 0 0 1-7-7 z" fill="#fff"/>
+    <path d="M29 19 h26 l15 15 v42 a6 6 0 0 1 -6 6 h-35 a6 6 0 0 1 -6 -6 v-51 a6 6 0 0 1 6 -6z" fill="url(#paper)"/>
   </g>
-  <path d="M59 6 v12 a5 5 0 0 0 5 5 h12 z" fill="#e3e5f0"/>
-  <path d="M47 31 h20 M33 41 h34" stroke="#d3d6e6" stroke-width="5" stroke-linecap="round" fill="none"/>
-  <path d="M35 64 l10 10 l21-22" stroke="#3343c4" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></g>
+  <path d="M55 19 v10 a5 5 0 0 0 5 5 h10z" fill="#c9d3ee"/>
+  <path d="M32 38 h18 M32 47 h24 M32 56 h14" stroke="#cfd7ef" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <circle cx="66" cy="66" r="14" fill="url(#gold)" stroke="#121530" stroke-width="3"/>
+  <path d="M59.5 66 l4.5 4.5 l8-9" stroke="#121530" stroke-width="3.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g></g>
 </svg>
