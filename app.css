@@ -1488,3 +1488,21 @@ body.no-tabbar .school-secs .sticky-save { bottom: 12px; }
 @media (min-width: 900px) and (max-width: 1180px) {
   .main.desk-class .hdr-search { flex-basis: 290px; width: 290px; max-width: 290px; }
 }
+
+/* عدّاد الخروج التلقائي: سطر صغير ناعم داخل بطاقة الحساب في القائمة اليمين */
+@media (min-width: 900px) {
+  .rail-account .ra-timer { display: flex; align-items: baseline; gap: 6px; padding: 0 8px 2px; font-size: 12px; color: var(--muted); }
+  .rail-account .ra-timer b { margin-inline-start: auto; font-size: 13px; font-weight: 700; color: #b7791f; font-variant-numeric: tabular-nums; }
+  .rail-account .ra-timer b.soon { color: var(--error); }
+  body.rail-mini .rail-account .ra-timer { display: none; }
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .rail-account .ra-timer b:not(.soon) { color: #ecc94b; } }
+:root[data-theme="dark"] .rail-account .ra-timer b:not(.soon) { color: #ecc94b; }
+
+/* الجوال مع حساب: مؤشر واحد للحفظ (غيمة + كلمة قصيرة) بدل مؤشرين */
+body.cloud-on .appbar [data-save-state] { display: none; }
+@media (max-width: 899px) {
+  body.cloud-on .cloud-chip span { display: inline; }
+  body.cloud-on .cloud-chip { min-width: 0; padding: 0 10px; font-size: 12.5px; }
+}
+@media (min-width: 900px) { body.cloud-desk .appbar .cloud-chip { display: none; } } /* الكمبيوتر: الحالة في القائمة اليمين */

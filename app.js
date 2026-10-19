@@ -151,7 +151,8 @@ const CLOUD_TEXT = { syncing: 'جارٍ المزامنة…', ok: 'محفوظ ف
 function cloudChip() {
   if (!C.session) return '';
   const s = C.state;
-  return T`<button type="button" class="cloud-chip s-${s}" data-act="nav" data-to="settings" data-cloud-chip title="${esc(tr(CLOUD_TEXT[s] || ''))}">${icon(s === 'offline' || s === 'auth' ? 'cloudOff' : 'cloud')}<span>${tr(CLOUD_TEXT[s] || '')}</span></button>`;
+  const short = { ok: 'محفوظ', syncing: 'جارٍ المزامنة…', idle: 'جارٍ الاتصال…', offline: 'بدون إنترنت', auth: 'سجّل الدخول' }[s] || '';
+  return T`<button type="button" class="cloud-chip s-${s}" data-act="nav" data-to="settings" data-cloud-chip title="${esc(tr(CLOUD_TEXT[s] || ''))}">${icon(s === 'offline' || s === 'auth' ? 'cloudOff' : 'cloud')}<span>${tr(short)}</span></button>`;
 }
 function raSyncHTML() {
   const bad = C.state === 'offline' || C.state === 'auth';
@@ -680,6 +681,7 @@ function renderNav() {
   const onClass = route().name === 'class' && WIDE.matches;
   const sideBtn = onClass ? T`<button type="button" class="tab rail-side" data-act="side-toggle" aria-pressed="${!S.ui.sideHidden}" title="${S.ui.sideHidden ? tr('إظهار لوحة الأدوات') : tr('إخفاء لوحة الأدوات')}"><span class="tab-ico">${icon('sidebar')}</span><span class="tab-label">لوحة الأدوات</span></button>` : '';
   document.body.classList.toggle('cloud-desk', !!(DESK_WEB && C.session));
+  document.body.classList.toggle('cloud-on', !!C.session); // مؤشر حفظ واحد: حالة الحساب بدل «محفوظ» المحلي
   const user = C.session ? esc(C.session.u) : '';
   const acct = !CLOUD_ON ? '' : C.session
     ? T`<div class="rail-account">
@@ -688,6 +690,7 @@ function renderNav() {
           <button type="button" class="ra-user" data-act="nav" data-to="settings" title="${user}"><span class="ra-avatar">${icon('user')}</span><span class="tab-label" dir="ltr">${user}</span></button>
           ${DESK_WEB ? T`<button type="button" class="ra-logout" data-act="cloud-logout" title="${tr('تسجيل الخروج')}" aria-label="${tr('تسجيل الخروج')}">${icon('logout')}</button>` : ''}
         </div>
+        ${DESK_WEB ? T`<div class="ra-timer tab-label" title="${tr('تخرج تلقائيًا من حسابك بعد ساعة ونصف من الدخول')}"><span>خروج تلقائي بعد</span><b class="num" data-cloud-timer dir="ltr">${fmtLeft(cloudLeftMs())}</b></div>` : ''}
       </div>`
     : T`<button type="button" class="tab rail-acct login" data-act="cloud-login" title="${tr('تسجيل الدخول')}"><span class="tab-ico">${icon('user')}</span><span class="tab-label">تسجيل الدخول</span></button>`;
   const foot = REMOTE ? T`<span class="remote-note">${icon('phone')} <span><b>متصل بجوالك</b> — كل التعديلات تُحفظ في جوالك</span></span>`
@@ -699,12 +702,10 @@ function renderNav() {
 }
 
 function appbar({ title, sub = '', backBtn = true, actions = '', save = false }) {
-  const timer = DESK_WEB && C.session ? T`<span class="hdr-timer" title="${tr('تخرج تلقائيًا من حسابك بعد ساعة ونصف من الدخول')}"><span>خروج تلقائي</span><b class="num" data-cloud-timer dir="ltr">${fmtLeft(cloudLeftMs())}</b></span>` : '';
-  actions = actions + timer;
   return `<header class="appbar"><div class="appbar-row">
     ${backBtn ? T`<button type="button" class="icon-btn" data-act="back" aria-label="رجوع">${icon('back')}</button>` : ''}
     <h1>${esc(title)}${sub ? `<span class="sub">${sub}</span>` : ''}</h1>
-    ${save ? '<span data-save-state></span>' : ''}
+    ${save ? (C.session ? cloudChip() : '<span data-save-state></span>') : ''}
     ${actions}
   </div></header>`;
 }
@@ -757,7 +758,7 @@ function Home() {
   const helloTitle = st.teacher ? T`أهلًا أ. ${st.teacher}` : tr('أهلًا بك');
   const helloSub = `${st.subject ? esc(st.subject) + ' · ' : ''}${S.classes.length === 1 ? tr('صف واحد') : S.classes.length === 2 ? tr('صفّان') : S.classes.length ? T`${ar(S.classes.length)} صفوف` : tr('لنبدأ')}`;
   const loginBtn = CLOUD_ON && !C.session && !WIDE.matches ? T`<button type="button" class="btn sm soft" data-act="cloud-login">${icon('user')} دخول</button>` : '';
-  const addBtn = loginBtn + (WIDE.matches ? '' : cloudChip()); // «أضف صف» صارت بطاقة بين الصفوف
+  const addBtn = loginBtn; // «أضف صف» صارت بطاقة بين الصفوف، وحالة الحساب في الرأس (save)
   if (C.loading) {
     return T`${appbar({ title: helloTitle, sub: '', backBtn: false })}<div class="wrap"><div class="live-wait card"><span class="spinner-lg" aria-hidden="true"></span><h3>جارٍ تحميل درجاتك من حسابك…</h3></div></div>`;
   }
@@ -769,8 +770,8 @@ function Home() {
   if (!S.classes.length) {
     body = T`<div class="empty card">${ART_EMPTY}<h2>ابدأ بثلاث خطوات</h2>
       <ol class="steps">
-        <li><span class="n">${ar(1)}</span><span>أضف صفًا (مثل «العاشر / 3»)</span></li>
-        <li><span class="n">${ar(2)}</span><span>الصق أسماء الطلاب أو استوردها من Excel أو PDF</span></li>
+        <li><span class="n">${ar(1)}</span><span>اضغط «أضف صفك»</span></li>
+        <li><span class="n">${ar(2)}</span><span>اختر شعبك من قائمة المدرسة — أو استورد ملف الأسماء</span></li>
         <li><span class="n">${ar(3)}</span><span>ارصد الدرجات ثم صدّر الكشف</span></li>
       </ol>
       <button type="button" class="btn primary lg block" data-act="new-class">${icon('plus')} أضف صفك</button>
@@ -1360,7 +1361,7 @@ function openPicker(c, w, i, k0) {
   const halves = Array.from({ length: max }, (_, j) => max - j - 0.5);      // ٤٫٥ … ٠٫٥
   const btn = (v, cur, cls) => `<button type="button" class="pv ${cls} ${cur === v ? 'on' : ''}" data-pv="${v}" aria-pressed="${cur === v}">${ar(v)}</button>`;
   const paint = () => {
-    const vals = getItems(d, w, i);
+    const vals = getItems(dataOf(c.id), w, i);
     const cur = vals[k];
     s.sheet.querySelector('[data-picker]').innerHTML = T`
       <div class="picker-head"><span class="srow-num num">${ar(i + 1)}</span><b>${esc(c.names[i])}</b></div>
@@ -1382,7 +1383,7 @@ function openPicker(c, w, i, k0) {
     refreshStudent(c, w, i, { rerenderInputs: true });
     if (!wasDone && nowDone) { s.close(); advanceFrom(c, w, i); hideIfMissingOnly(i); return; }
     if (val != null) {
-      const vals = getItems(d, w, i);
+      const vals = getItems(dataOf(c.id), w, i);
       const next = [...Array(ITEMS).keys()].map((j) => (k + 1 + j) % ITEMS).find((j) => vals[j] == null);
       if (next != null) k = next;
     }
@@ -2717,8 +2718,9 @@ function quickNote(c, w, i) {
     const issueBox = s.sheet.querySelector('[data-qn-issue]');
     const issue = !!(issueBox && issueBox.checked);
     if (!text && !issue && !has) { toast(tr('اكتب الملاحظة أولًا'), { err: true }); return; }
-    if (text || (issue && !has)) addNote(d, i, text || tr('تنبيه'), new Date(), w ? { week: w, issue } : {});
-    if (has && !issue) clearWeekIssues(d, w, i);
+    const dn = dataOf(c.id); // البيانات الحالية (قد تتحدّث من الحساب أثناء فتح النافذة)
+    if (text || (issue && !has)) addNote(dn, i, text || tr('تنبيه'), new Date(), w ? { week: w, issue } : {});
+    if (has && !issue) clearWeekIssues(dn, w, i);
     markDirty(c.id);
     if (w) livePatchItems(c.id, w, i);
     s.close();
@@ -3438,7 +3440,8 @@ function showWeekTools(p) {
     <div class="actions"><button type="button" class="btn primary" data-x autofocus>تم</button></div>`, { label: tr('أدوات الأسبوع'), onClose: () => {
     // نحفظ قيم الحقول عند الإغلاق أيضًا (لو أُغلقت النافذة قبل وصول حدث الكتابة)
     let changed = false;
-    s.sheet.querySelectorAll('[data-meta]').forEach((inp) => { if (getWeekMeta(d, p.tab)[inp.dataset.meta] !== inp.value) { setWeekMeta(d, p.tab, inp.dataset.meta, inp.value); changed = true; } });
+    const dn = dataOf(c.id); // بيانات الصف الحالية (لا نسخة قديمة التُقطت عند فتح النافذة)
+    s.sheet.querySelectorAll('[data-meta]').forEach((inp) => { if (getWeekMeta(dn, p.tab)[inp.dataset.meta] !== inp.value) { setWeekMeta(dn, p.tab, inp.dataset.meta, inp.value); changed = true; } });
     if (changed) { markDirty(c.id); livePatchMeta(c.id, p.tab); }
     if (route().name === 'class') rerenderList();
   } });
