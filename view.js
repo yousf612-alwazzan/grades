@@ -140,6 +140,7 @@ function setZoom(z) {
 
 // ---------- الاقتران ----------
 function setPairStatus(text, kind = '') {
+  $('pair-status').hidden = ui.screen !== 'pair';
   $('pair-status-text').textContent = text;
   $('pair-status').dataset.kind = kind;
 }
@@ -387,6 +388,7 @@ function setScreen(s) {
   $('btn-disconnect').hidden = !connected || ui.ended;
   $('screen-live').classList.toggle('ended', ui.ended);
   $('class-info').hidden = !connected || !hello || s === 'manage' || !hello.classLabel;
+  $('pair-status').hidden = s !== 'pair';
   renderPill();
 }
 

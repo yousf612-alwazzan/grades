@@ -3514,6 +3514,11 @@ async function boot() {
   autoPlans();
   restoreLive();
   if (cloudSession) setTimeout(() => startCloud(cloudSession), 0); // بعد أول رسم للشاشة
+  else if (CLOUD_ON && new URLSearchParams(location.search).has('login')) {
+    // من صفحة العرض («تسجيل الدخول بحسابي»): نفتح نافذة الدخول مباشرة بلا جولة
+    S.settings.tourDone = true;
+    setTimeout(() => { history.replaceState(history.state, '', location.pathname + location.hash); openCloudLogin(); }, 300);
+  }
   if (platform.isNative && !REMOTE) {
     const LN = platform.plugin('LocalNotifications');
     if (LN) {

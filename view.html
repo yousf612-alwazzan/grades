@@ -32,7 +32,9 @@
           <div class="class-meta" id="class-meta"></div>
         </div>
       </div>
+      <p class="qr-status" id="pair-status" role="status" aria-live="polite" data-kind=""><span class="status-dot" aria-hidden="true"></span><span id="pair-status-text">جارٍ تجهيز الرمز…</span></p>
       <div class="top-spacer"></div>
+      <a class="btn primary" id="btn-account" href="./?login=1">تسجيل الدخول بحسابي</a>
       <span class="pill" id="conn-pill" data-state="idle" role="status" aria-live="polite" hidden>
         <span class="pill-dot" aria-hidden="true"></span><span id="conn-text"></span>
       </span>
@@ -68,9 +70,13 @@
         <p class="lead">امسح الرمز بالجوال مرة واحدة، ويتصل الكمبيوتر تلقائيًا. لا حاجة لكاميرا في الكمبيوتر.</p>
         <ol class="steps">
           <li><span class="step-num">1</span><div><strong>افتح تبويب «العرض» في تطبيق الجوال</strong><span>من صفحة الصف في تطبيق متابعة الدرجات.</span></div></li>
-          <li><span class="step-num">2</span><div><strong>اضغط «امسح رمز الكمبيوتر» ووجّه الكاميرا لهذا الرمز</strong><span>أبقِ الجوال ثابتًا على بُعد خطوة من الشاشة حتى يُقرأ الرمز.</span></div></li>
+          <li><span class="step-num">2</span><div><strong>اضغط «صوّر رمز الكمبيوتر» ووجّه الكاميرا لهذا الرمز</strong><span>أبقِ الجوال ثابتًا على بُعد خطوة من الشاشة حتى يُقرأ الرمز.</span></div></li>
           <li><span class="step-num">3</span><div><strong>انتظر — يتصل الكمبيوتر تلقائيًا</strong><span>تظهر درجات الصف هنا خلال ثوانٍ.</span></div></li>
         </ol>
+        <a class="acct-card" href="./?login=1">
+          <span class="acct-ico" aria-hidden="true"></span>
+          <span><strong>عندك حساب (معلمو الآيفون)؟</strong><small>ما تحتاج الرمز — سجّل دخولك باسم المستخدم وكلمة السر، وكل شيء يتزامن تلقائيًا.</small></span>
+        </a>
         <details class="help" id="help">
           <summary><span class="help-icon" aria-hidden="true"></span>مشاكل الاتصال؟</summary>
           <div class="help-body">
@@ -99,7 +105,6 @@
           <button class="btn ghost" id="btn-show-code" type="button">ما يفتح بالـ QR؟ اعرض الرمز المكتوب</button>
           <p class="sc-reveal" id="sc-reveal" hidden><span>اكتب هذا الرمز في الجوال:</span><b id="short-code-val" dir="ltr"></b></p>
         </div>
-        <p class="qr-status" id="pair-status" role="status" aria-live="polite" data-kind=""><span class="status-dot" aria-hidden="true"></span><span id="pair-status-text">جارٍ تجهيز الرمز…</span></p>
       </section>
     </main>
 

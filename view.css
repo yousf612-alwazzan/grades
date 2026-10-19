@@ -781,3 +781,24 @@ body { font-family: 'IBM Plex Sans Arabic', system-ui, -apple-system, 'Segoe UI'
 
 .short-code { flex-direction: column; }
 .sc-reveal { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 12px; margin: 0; }
+
+/* ===== صفحة الربط بلا تمرير: الحالة صغيرة في الشريط العلوي، والرمز بحجم الشاشة ===== */
+.topbar .qr-status { min-height: 34px; padding: 4px 12px; font-size: 14px; border-radius: 999px; gap: 8px; margin-inline-start: 12px; white-space: nowrap; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; }
+.topbar .qr-status .status-dot { width: 8px; height: 8px; }
+#btn-account { text-decoration: none; display: inline-flex; align-items: center; }
+.app:not([data-screen="pair"]) #btn-account { display: none; }
+.pair { align-content: start; padding-block: clamp(14px, 2.4vh, 32px); }
+.pair .lead { margin: 6px 0 14px; }
+.pair h1 { font-size: clamp(26px, 2.2vw, 36px); }
+.steps { gap: 10px; }
+.steps li { padding-block: 12px; }
+.qr-card { padding: 18px; gap: 10px; }
+.qr-box { width: min(100%, calc(100vh - 290px)); min-width: 220px; margin-inline: auto; }
+.help { margin-top: 12px; }
+.privacy { margin-top: 12px; }
+.acct-card { display: flex; gap: 14px; align-items: center; margin-top: 12px; padding: 14px 18px; border-radius: 18px; background: var(--primary-soft); color: var(--text); text-decoration: none; box-shadow: var(--shadow); }
+.acct-card strong { display: block; color: var(--primary); font-size: 16px; }
+.acct-card small { display: block; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.acct-card:hover { filter: brightness(.98); }
+.acct-ico { flex: none; width: 26px; height: 26px; background: var(--primary); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3Cpath d='M4 21a8 8 0 0 1 16 0'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3Cpath d='M4 21a8 8 0 0 1 16 0'/%3E%3C/svg%3E") center / contain no-repeat; }
+@media (max-height: 760px) { .pair .eyebrow, .pair .ver-note { display: none; } .steps span { display: none; } }
