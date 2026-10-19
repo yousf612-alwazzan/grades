@@ -1285,3 +1285,24 @@ body.remote .rail { padding-top: 16px; }
 .cl-tabs button { flex: 1; }
 .cl-remember { padding-inline: 0; border: 0; }
 .field-error { color: var(--error); font-weight: 600; margin: 0; }
+
+/* رمز الكمبيوتر: ٨ خانات ثابتة */
+.otp { position: relative; display: block; margin: 8px 0 4px; cursor: text; }
+.otp-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; font-size: 16px; border: 0; background: transparent; color: transparent; caret-color: transparent; }
+.otp-boxes { display: flex; justify-content: center; align-items: center; gap: 6px; pointer-events: none; }
+.otp-box { width: min(10vw, 44px); height: 56px; display: grid; place-items: center; border-radius: 12px; background: var(--chip); border: 2px solid transparent; font: 800 24px/1 ui-monospace, Consolas, monospace; color: var(--text); }
+.otp-box.full { background: var(--card); border-color: var(--border); }
+.otp:focus-within .otp-box.on { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.otp-dash { color: var(--muted); font-weight: 800; }
+
+/* زر الحساب ووضع الخصوصية في القائمة الجانبية */
+@media (min-width: 900px) {
+  .rail .rail-acct { color: var(--primary); font-weight: 700; margin-bottom: 6px; }
+  .rail .rail-acct.login { background: var(--primary); color: var(--primary-ink); }
+  .rail .rail-acct.login svg.i { color: inherit; }
+  .rail .rail-priv { margin-top: 8px; color: var(--muted); }
+  .rail .rail-priv[aria-pressed="true"] { background: var(--warning-soft, #fff4e0); color: var(--warning, #9a5b00); }
+  /* وضع الخصوصية: الشاشة معروضة للطلاب (HDMI) — الأسماء والدرجات مغبّشة إلا السطر الذي عليه الماوس أو الكتابة */
+  body.privacy :is(table.grid tbody tr, .class-card, .srow, .stu, #aside, .side-sum, .report-card, .appbar h1, .home-wrap .alert, .note-list, .stu-card):not(:hover):not(:focus-within) { filter: blur(7px); transition: filter .15s; }
+  body.privacy :is(table.grid tbody tr, .class-card, .srow, .stu, #aside, .side-sum, .report-card, .appbar h1, .home-wrap .alert, .note-list, .stu-card) { transition: filter .15s; }
+}

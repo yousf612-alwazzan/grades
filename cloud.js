@@ -90,12 +90,18 @@ export function clearSession() {
   try { localStorage.removeItem(SESSION); } catch { /* */ }
 }
 
-async function api(path, { method = 'GET', body, token } = {}) {
-  const res = await fetch(CLOUD + path, {
-    method, cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer',
-    headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: 'Bearer ' + token } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+async function api(path, { method = 'GET', body, token, timeout = 20000 } = {}) {
+  // مهلة لكل طلب: شبكة المدرسة الضعيفة قد تُعلّق الطلب بلا رد — نلغيه ونعيد المحاولة لاحقًا
+  const ac = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = ac ? setTimeout(() => ac.abort(), timeout) : 0;
+  let res;
+  try {
+    res = await fetch(CLOUD + path, {
+      method, cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer', signal: ac ? ac.signal : undefined,
+      headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } finally { clearTimeout(timer); }
   let j = null;
   try { j = await res.json(); } catch { /* */ }
   return { status: res.status, j: j || {} };
@@ -137,7 +143,7 @@ export async function changeAccount(sync, { user2, password }) {
   const docs = [];
   for (const k of sync.host.keys()) { const v = sync.host.get(k); if (v !== null && v !== undefined) docs.push({ k, d: await encryptDoc(key, k, v) }); }
   let r;
-  try { r = await api('/api/account', { method: 'POST', token: s.token, body: { ...(u2 !== s.u ? { u2 } : {}), a: proof, docs } }); } catch { throw codeErr('offline'); }
+  try { r = await api('/api/account', { method: 'POST', token: s.token, timeout: 60000, body: { ...(u2 !== s.u ? { u2 } : {}), a: proof, docs } }); } catch { throw codeErr('offline'); }
   if (r.status === 409) throw codeErr('taken');
   if (r.status === 401) throw codeErr('auth');
   if (r.status !== 200 || !r.j.token) throw codeErr('failed');

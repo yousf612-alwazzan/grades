@@ -158,7 +158,7 @@ function onRelay(s) {
   setPairStatus(tr(t[0]), t[1]);
   if (s === 'unreachable') { // أظهر خيار اللصق اليدوي
     $('help').open = true;
-    try { document.querySelector('.manual').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch { /* */ }
+    try { $('help').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch { /* */ }
   }
 }
 
@@ -255,6 +255,7 @@ async function startShort(code, seq) {
     const room = await shortRoom(sc);
     if (seq !== offerSeq || ac.signal.aborted) return;
     $('short-code-val').textContent = fmtShortCode(sc);
+    $('sc-reveal').hidden = true; $('btn-show-code').hidden = false;
     box.hidden = false;
     await publishShort(room, code, { signal: ac.signal });
   } catch { /* الرمز القصير اختياري */ }
@@ -854,6 +855,7 @@ function paintResumeQR() {
   draw();
   if (fr.length > 1) mqrTimer = setInterval(draw, 900);
   $('mqr-short').hidden = !resumeShort;
+  $('sc-reveal2').hidden = true; $('btn-show-code2').hidden = false;
   $('mqr-short-val').textContent = resumeShort;
 }
 async function autoResume() {
@@ -1170,60 +1172,10 @@ function openModal(id) {
 }
 function closeModals() {
   clearInterval(mqrTimer);
-  for (const id of ['modal-paste', 'modal-qr']) {
+  for (const id of ['modal-qr']) {
     const m = $(id);
     m.classList.remove('open');
     m.hidden = true;
-  }
-}
-
-function openPaste() {
-  openModal('modal-paste');
-  $('paste-error').hidden = true;
-  const ta = $('paste-input');
-  ta.value = '';
-  setTimeout(() => ta.focus(), 30);
-}
-
-async function submitPaste() {
-  const raw = $('paste-input').value;
-  const errEl = $('paste-error');
-  errEl.hidden = true;
-  // يقبل الرمز الكامل أو أجزاء GF ملصوقة متتالية
-  let code = raw.trim();
-  if (/GF\d+\/\d+:/.test(code)) {
-    const c = new FrameCollector();
-    code = null;
-    for (const part of raw.split(/\s+|(?=GF\d+\/\d+:)/)) { const r = c.push(part); if (r) code = r; }
-    if (!code) { errEl.textContent = tr('الرمز ناقص: بعض الأجزاء غير موجودة.'); errEl.hidden = false; return; }
-  }
-  code = (code || '').replace(/\s+/g, '');
-  if (!code) { errEl.textContent = tr('الصق رمز الرد أولًا.'); errEl.hidden = false; return; }
-  const btn = $('paste-submit');
-  btn.disabled = true;
-  try {
-    await acceptAnswer(code);
-    closeModals();
-  } catch (e) {
-    errEl.textContent = tr(e.message) || tr('رمز غير صالح.');
-    errEl.hidden = false;
-  } finally { btn.disabled = false; }
-}
-
-async function copyOffer() {
-  if (!offerCode) return;
-  try {
-    await navigator.clipboard.writeText(offerCode);
-    toast(tr('تم نسخ رمز العرض. أرسله إلى الجوال والصقه في «لصق رمز العرض».'));
-  } catch {
-    // احتياط: تحديد النص يدويًا
-    const ta = document.createElement('textarea');
-    ta.value = offerCode; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
-    document.body.appendChild(ta); ta.select();
-    let ok = false;
-    try { ok = document.execCommand('copy'); } catch { ok = false; }
-    ta.remove();
-    toast(ok ? tr('تم نسخ رمز العرض.') : tr('تعذر النسخ في هذا المتصفح.'));
   }
 }
 
@@ -1235,16 +1187,15 @@ function disconnect() {
 
 // ---------- الأحداث ----------
 function bind() {
-  $('btn-paste').innerHTML = btnHtml(I.paste, tr('لصق رمز نصي'));
   $('btn-soft-qr').addEventListener('click', () => { openModal('modal-qr'); paintResumeQR(); });
-  $('btn-copy').innerHTML = btnHtml(I.copy, tr('نسخ رمز العرض'));
+  // الرمز المكتوب مخفي (الشاشة غالبًا معروضة للطلاب) ويظهر عند الطلب فقط
+  $('btn-show-code').addEventListener('click', () => { $('sc-reveal').hidden = false; $('btn-show-code').hidden = true; });
+  $('btn-show-code2').addEventListener('click', () => { $('sc-reveal2').hidden = false; $('btn-show-code2').hidden = true; });
   $('btn-new').innerHTML = btnHtml(I.refresh, tr('رمز جديد'));
   $('btn-disconnect').innerHTML = btnHtml(I.unlink, tr('قطع الاتصال'));
   $('btn-disconnect').setAttribute('aria-label', tr('قطع الاتصال'));
   document.querySelectorAll('.modal [data-close].icon-only').forEach((b) => { b.innerHTML = I.close; });
 
-  $('btn-paste').addEventListener('click', openPaste);
-  $('btn-copy').addEventListener('click', copyOffer);
   $('btn-new').addEventListener('click', () => newOffer());
   $('btn-full').addEventListener('click', toggleFull);
   $('btn-theme').addEventListener('click', () => { ui.theme = effectiveTheme() === 'dark' ? 'light' : 'dark'; applyTheme(); });
@@ -1256,8 +1207,6 @@ function bind() {
   if (curLang() === 'en') switchViewLang('en');
   $('btn-soft-end').addEventListener('click', () => { setSoftPause(false); if (link) link.stop(); link = null; backToPairing(); });
   $('btn-reconnect').addEventListener('click', () => { if (link) link.stop(); link = null; backToPairing(); });
-  $('paste-submit').addEventListener('click', submitPaste);
-  $('paste-input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitPaste(); } });
   document.querySelectorAll('.modal-backdrop').forEach((m) => {
     m.addEventListener('click', (e) => { if (e.target === m || e.target.closest('[data-close]')) closeModals(); });
   });

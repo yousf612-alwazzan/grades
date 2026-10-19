@@ -170,8 +170,11 @@ async function startCloud(session, key) {
   C.state = 'idle'; paintCloud();
   C.loading = session.eph;
   if (C.loading) render();
-  try { await C.sync.start(); } finally { if (C.loading) { C.loading = false; render(); } }
-  if (session.mustChange && C.sync && !hasSheet()) openAccountSheet(true);
+  const startP = C.sync.start();
+  // كلمة سر مبدئية: نطلب اختيار الاسم وكلمة السر فورًا (الحفظ ينتظر انتهاء المزامنة الأولى بنفسه)
+  if (session.mustChange && !C.loading && !hasSheet()) openAccountSheet(true);
+  try { await startP; } finally { if (C.loading) { C.loading = false; render(); } }
+  if (session.mustChange && C.sync && !hasSheet() && !document.querySelector('[data-acform]')) openAccountSheet(true);
 }
 async function cloudLogout() {
   const eph = C.session && C.session.eph;
@@ -501,15 +504,21 @@ function setDeskPref(k, on) { try { localStorage.setItem(k, on ? '1' : '0'); } c
 
 function renderNav() {
   const cur = ROOTS.includes(route().name) ? route().name : (S.stack[0] || {}).name;
-  const items = [['home', 'users', tr('الصفوف')], ['reports', 'sheet', tr('التقارير')], ['live', 'monitor', REMOTE ? tr('عرض للطلاب') : tr('العرض')], ['tools', 'bolt', tr('الأدوات')], ['settings', 'gear', tr('الإعدادات')]];
+  const items = [['home', 'users', tr('الصفوف')], ['reports', 'sheet', tr('التقارير')], ['live', 'monitor', REMOTE ? tr('عرض للطلاب') : IOS_WEB ? tr('الكمبيوتر') : tr('العرض')], ['tools', 'bolt', tr('الأدوات')], ['settings', 'gear', tr('الإعدادات')]];
   const btns = items.map(([n, ic, label]) => `<button type="button" class="tab" data-act="nav" data-to="${n}" ${cur === n ? 'aria-current="page"' : ''} title="${esc(label)}"><span class="tab-ico">${icon(ic)}</span><span class="tab-label">${label}</span></button>`).join('');
   document.getElementById('tabbar').innerHTML = btns;
   const mini = deskPref('gfu-rail');
   document.body.classList.toggle('rail-mini', mini);
+  const priv = deskPref('gfu-privacy');
+  document.body.classList.toggle('privacy', priv);
+  const acct = !CLOUD_ON ? '' : C.session
+    ? `<button type="button" class="tab rail-acct" data-act="nav" data-to="settings" title="${esc(C.session.u)}"><span class="tab-ico">${icon('user')}</span><span class="tab-label" dir="ltr">${esc(C.session.u)}</span></button>`
+    : T`<button type="button" class="tab rail-acct login" data-act="cloud-login" title="${tr('تسجيل الدخول')}"><span class="tab-ico">${icon('user')}</span><span class="tab-label">تسجيل الدخول</span></button>`;
+  const privBtn = REMOTE || !platform.isNative ? T`<button type="button" class="tab rail-priv" data-act="privacy-toggle" aria-pressed="${priv}" title="${priv ? tr('إيقاف وضع الخصوصية') : tr('وضع الخصوصية (للشاشة المعروضة للطلاب)')}"><span class="tab-ico">${icon(priv ? 'eyeOff' : 'eye')}</span><span class="tab-label">${priv ? tr('الخصوصية مفعّلة') : tr('وضع الخصوصية')}</span></button>` : '';
   const foot = REMOTE ? T`<span class="remote-note">${icon('phone')} <span><b>متصل بجوالك</b> — كل التعديلات تُحفظ في جوالك</span></span>` : T`الإصدار ${ar(CONFIG.version)}<br>بياناتك على هذا الجهاز فقط`;
   document.getElementById('rail').innerHTML = T`<div class="brand"><img src="icons/icon-192.png" alt=""><span>${esc(tr(CONFIG.appName))}</span></div>
     <button type="button" class="tab rail-toggle" data-act="rail-toggle" aria-expanded="${!mini}" title="${mini ? tr('إظهار القائمة') : tr('إخفاء القائمة')}"><span class="tab-ico">${icon(mini ? 'menu' : 'sidebar')}</span><span class="tab-label">إخفاء القائمة</span></button>
-    ${btns}<div class="rail-foot">${foot}</div>`;
+    ${acct}${btns}${privBtn}<div class="rail-foot">${foot}</div>`;
 }
 
 function appbar({ title, sub = '', backBtn = true, actions = '', save = false }) {
@@ -568,7 +577,8 @@ function Home() {
     ? T`<p class="hint" data-testid="backup-ok" style="color:var(--success);font-weight:700">${icon('checkCircle')} نسختك الاحتياطية محدّثة (${days < 1 ? tr('اليوم') : T`قبل ${ar(Math.floor(days))} يوم`})</p>` : '';
   const helloTitle = st.teacher ? T`أهلًا أ. ${st.teacher}` : tr('أهلًا بك');
   const helloSub = `${st.subject ? esc(st.subject) + ' · ' : ''}${S.classes.length === 1 ? tr('صف واحد') : S.classes.length === 2 ? tr('صفّان') : S.classes.length ? T`${ar(S.classes.length)} صفوف` : tr('لنبدأ')}`;
-  const addBtn = cloudChip() + (S.classes.length ? T`<button type="button" class="btn sm soft add-class" data-act="new-class">${icon('plus')} إضافة صف</button>` : '');
+  const loginBtn = CLOUD_ON && !C.session && !WIDE.matches ? T`<button type="button" class="btn sm soft" data-act="cloud-login">${icon('user')} دخول</button>` : '';
+  const addBtn = loginBtn + cloudChip() + (S.classes.length ? T`<button type="button" class="btn sm soft add-class" data-act="new-class">${icon('plus')} إضافة صف</button>` : '');
   if (C.loading) {
     return T`${appbar({ title: helloTitle, sub: '', backBtn: false })}<div class="wrap"><div class="live-wait card"><span class="spinner-lg" aria-hidden="true"></span><h3>جارٍ تحميل درجاتك من حسابك…</h3></div></div>`;
   }
@@ -2292,8 +2302,30 @@ function defaultViewUrl() {
 }
 async function liveMod() { return (L.mod ||= await import('./live.js')); }
 
+// الآيفون (الموقع): لا ربط بالـ QR — المعلم يسجّل دخوله في الكمبيوتر بنفس الحساب وكل شيء يتزامن
+const IOS_WEB = CLOUD_ON && platform.isIOS;
+function siteUrl() { return location.origin + location.pathname.replace(/index\.html$/, ''); }
+function IphoneComputer() {
+  const acct = C.session
+    ? T`<div class="alert ok">${icon('checkCircle')}<div class="grow"><strong>حسابك جاهز: <span dir="ltr">${esc(C.session.u)}</span></strong><p style="margin:0">${tr(CLOUD_TEXT[C.state] || '')}</p></div></div>`
+    : T`<button type="button" class="btn primary lg block" data-act="cloud-login">${icon('user')} سجّل دخولك أولًا</button>`;
+  return T`${appbar({ title: tr('الكمبيوتر'), backBtn: false })}
+  <div class="wrap stack live-page">
+    <section class="live-step"><h3>${icon('cloud')} استخدم درجاتك من الكمبيوتر</h3>
+      <ol class="steps">
+        <li><span class="n">1</span><span>في الكمبيوتر افتح الموقع: <button type="button" class="link-btn" data-act="copy-site">${icon('copy')} نسخ الرابط</button></span></li>
+        <li><span class="n">2</span><span>اضغط «تسجيل الدخول» واكتب نفس اسم المستخدم وكلمة السر.</span></li>
+        <li><span class="n">3</span><span>كل تعديل يتزامن تلقائيًا بين الجوال والكمبيوتر — حتى لو قفلت الجوال.</span></li>
+      </ol>
+      ${acct}
+    </section>
+    <p class="hint" style="text-align:center">${icon('lock')} في كمبيوتر المدرسة ألغِ «تذكّرني» عند الدخول: لا يُحفظ عليه شيء.</p>
+  </div>`;
+}
+
 function Live() {
   if (REMOTE) return RemotePresent();
+  if (IOS_WEB && L.phase === 'setup') return IphoneComputer();
   L.scope = { kind: 'class', idx: 0 }; // العرض للصف كاملًا (تعديل طالب بعينه من داخل الصف)
   if (!L.classId || !cls(L.classId)) L.classId = (S.classes[0] || {}).id || null;
   const c = L.classId ? cls(L.classId) : null;
@@ -2907,6 +2939,8 @@ document.addEventListener('click', async (e) => {
     case 'filter-sheet': openFilterSheet(cls(p.id), p.tab); break;
     case 'cloud-login': openCloudLogin(); break;
     case 'cloud-account': openAccountSheet(false); break;
+    case 'copy-site': if (await platform.copyText(siteUrl())) toast(tr('نُسخ الرابط ✓')); break;
+    case 'privacy-toggle': { const on = !deskPref('gfu-privacy'); setDeskPref('gfu-privacy', on); renderNav(); if (on) toast(tr('وضع الخصوصية: الأسماء والدرجات مغبّشة على الشاشة — مرّر الماوس على السطر لتشوفه.'), { ms: 6000 }); break; }
     case 'cloud-logout': cloudLogout(); break;
     case 'cloud-sync': if (C.sync) { C.sync.pull(); C.sync.flushSoon(10); toast(tr('جارٍ المزامنة…')); } break;
     case 'side-toggle': S.ui.sideHidden = !S.ui.sideHidden; setDeskPref('gfu-side', S.ui.sideHidden); render(); break;
@@ -3094,9 +3128,30 @@ document.addEventListener('click', async (e) => {
     case 'live-scan': L.phase = 'scan'; render(); break;
     case 'live-cancel': stopScanner(); L.phase = 'setup'; render(); break;
     case 'live-paste': {
-      const s = openSheet(T`<h2>اكتب رمز الكمبيوتر</h2><p>تحت رمز QR في الكمبيوتر يظهر رمز من ٨ أحرف (مثل ABCD-EFGH). اكتبه هنا — يحتاج إنترنت في الجهازين.</p>
-        <textarea class="textarea short-input" dir="ltr" data-code rows="1" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABCD-EFGH"></textarea>
-        <div class="actions"><button type="button" class="btn" data-x="0">إلغاء</button><button type="button" class="btn primary" data-x="1">متابعة</button></div>`, { label: tr('لصق الرمز') });
+      const s = openSheet(T`<h2>اكتب رمز الكمبيوتر</h2><p>في الكمبيوتر اضغط «اعرض الرمز المكتوب» تحت رمز QR، واكتب الأحرف الثمانية هنا.</p>
+        <label class="otp" data-otp>
+          <input data-code class="otp-input" dir="ltr" inputmode="text" autocapitalize="characters" autocomplete="one-time-code" autocorrect="off" spellcheck="false" aria-label="رمز الكمبيوتر (٨ أحرف)">
+          <span class="otp-boxes" dir="ltr" aria-hidden="true">${Array.from({ length: 8 }, (_, i) => `<span class="otp-box" data-ob="${i}"></span>${i === 3 ? '<span class="otp-dash">-</span>' : ''}`).join('')}</span>
+        </label>
+        <div class="actions"><button type="button" class="btn" data-x="0">إلغاء</button><button type="button" class="btn primary" data-x="1" disabled>اتصال</button></div>`, { label: tr('رمز الكمبيوتر') });
+      const inp = s.sheet.querySelector('[data-code]');
+      const ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      const paintOtp = () => {
+        let v = inp.value;
+        if (v.length <= 12) { // رمز قصير: أحرف كبيرة دائمًا، والمسموح فقط
+          v = v.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).toUpperCase().replace(/O/g, '0').split('').filter((ch) => ABC.includes(ch)).join('').slice(0, 8);
+          if (v !== inp.value) inp.value = v;
+        }
+        const short = inp.value.length <= 12;
+        s.sheet.querySelectorAll('[data-ob]').forEach((b, i) => { b.textContent = short ? (v[i] || '') : '•'; b.classList.toggle('on', short && i === Math.min(v.length, 7)); b.classList.toggle('full', !!v[i]); });
+        const ready = short ? v.length === 8 : inp.value.length > 12;
+        s.sheet.querySelector('[data-x="1"]').disabled = !ready;
+        if (short && v.length === 8 && !s.autoGo) { s.autoGo = true; setTimeout(() => { const go = s.sheet.querySelector('[data-x="1"]'); if (go && !go.disabled) go.click(); }, 250); }
+        if (short && v.length < 8) s.autoGo = false;
+      };
+      inp.addEventListener('input', paintOtp);
+      paintOtp();
+      setTimeout(() => inp.focus(), 60);
       s.sheet.addEventListener('click', (ev) => {
         const b = ev.target.closest('[data-x]'); if (!b) return;
         const code = s.sheet.querySelector('[data-code]').value.trim();

@@ -778,3 +778,6 @@ body { font-family: 'IBM Plex Sans Arabic', system-ui, -apple-system, 'Segoe UI'
 .short-code { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 12px; margin: 10px 0 0; font-size: 14px; color: var(--muted, #5b6474); text-align: center; }
 .short-code b { font-size: 26px; letter-spacing: .12em; font-weight: 800; color: var(--text, #111827); font-family: ui-monospace, Consolas, monospace; }
 .manual-actions { flex-wrap: wrap; }
+
+.short-code { flex-direction: column; }
+.sc-reveal { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 12px; margin: 0; }

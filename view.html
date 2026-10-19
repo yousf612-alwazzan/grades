@@ -79,16 +79,6 @@
               <li><strong>لم يتصل بعد المسح؟</strong> تأكد أن الجوال متصل بالإنترنت لحظة المسح، ثم اضغط «رمز جديد» وامسحه مرة أخرى.</li>
               <li><strong>خادم TURN:</strong> إن كانت شبكة المدرسة تمنع اتصال الأجهزة ببعضها يمكن إضافة خادم TURN من إعدادات تطبيق الجوال (العرض الحي).</li>
             </ul>
-            <div class="manual">
-              <div class="manual-text">
-                <strong>ما في واي فاي؟</strong>
-                <span>شغّل «نقطة الاتصال» في الجوال ووصّل الكمبيوتر بها — بيانات الجوال تكفي للربط، ثم اضغط «رمز جديد».</span>
-              </div>
-              <div class="manual-actions">
-                <button class="btn ghost" id="btn-paste" type="button"></button>
-                <button class="btn ghost" id="btn-copy" type="button" hidden></button>
-              </div>
-            </div>
           </div>
         </details>
         <p class="privacy"><span class="lock-icon" aria-hidden="true"></span><span>المصافحة تمر عبر وسيط مشفّر، والدرجات تصل من الجوال إلى هذه الشاشة مباشرة ولا تُحفظ على الكمبيوتر — تُمسح فور إغلاق الصفحة أو قطع الاتصال.</span></p>
@@ -105,7 +95,10 @@
           <canvas id="qr-canvas" width="360" height="360" aria-label="رمز QR للاقتران" role="img"></canvas>
           <div class="qr-loading" id="qr-loading"><span class="spinner" aria-hidden="true"></span><span>جارٍ تجهيز الرمز…</span></div>
         </div>
-        <p class="short-code" id="short-code" hidden><span>ما تعمل الكاميرا؟ اكتب هذا الرمز في الجوال:</span><b id="short-code-val" dir="ltr"></b></p>
+        <div class="short-code" id="short-code" hidden>
+          <button class="btn ghost" id="btn-show-code" type="button">ما يفتح بالـ QR؟ اعرض الرمز المكتوب</button>
+          <p class="sc-reveal" id="sc-reveal" hidden><span>اكتب هذا الرمز في الجوال:</span><b id="short-code-val" dir="ltr"></b></p>
+        </div>
         <p class="qr-status" id="pair-status" role="status" aria-live="polite" data-kind=""><span class="status-dot" aria-hidden="true"></span><span id="pair-status-text">جارٍ تجهيز الرمز…</span></p>
       </section>
     </main>
@@ -139,23 +132,6 @@
   <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
   <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden></aside>
 
-  <!-- نافذة لصق الرد -->
-  <div class="modal-backdrop" id="modal-paste" hidden>
-    <div class="modal narrow" role="dialog" aria-modal="true" aria-labelledby="paste-title">
-      <div class="modal-head">
-        <h2 id="paste-title">لصق رمز الرد</h2>
-        <button class="btn ghost icon-only" type="button" data-close aria-label="إغلاق"></button>
-      </div>
-      <p class="muted">للحالات الخاصة فقط: إذا كان عندك «رمز الرد» كنص على هذا الكمبيوتر نفسه، الصقه هنا.</p>
-      <textarea id="paste-input" rows="5" dir="ltr" spellcheck="false" autocomplete="off" placeholder="الصق الرمز هنا…" aria-label="رمز الرد"></textarea>
-      <p class="field-error" id="paste-error" role="alert" hidden></p>
-      <div class="modal-actions">
-        <button class="btn primary big" type="button" id="paste-submit">اتصال</button>
-        <button class="btn big" type="button" data-close>إلغاء</button>
-      </div>
-    </div>
-  </div>
-
   <!-- رمز الكمبيوتر أثناء غياب الجوال (للتصوير من جديد، مثل الآيفون بعد إعادة التشغيل) -->
   <div class="modal-backdrop" id="modal-qr" hidden>
     <div class="modal narrow" role="dialog" aria-modal="true" aria-labelledby="mqr-title">
@@ -165,7 +141,10 @@
       </div>
       <p class="muted">في الجوال: «العرض» ← «صوّر رمز الكمبيوتر». يرجع الاتصال وتنتقل كل تعديلاتك.</p>
       <div class="qr-box"><canvas id="mqr-canvas" width="360" height="360" role="img" aria-label="رمز QR"></canvas></div>
-      <p class="short-code" id="mqr-short" hidden><span>أو اكتب في الجوال:</span><b id="mqr-short-val" dir="ltr"></b></p>
+      <div class="short-code" id="mqr-short" hidden>
+        <button class="btn ghost" id="btn-show-code2" type="button">ما يفتح بالـ QR؟ اعرض الرمز المكتوب</button>
+        <p class="sc-reveal" id="sc-reveal2" hidden><span>اكتب في الجوال:</span><b id="mqr-short-val" dir="ltr"></b></p>
+      </div>
     </div>
   </div>
 

@@ -145,7 +145,9 @@ export function openSheet(html, { wide = false, onClose, label = '' } = {}) {
     if (onClose) onClose();
     if (prevFocus && prevFocus.focus && document.contains(prevFocus)) prevFocus.focus({ preventScroll: true });
   };
-  bd.addEventListener('click', (e) => { if (e.target === bd) entry.close(); });
+  const openedAt = Date.now();
+  // ضغطة على الخلفية تغلق النافذة — إلا في أول لحظة (النافذة ما زالت تصعد؛ ضغطة مزدوجة لا تغلقها بالخطأ)
+  bd.addEventListener('click', (e) => { if (e.target === bd && Date.now() - openedAt > 350) entry.close(); });
   sheet.querySelector(':scope > .sheet-x').addEventListener('click', () => entry.close());
   sheet.addEventListener('keydown', (e) => { if (e.key === 'Escape') entry.close(); });
   root.appendChild(bd);
