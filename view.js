@@ -12,6 +12,8 @@ const E2E = params.has('e2e');
 // رقم النسخة ظاهر في صفحة الربط حتى يعرف المعلم أن الصفحة محدّثة
 function paintVerNote() { const el = document.getElementById('ver-note'); if (el) el.textContent = T`نسخة صفحة العرض ${toArabicDigits(CONFIG.version)} — إن لم تظهر الميزات الجديدة اضغط Ctrl+Shift+R مرة واحدة`; }
 paintVerNote();
+// رجوع من التطبيق بعد الخروج التلقائي (ساعة ونصف)
+setTimeout(() => { try { if (sessionStorage.getItem('gfu-cloud-ended')) { sessionStorage.removeItem('gfu-cloud-ended'); toast(tr('خرجت من حسابك تلقائيًا (مرّت ساعة ونصف). سجّل الدخول من جديد للمتابعة.')); } } catch { /* */ } }, 600);
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

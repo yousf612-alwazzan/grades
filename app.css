@@ -1427,3 +1427,11 @@ body.no-tabbar .school-secs .sticky-save { bottom: 12px; }
   .stu-scroll table.grid .btn-full { padding: 0 8px; }
   .stu-scroll table.grid td.total { min-width: 44px; }
 }
+
+/* عدّاد الخروج التلقائي في الرأس (الكمبيوتر): رقم أصفر بلا إطار */
+.hdr-timer { display: inline-flex; align-items: baseline; gap: 6px; color: #b7791f; font-size: 13px; white-space: nowrap; margin-inline-start: auto; }
+.hdr-timer b { font-size: 17px; font-weight: 800; color: #d69e2e; font-variant-numeric: tabular-nums; }
+.hdr-timer b.soon { color: var(--error); }
+@media (prefers-color-scheme: dark) { .hdr-timer { color: #ecc94b; } .hdr-timer b { color: #f6e05e; } }
+:root[data-theme="dark"] .hdr-timer { color: #ecc94b; } :root[data-theme="dark"] .hdr-timer b { color: #f6e05e; }
+:root[data-theme="light"] .hdr-timer { color: #b7791f; } :root[data-theme="light"] .hdr-timer b { color: #d69e2e; }

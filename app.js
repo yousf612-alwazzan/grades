@@ -109,6 +109,10 @@ const CLOUD_ON = !REMOTE && !platform.isNative && !!cloud.CLOUD;
 const IOS_WEB = CLOUD_ON && platform.isIOS && !(typeof window !== 'undefined' && window.__gfuNoGate);
 const DESK_WEB = CLOUD_ON && !platform.isIOS;
 const DESK_SESSION_MS = 90 * 60 * 1000;
+// الكمبيوتر بلا حساب = صفحة الربط (QR). البقاء هنا للتطوير والاختبارات فقط (gfu-dev-stay)
+const DEV_STAY = (() => { try { return localStorage.getItem('gfu-dev-stay') === '1'; } catch { return false; } })();
+const PC_HOME = 'view.html';
+function toPcHome() { if (DESK_WEB && !DEV_STAY) { location.replace(PC_HOME); return true; } return false; }
 const C = { session: null, sync: null, state: 'off', loading: false, memMeta: null };
 function cloudTouch(k) {
   if (!C.sync) return;
@@ -204,7 +208,7 @@ async function cloudLogout(auto = false) {
     try { if (C.sync) { await Promise.race([C.sync.settle(8000), new Promise((r) => setTimeout(r, 9000))]); await C.sync.logout(); } } catch { /* */ }
     cloud.clearSession();
     try { sessionStorage.setItem('gfu-cloud-ended', '1'); } catch { /* */ }
-    location.reload();
+    if (!toPcHome()) location.reload();
     return;
   }
   const ok = await confirmDialog({ title: tr('الخروج من الحساب؟'), text: eph ? tr('تُمسح درجاتك من هذا الكمبيوتر، وتبقى محفوظة في حسابك وجوالك.') : tr('تبقى درجاتك على هذا الجهاز، وتتوقف المزامنة حتى تسجّل الدخول مرة ثانية.'), ok: tr('خروج') });
@@ -212,7 +216,7 @@ async function cloudLogout(auto = false) {
   if (C.sync) { await C.sync.flush(); await C.sync.logout(); }
   C.sync = null;
   cloud.clearSession();
-  if (eph) { location.reload(); return; }
+  if (eph) { if (!toPcHome()) location.reload(); return; }
   try { await localStore.setMeta('cloudKey', null); await localStore.setMeta('cloudSync', null); } catch { /* */ }
   C.session = null; C.state = 'off';
   render();
@@ -258,9 +262,13 @@ function bindLoginForm(box, onDone = () => {}) {
     }
   });
 }
-function openCloudLogin() {
-  const s = openSheet(T`<h2>${icon('lock')} تسجيل الدخول</h2><p class="hint">درجاتك تُشفَّر بكلمة سرك على جهازك قبل ما تطلع منه — ولا أحد غيرك يقدر يقرأها.</p><div data-cl>${loginFormHTML()}</div>`, { label: tr('تسجيل الدخول') });
-  bindLoginForm(s.sheet, () => s.close());
+function openCloudLogin(fromPc = false) {
+  let done = false;
+  const s = openSheet(T`<h2>${icon('lock')} تسجيل الدخول</h2><p class="hint">درجاتك تُشفَّر بكلمة سرك على جهازك قبل ما تطلع منه — ولا أحد غيرك يقدر يقرأها.</p><div data-cl>${loginFormHTML()}</div>`, {
+    label: tr('تسجيل الدخول'),
+    onClose: () => { if (fromPc && !done && !C.session) toPcHome(); },
+  });
+  bindLoginForm(s.sheet, () => { done = true; s.close(); });
 }
 // الآيفون: شاشة دخول إجبارية قبل استعمال التطبيق
 function LoginGate() {
@@ -283,12 +291,30 @@ async function loadSchoolRoster() {
   if (route().name === 'school') softRender();
   return r;
 }
+// أندرويد: قوائم المدرسة مضمّنة داخل ملف التطبيق (school-roster.json) — لا تُنشر في الموقع
+async function loadBundledRoster() {
+  if (!platform.isNative) return;
+  try {
+    const res = await fetch('school-roster.json', { cache: 'no-store' });
+    if (!res.ok) return;
+    const raw = await res.json();
+    const r = sanitizeRoster(raw);
+    if (!r) return;
+    r.at = Number(raw.at) || 1;
+    const cur = S.meta.schoolRoster;
+    if (cur && (Number(cur.at) || 0) >= r.at) return;
+    S.meta.schoolRoster = r;
+    await store.setMeta('schoolRoster', r).catch(() => {});
+    if (route().name === 'school') softRender();
+  } catch { /* بلا قوائم مضمّنة */ }
+}
 async function importSchoolFile() {
   const file = await platform.pickFile('.json,application/json');
   if (!file) return;
   let r = null;
   try { r = sanitizeRoster(JSON.parse(await file.text())); } catch { r = null; }
   if (!r) { toast(tr('هذا ليس ملف صفوف المدرسة.'), { err: true, ms: 5000 }); return; }
+  r.at = Date.now();
   S.meta.schoolRoster = r;
   await store.setMeta('schoolRoster', r).catch(() => {});
   toast(T`تم ✓ ${ar(Object.values(r.grades).reduce((a, g) => a + Object.keys(g).length, 0))} شعبة`);
@@ -640,7 +666,7 @@ function setDeskPref(k, on) { try { localStorage.setItem(k, on ? '1' : '0'); } c
 function renderNav() {
   const cur = ROOTS.includes(route().name) ? route().name : (S.stack[0] || {}).name;
   const items = [['home', 'users', tr('الصفوف')], ['reports', 'sheet', tr('التقارير')], ['live', 'monitor', REMOTE ? tr('عرض للطلاب') : IOS_WEB ? tr('الكمبيوتر') : tr('العرض')], ['tools', 'bolt', tr('الأدوات')], ['settings', 'gear', tr('الإعدادات')]];
-  const btns = items.map(([n, ic, label]) => `<button type="button" class="tab" data-act="nav" data-to="${n}" ${cur === n ? 'aria-current="page"' : ''} title="${esc(label)}"><span class="tab-ico">${icon(ic)}</span><span class="tab-label">${label}</span></button>`).join('');
+  const btns = items.filter(([n]) => !(DESK_WEB && WIDE.matches && n === 'live')).map(([n, ic, label]) => `<button type="button" class="tab" data-act="nav" data-to="${n}" ${cur === n ? 'aria-current="page"' : ''} title="${esc(label)}"><span class="tab-ico">${icon(ic)}</span><span class="tab-label">${label}</span></button>`).join('');
   document.getElementById('tabbar').innerHTML = btns;
   const mini = deskPref('gfu-rail');
   document.body.classList.toggle('rail-mini', mini);
@@ -652,7 +678,6 @@ function renderNav() {
           <button type="button" class="ra-user" data-act="nav" data-to="settings" title="${user}"><span class="ra-avatar">${icon('user')}</span><span class="tab-label" dir="ltr">${user}</span></button>
           ${DESK_WEB ? T`<button type="button" class="ra-logout" data-act="cloud-logout" title="${tr('تسجيل الخروج')}" aria-label="${tr('تسجيل الخروج')}">${icon('logout')}</button>` : ''}
         </div>
-        ${DESK_WEB ? T`<div class="ra-timer tab-label" title="${tr('تخرج تلقائيًا من حسابك بعد ساعة ونصف من الدخول')}">${icon('lock')}<span>خروج تلقائي بعد</span><b class="num" data-cloud-timer dir="ltr">${fmtLeft(cloudLeftMs())}</b></div>` : ''}
       </div>`
     : T`<button type="button" class="tab rail-acct login" data-act="cloud-login" title="${tr('تسجيل الدخول')}"><span class="tab-ico">${icon('user')}</span><span class="tab-label">تسجيل الدخول</span></button>`;
   const foot = REMOTE ? T`<span class="remote-note">${icon('phone')} <span><b>متصل بجوالك</b> — كل التعديلات تُحفظ في جوالك</span></span>`
@@ -664,6 +689,8 @@ function renderNav() {
 }
 
 function appbar({ title, sub = '', backBtn = true, actions = '', save = false }) {
+  const timer = DESK_WEB && C.session ? T`<span class="hdr-timer" title="${tr('تخرج تلقائيًا من حسابك بعد ساعة ونصف من الدخول')}"><span>خروج تلقائي</span><b class="num" data-cloud-timer dir="ltr">${fmtLeft(cloudLeftMs())}</b></span>` : '';
+  actions = timer + actions;
   return `<header class="appbar"><div class="appbar-row">
     ${backBtn ? T`<button type="button" class="icon-btn" data-act="back" aria-label="رجوع">${icon('back')}</button>` : ''}
     <h1>${esc(title)}${sub ? `<span class="sub">${sub}</span>` : ''}</h1>
@@ -736,9 +763,7 @@ function Home() {
         <li><span class="n">${ar(2)}</span><span>الصق أسماء الطلاب أو استوردها من Excel أو PDF</span></li>
         <li><span class="n">${ar(3)}</span><span>ارصد الدرجات ثم صدّر الكشف</span></li>
       </ol>
-      <button type="button" class="btn primary lg block" data-act="go" data-to="school">${icon('users')} اختر صفوفك من قائمة المدرسة</button>
-      <button type="button" class="btn lg block" style="margin-top:8px" data-act="new-class">${icon('plus')} إضافة صف يدويًا</button>
-      <button type="button" class="btn lg block" style="margin-top:8px" data-act="import-classes">${icon('upload')} إنشاء الصفوف من ملف (Excel أو PDF)</button>
+      <button type="button" class="btn primary lg block" data-act="new-class">${icon('plus')} أضف صفك</button>
       <p class="hint" style="margin-top:12px">لديك نسخة احتياطية؟ <button type="button" class="btn ghost sm" data-act="restore">استرجاع نسخة</button></p></div>`;
   } else {
     body = `<div class="home-grid stack">${S.classes.map(classCard).join('')}</div>`;
@@ -1051,7 +1076,7 @@ function deskSide(c, d, inner) {
   return T`<aside class="cls-side">
     <div class="side-sum" id="side-sum" aria-label="ملخص الصف">${sideSumHTML(c, d)}</div>
     <div class="side-card side-acts">
-      ${REMOTE ? act('present', 'monitor', tr('اعرض للطلاب وارصد')) : act('go-live', 'monitor', tr('عرض على الكمبيوتر'))}
+      ${REMOTE ? act('present', 'monitor', tr('اعرض للطلاب وارصد')) : DESK_WEB ? '' : act('go-live', 'monitor', tr('عرض على الكمبيوتر'))}
       ${act('edit-class', 'users', tr('الطلاب'))}
       ${act('export-xlsx', 'sheet', tr('تصدير Excel'))}
       ${act('go', 'send', tr('نقل طلاب'), 'data-to="transferOut"')}
@@ -1657,20 +1682,23 @@ function Editor(p) {
       ${has ? tr('<span class="tag">له درجات</span>') : ''}
       <button type="button" class="icon-btn" data-act="del-row" data-row="${j}" aria-label="حذف الطالب">${icon('x')}</button></div>`;
   }).join('');
-  return T`${appbar({ title: p.id ? tr('تعديل الصف') : tr('صف جديد'), actions: `<button type="button" class="btn primary sm" data-act="save-class">${p.id ? tr('حفظ') : tr('إنشاء')}</button>` })}
+  return T`${appbar({ title: p.id ? tr('تعديل الصف') : tr('أضف صفك'), actions: `<button type="button" class="btn primary sm" data-act="save-class">${p.id ? tr('حفظ') : tr('إنشاء')}</button>` })}
   <div class="wrap stack">
-    ${p.id || p.manual ? '' : T`<button type="button" class="card school-pick" data-act="go" data-to="school">${icon('users')}<span class="grow"><strong>اختر من صفوف المدرسة</strong><small>الصف ← الشعب، وتنضاف بأسماء طلابها جاهزة</small></span>${icon('fwd')}</button>`}
+    ${p.id || p.manual ? '' : T`<button type="button" class="card school-pick" data-act="go" data-to="school">${icon('users')}<span class="grow"><strong>اختر من صفوف المدرسة</strong><small>الصف ← الشعب، وتنضاف بأسماء طلابها جاهزة</small></span>${icon('fwd')}</button>
+    <div class="section-title">أو أنشئ صفًا بنفسك</div>`}
     <div class="card"><div class="field"><label for="cls-label">اسم الصف</label><input id="cls-label" class="input" data-draft-label value="${esc(dr.label)}" placeholder="مثل: العاشر / 3" autocomplete="off"></div></div>
     <div class="card stack">
-      <h3>إضافة طلاب</h3>
-      <div class="field"><label for="paste">الصق الأسماء (اسم في كل سطر)</label>
-        <textarea id="paste" class="textarea" data-paste placeholder="الصق هنا قائمة الأسماء من Excel أو واتساب أو أي ملف…"></textarea></div>
+      <h3>الطلاب</h3>
       <div class="row wrap-row">
-        <button type="button" class="btn primary" data-act="add-names">${icon('plus')} إضافة الأسماء</button>
-        <button type="button" class="btn" data-act="import-file">${icon('upload')} استيراد من ملف</button>
-        <button type="button" class="btn ghost" data-act="add-one">${icon('plus')} طالب جديد</button>
+        <button type="button" class="btn primary" data-act="import-file">${icon('upload')} استيراد من ملف</button>
+        <button type="button" class="btn" data-act="add-one">${icon('plus')} طالب جديد</button>
       </div>
-      <p class="hint">يقبل الاستيراد: Excel (xlsx)، PDF (حتى الممسوح ضوئيًا)، صورة للكشف، CSV، نص. ننظف الترقيم والمسافات ونتجاهل المكرر. الحد الأقصى ${ar(MAX_STUDENTS)} طالبًا.</p>
+      ${p.showPaste ? T`<div class="field"><label for="paste">الصق الأسماء (اسم في كل سطر)</label>
+        <textarea id="paste" class="textarea" data-paste placeholder="الصق هنا قائمة الأسماء…"></textarea></div>
+        <button type="button" class="btn" data-act="add-names">${icon('plus')} إضافة الأسماء</button>`
+      : T`<button type="button" class="link-btn" data-act="show-paste">${icon('paste')} لصق قائمة أسماء</button>`}
+      <p class="hint">يقبل الاستيراد: Excel (xlsx)، PDF (حتى الممسوح ضوئيًا)، صورة للكشف، CSV، نص. الحد الأقصى ${ar(MAX_STUDENTS)} طالبًا.</p>
+      ${p.id ? '' : T`<button type="button" class="link-btn" data-act="import-classes">${icon('sheet')} عندك ملف فيه أكثر من صف؟ أنشئها كلها مرة وحدة</button>`}
       ${p.id ? T`<button type="button" class="btn soft" data-act="go" data-to="transferIn" data-id="${p.id}">${icon('inbox')} استقبال طلاب منقولين من معلم آخر</button>` : ''}
     </div>
     <div class="row" style="justify-content:space-between;margin-top:20px">
@@ -1679,7 +1707,6 @@ function Editor(p) {
     </div>
     <div class="list" id="name-list">${rows || tr('<p class="hint" style="padding:16px;text-align:center">لا يوجد طلاب بعد.</p>')}</div>
     ${p.id ? T`<div class="section-title">منطقة الخطر</div><button type="button" class="btn danger-ghost block" data-act="delete-class">${icon('trash')} حذف الصف</button>` : ''}
-    <button type="button" class="btn primary lg block" data-act="save-class">${p.id ? tr('حفظ التعديلات') : tr('إنشاء الصف')}</button>
   </div>`;
 }
 
@@ -3108,6 +3135,7 @@ document.addEventListener('click', async (e) => {
     case 'school-import': importSchoolFile(); break;
     case 'school-reload': loadSchoolRoster().then((r) => { if (!r) toast(tr('القوائم غير موجودة في الخادم بعد.'), { err: true }); }); break;
     case 'new-class-manual': go('editor', { manual: true }); break;
+    case 'show-paste': p.showPaste = true; render(); setTimeout(() => { const t = main().querySelector('[data-paste]'); if (t) t.focus(); }, 30); break;
     case 'copy-site': if (await platform.copyText(siteUrl())) toast(tr('نُسخ الرابط ✓')); break;
     case 'cloud-logout': cloudLogout(); break;
     case 'cloud-sync': if (C.sync) { C.sync.pull(); C.sync.flushSoon(10); toast(tr('جارٍ المزامنة…')); } break;
@@ -3671,6 +3699,7 @@ function registerSW() {
 
 async function boot() {
   const cloudSession = CLOUD_ON ? cloud.readSession() : null;
+  if (DESK_WEB && !cloudSession && !new URLSearchParams(location.search).has('login') && toPcHome()) return;
   if (cloudSession && cloudSession.eph) localStore.useMemory(); // كمبيوتر مشترك: لا نقرأ ولا نكتب بيانات هذا الجهاز
   try {
     await loadState();
@@ -3695,11 +3724,12 @@ async function boot() {
   applyTheme();
   autoPlans();
   restoreLive();
+  loadBundledRoster();
   if (cloudSession) setTimeout(() => startCloud(cloudSession), 0); // بعد أول رسم للشاشة
   else if (CLOUD_ON && new URLSearchParams(location.search).has('login')) {
     // من صفحة العرض («تسجيل الدخول بحسابي»): نفتح نافذة الدخول مباشرة بلا جولة
     S.settings.tourDone = true;
-    setTimeout(() => { history.replaceState(history.state, '', location.pathname + location.hash); openCloudLogin(); }, 300);
+    setTimeout(() => { history.replaceState(history.state, '', location.pathname + location.hash); openCloudLogin(true); }, 300);
   }
   try { if (sessionStorage.getItem('gfu-cloud-ended')) { sessionStorage.removeItem('gfu-cloud-ended'); setTimeout(() => toast(tr('خرجت من حسابك تلقائيًا (مرّت ساعة ونصف). سجّل الدخول من جديد للمتابعة.'), { ms: 9000 }), 500); } } catch { /* */ }
   if (platform.isNative && !REMOTE) {
