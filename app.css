@@ -1187,3 +1187,18 @@ body.remote .rail { padding-top: 16px; }
 .conn-log summary { font-weight: 700; cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 8px; }
 .conn-log ul { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 4px; font-size: 13px; color: var(--muted); max-height: 260px; overflow: auto; }
 .conn-log li .num { color: var(--text); font-weight: 600; margin-inline-end: 6px; }
+
+/* ===== فلتر الطلاب ===== */
+.action-row.two { grid-template-columns: 1fr 1fr; }
+.fbar { display: grid; gap: var(--s2); min-width: 0; }
+.fchips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-block: 2px; }
+.fchips::-webkit-scrollbar { display: none; }
+.fchip { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 0; background: var(--card); color: var(--text); font: inherit; font-weight: 600; font-size: 14px; cursor: pointer; }
+.fchip .i { width: 16px; height: 16px; color: #c98a00; }
+.fchip .fc-n { font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.fchip.f-absent .fc-n { color: var(--danger); }
+.fchip[aria-pressed="true"] { background: var(--primary); color: var(--primary-ink); }
+.fchip[aria-pressed="true"] .fc-n, .fchip[aria-pressed="true"] .i { color: inherit; opacity: .9; }
+.fres { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); flex-wrap: wrap; }
+.fres .seg button { min-height: 38px; font-size: 13.5px; }
+.fbar.desk { flex: none; }

@@ -119,7 +119,7 @@ const S = {
   grades: {},
   meta: {},
   stack: [],          // [{name, p}]
-  ui: { tab: {}, search: '', missingOnly: false, selected: null, undo: null },
+  ui: { tab: {}, search: '', missingOnly: false, filter: 'all', fscope: 'week', selected: null, undo: null },
   saving: false,
   dirty: new Set(),
 };
@@ -155,6 +155,7 @@ function markDirty(classId) {
   setSaveState('saving');
   clearTimeout(saveTimer);
   saveTimer = setTimeout(flushSave, CONFIG.saveDebounceMs);
+  setTimeout(syncFilter, 0);
 }
 async function flushSave() {
   const ids = [...S.dirty];
@@ -754,6 +755,73 @@ function refreshAside() {
   if (a && c) a.innerHTML = asideHTML(c, dataOf(c.id), r.p);
 }
 
+// ----- فلتر الطلاب: الناقص، الغائبون، المميّزون، عليهم ملاحظات (هذا الأسبوع أو كل الأسابيع) -----
+const FILTER_KEYS = ['all', 'missing', 'absent', 'star', 'notes'];
+const STAT_F = ['absent', 'star', 'notes'];
+function fLabel(f) { return { all: tr('الكل'), missing: tr('الناقص'), absent: tr('الغائبون'), star: tr('المميّزون'), notes: tr('عليهم ملاحظات') }[f]; }
+function setFilter(f) { S.ui.filter = FILTER_KEYS.includes(f) ? f : 'all'; S.ui.missingOnly = S.ui.filter === 'missing'; }
+// عدد مرات انطباق الفلتر على الطالب (٠ = لا ينطبق)
+function stuStat(d, w, i, f, sc = S.ui.fscope) {
+  if (f === 'missing') return studentComplete(d, w, i) ? 0 : 1;
+  const weeks = sc === 'all' ? Array.from({ length: WEEKS }, (_, j) => j + 1) : [w];
+  if (f === 'absent') return weeks.filter((x) => isAbsent(d, x, i)).length;
+  if (f === 'star') return weeks.filter((x) => isStar(d, x, i)).length;
+  if (f === 'notes') return getNotes(d, i).filter((nt) => sc === 'all' || nt.w === w).length;
+  return 1;
+}
+function filterBar(c, d, w) {
+  const f = S.ui.filter || 'all';
+  const n = c.names.length;
+  const cnt = (k) => (k === 'missing' ? weekRemaining(d, w, n) : c.names.reduce((s, _, i) => s + (stuStat(d, w, i, k) ? 1 : 0), 0));
+  const chips = FILTER_KEYS.map((k) => {
+    const act = k === 'missing' ? 'data-act="missing-toggle"' : `data-act="filter" data-f="${k}"`;
+    return `<button type="button" class="fchip f-${k}" ${act} aria-pressed="${f === k}">${k === 'star' ? icon('star') : ''}${fLabel(k)}${k === 'all' ? '' : ` <span class="fc-n num">${ar(cnt(k))}</span>`}</button>`;
+  }).join('');
+  const sc = S.ui.fscope === 'all' ? 'all' : 'week';
+  const extra = STAT_F.includes(f) ? T`<div class="fres">
+      <div class="seg fscope" role="group" aria-label="النطاق"><button type="button" data-act="fscope" data-s="week" aria-pressed="${sc === 'week'}">الأسبوع ${ar(w)}</button><button type="button" data-act="fscope" data-s="all" aria-pressed="${sc === 'all'}">كل الأسابيع</button></div>
+      <button type="button" class="btn sm" data-act="filter-share">${icon('send')} مشاركة القائمة</button>
+    </div>` : '';
+  return `<div class="fchips" role="group" aria-label="${tr('فلتر الطلاب')}">${chips}</div>${extra}`;
+}
+function filterEmpty(f) {
+  return { missing: tr('🎉 كل الطلاب مكتملون في هذا الأسبوع'), absent: tr('لا يوجد طلاب غائبون'), star: tr('لا يوجد طلاب مميّزون'), notes: tr('لا توجد ملاحظات') }[f] || tr('لا نتائج');
+}
+// بعد أي تعديل: تحديث الأعداد، وإخفاء من لم يعد ينطبق عليه الفلتر
+function syncFilter() {
+  const r = route();
+  if (r.name !== 'class' || typeof r.p.tab !== 'number') return;
+  const c = cls(r.p.id);
+  const bar = document.getElementById('fbar');
+  if (!c || !bar) return;
+  const d = dataOf(c.id);
+  bar.innerHTML = filterBar(c, d, r.p.tab);
+  if (STAT_F.includes(S.ui.filter)) main().querySelectorAll('#stu-list [data-stu]').forEach((el) => { if (!stuStat(d, r.p.tab, +el.dataset.stu, S.ui.filter)) el.remove(); });
+}
+async function shareFilter(c, w) {
+  const d = dataOf(c.id);
+  const f = S.ui.filter;
+  if (!STAT_F.includes(f)) return;
+  const sc = S.ui.fscope === 'all' ? 'all' : 'week';
+  const meta = getWeekMeta(d, w);
+  const title = { absent: tr('الغائبون'), star: tr('المميّزون'), notes: tr('الطلاب الذين عليهم ملاحظات') }[f];
+  const when = sc === 'all' ? tr('كل الأسابيع') : T`الأسبوع ${ar(w)}` + (meta.date ? ` (${meta.date})` : '');
+  const idx = c.names.map((_, i) => i).filter((i) => stuStat(d, w, i, f, sc) > 0);
+  const lines = idx.map((i, k) => {
+    const n = stuStat(d, w, i, f, sc);
+    let s = `${ar(k + 1)}. ${c.names[i]}`;
+    if (sc === 'all' && f === 'absent') s += ' — ' + T`غاب ${ar(n)} أسبوع`;
+    if (sc === 'all' && f === 'star') s += ' — ' + T`${ar(n)} نجمة`;
+    if (f === 'notes') s += getNotes(d, i).filter((nt) => sc === 'all' || nt.w === w).map((nt) => `\n   - ${nt.issue ? '❗ ' : ''}${nt.text}`).join('');
+    return s;
+  });
+  const head = [`${title} — ${c.label}`, when, S.settings.subject ? T`المادة: ${S.settings.subject}` : ''].filter(Boolean).join('\n');
+  const text = `${head}\n\n${lines.length ? lines.join('\n') : filterEmpty(f)}\n\n${T`العدد: ${ar(idx.length)} من ${ar(c.names.length)}`}`;
+  const res = await platform.shareText(text, title);
+  if (res === 'copied') toast(tr('نُسخت القائمة — الصقها في واتساب'));
+  else if (res === 'failed') toast(tr('تعذّرت المشاركة'), { err: true });
+}
+
 // ----- تبويب الأسبوع -----
 function weekTab(c, d, w) {
   const n = c.names.length;
@@ -761,7 +829,8 @@ function weekTab(c, d, w) {
   const q = S.ui.search.trim();
   const qk = q ? nameKey(q) : '';
   const idxs = c.names.map((_, i) => i).filter((i) => !qk || nameKey(c.names[i]).includes(qk) || String(i + 1) === q);
-  const visible = idxs.filter((i) => !S.ui.missingOnly || !studentComplete(d, w, i));
+  const f = S.ui.filter || 'all';
+  const visible = idxs.filter((i) => f === 'all' || stuStat(d, w, i, f) > 0);
   const useGrid = WIDE.matches;
   if (!useGrid) {
     // الجوال: شريط إجراءات صغير + صف مختصر لكل طالب
@@ -770,16 +839,16 @@ function weekTab(c, d, w) {
       : T`<button type="button" class="meta-line muted" data-act="week-tools">${icon('calendar')} أضف التاريخ وعنوان الدرس</button>`;
     const rows = visible.map((i) => stuRow(c, d, w, i)).join('');
     return T`<div class="stack">
-      <div class="action-row">
+      <div class="action-row two">
         <button type="button" class="btn success" data-act="fill" data-k="all">${icon('check')} الكل ${ar(CONFIG.itemMax)}</button>
-        <button type="button" class="btn ${S.ui.missingOnly ? 'primary' : ''}" data-act="missing-toggle" aria-pressed="${S.ui.missingOnly}">الناقص فقط</button>
         <button type="button" class="btn" data-act="week-tools">${icon('edit')} أدوات</button>
       </div>
       ${S.ui.undo && S.ui.undo.classId === c.id && S.ui.undo.week === w ? T`<button type="button" class="btn danger-ghost block" data-act="undo-bulk">${icon('undo')} تراجع عن «${S.ui.undo.label}»</button>` : ''}
       ${metaLine}
       <span id="week-status" hidden>${weekStatusHTML(d, w, n)}</span>
+      <div id="fbar" class="fbar">${filterBar(c, d, w)}</div>
       ${n > 12 ? T`<div class="search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب أو رقمه" value="${esc(q)}" aria-label="بحث"></div>` : ''}
-      <div id="stu-list" class="slist">${rows || `<p class="hint" style="text-align:center;padding:24px">${S.ui.missingOnly && !q ? tr('🎉 كل الطلاب مكتملون في هذا الأسبوع') : tr('لا نتائج')}</p>`}</div>
+      <div id="stu-list" class="slist">${rows || `<p class="hint" style="text-align:center;padding:24px">${f !== 'all' && !q ? filterEmpty(f) : tr('لا نتائج')}</p>`}</div>
       <p class="hint" style="text-align:center">${icon('info')} اضغط أي مربع لاختيار الدرجة، أو «كامل» لوضع ${ar(CONFIG.itemMax)} في الأربعة.</p>
     </div>`;
   }
@@ -804,9 +873,9 @@ function weekTab(c, d, w) {
       <div class="main-bar">
         <span id="week-status">${weekStatusHTML(d, w, n)}</span>
         <div class="search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب أو رقمه" value="${esc(q)}" aria-label="بحث"></div>
-        <label class="toggle-line">الناقص فقط <input type="checkbox" class="switch" data-act="missing" ${S.ui.missingOnly ? 'checked' : ''}></label>
       </div>
-      <div id="stu-list" class="stu-scroll">${list || `<p class="hint" style="text-align:center;padding:24px">${S.ui.missingOnly && !q ? tr('لا يوجد طلاب ناقصون في هذا الأسبوع') : tr('لا نتائج')}</p>`}</div>
+      <div id="fbar" class="fbar desk">${filterBar(c, d, w)}</div>
+      <div id="stu-list" class="stu-scroll">${list || `<p class="hint" style="text-align:center;padding:24px">${f === 'missing' && !q ? tr('لا يوجد طلاب ناقصون في هذا الأسبوع') : (f !== 'all' && !q ? filterEmpty(f) : tr('لا نتائج'))}</p>`}</div>
     </div>
     ${deskSide(c, d, side)}
   </div>`;
@@ -2543,13 +2612,13 @@ document.addEventListener('click', async (e) => {
       break;
     }
     case 'print-student': printReport('student', cls(el.dataset.id), +el.dataset.idx); break;
-    case 'open-class': S.ui.selected = null; S.ui.missingOnly = false; go('class', { id: el.dataset.id }); break;
+    case 'open-class': S.ui.selected = null; setFilter('all'); go('class', { id: el.dataset.id }); break;
     case 'resume': {
       e.stopPropagation();
       const c = cls(el.dataset.id); const d = dataOf(c.id);
       const tab = firstIncompleteWeek(d, c.names.length);
       const first = tab === 'fin' ? c.names.findIndex((_, i) => getFin(d, i).some((v) => v == null)) : c.names.findIndex((_, i) => !studentComplete(d, tab, i));
-      S.ui.tab[c.id] = tab; S.ui.selected = null; S.ui.missingOnly = false;
+      S.ui.tab[c.id] = tab; S.ui.selected = null; setFilter('all');
       go('class', { id: c.id, tab, scrollTo: first >= 0 ? first : null });
       break;
     }
@@ -2562,7 +2631,10 @@ document.addEventListener('click', async (e) => {
       render();
       break;
     }
-    case 'missing': S.ui.missingOnly = el.checked; rerenderList(); break;
+    case 'missing': setFilter(el.checked ? 'missing' : 'all'); rerenderList(); break;
+    case 'filter': setFilter(S.ui.filter === el.dataset.f ? 'all' : el.dataset.f); rerenderList(); break;
+    case 'fscope': S.ui.fscope = el.dataset.s === 'all' ? 'all' : 'week'; rerenderList(); break;
+    case 'filter-share': shareFilter(cls(p.id), p.tab); break;
     case 'undo-bulk': if (S.ui.undo) S.ui.undo.fn(); break;
     case 'quick-note': quickNote(cls(p.id), typeof p.tab === 'number' ? p.tab : null, +el.dataset.idx); break;
     case 'star': {
@@ -2614,7 +2686,7 @@ document.addEventListener('click', async (e) => {
       if (route().name === 'student') render(); else refreshAside();
       break;
     }
-    case 'missing-toggle': S.ui.missingOnly = !S.ui.missingOnly; rerenderList(); break;
+    case 'missing-toggle': setFilter(S.ui.missingOnly ? 'all' : 'missing'); rerenderList(); break;
     case 'box': openPicker(cls(p.id), p.tab, +el.dataset.idx, +el.dataset.k); break;
     case 'fin-box': {
       const c = cls(p.id); const i = +el.dataset.idx; const k = +el.dataset.k;
