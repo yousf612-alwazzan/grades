@@ -1,6 +1,6 @@
 // شاشة العرض على الكمبيوتر/جهاز العرض: قراءة فقط، في الذاكرة فقط، لا تخزين لأي بيانات.
 import CONFIG from './config.js';
-import { ViewerLink, FrameCollector, renderQR, splitFrames, iceServersFrom, wakeLock } from './live.js';
+import { ViewerLink, FrameCollector, QrScanner, renderQR, splitFrames, iceServersFrom, wakeLock, newShortCode, shortRoom, publishShort, fmtShortCode, relaySupported } from './live.js';
 import {
   WEEKS, FIN_MAX, toArabicDigits, fmt, weekTotal, periodScore, formative, finalTotal,
   studentSummary, getItems, getFin, getWeekMeta, progress, weekRemaining, arCompare, round2,
@@ -150,6 +150,8 @@ const RELAY_TEXT = {
   expired: ['انتهت صلاحية الرمز. اضغط «رمز جديد».', 'error'],
 };
 function onRelay(s) {
+  // الجوال غائب (أُطفئ أو قُفل): بعد انتهاء صلاحية الرمز نجهّز غيره بنفس المفتاح، فيرجع الجوال متى ما فُتح التطبيق
+  if (s === 'expired' && ui.paused && link && link.room) { autoResume(); return; }
   if (ui.screen !== 'pair' || !offerCode) return;
   const t = RELAY_TEXT[s];
   if (!t) return;
@@ -230,11 +232,32 @@ async function newOffer() {
     const code = await link.createOffer();
     if (seq !== offerSeq) return;
     showOffer(code);
+    startShort(code, seq);
   } catch (e) {
     if (seq !== offerSeq) return;
     $('qr-loading').hidden = true;
     setPairStatus(e && e.message ? tr(e.message) : tr('تعذر تجهيز رمز الاتصال.'), 'error');
   }
+}
+
+// رمز قصير (٨ أحرف) يُكتب في الجوال بدل التصوير — يحتاج إنترنت في الجهازين
+let shortAbort = null;
+async function startShort(code, seq) {
+  if (shortAbort) shortAbort.abort();
+  const box = $('short-code');
+  box.hidden = true;
+  if (!link || !link.room || !relaySupported()) return;
+  if (E2E && !params.has('short')) return; // الاختبارات القديمة تعدّ رسائل الوسيط؛ اختبار الرمز القصير يفعّله بـ &short
+  const ac = new AbortController();
+  shortAbort = ac;
+  try {
+    const sc = newShortCode();
+    const room = await shortRoom(sc);
+    if (seq !== offerSeq || ac.signal.aborted) return;
+    $('short-code-val').textContent = fmtShortCode(sc);
+    box.hidden = false;
+    await publishShort(room, code, { signal: ac.signal });
+  } catch { /* الرمز القصير اختياري */ }
 }
 
 async function acceptAnswer(code) {
@@ -256,6 +279,9 @@ function renderPill() {
 function onConnState(s) {
   ui.connState = s;
   if (s === 'connected') {
+    if (shortAbort) { shortAbort.abort(); shortAbort = null; }
+    if (!$('modal-qr').hidden || !$('modal-cam').hidden) closeModals();
+    $('btn-soft-qr').hidden = true; resumeCode = '';
     wakeLock(true);
     hideBanner();
     setSoftPause(false);
@@ -359,7 +385,7 @@ function setScreen(s) {
   $('zoom-group').hidden = !connected || ui.ended;
   $('btn-disconnect').hidden = !connected || ui.ended;
   $('screen-live').classList.toggle('ended', ui.ended);
-  $('class-info').hidden = !connected || !hello;
+  $('class-info').hidden = !connected || !hello || s === 'manage' || !hello.classLabel;
   renderPill();
 }
 
@@ -514,7 +540,8 @@ function renderHeader() {
   if (!hello) { $('class-info').hidden = true; return; }
   $('class-label').textContent = hello.classLabel ? T`الصف ${hello.classLabel}` : tr('الصف');
   $('class-meta').textContent = [hello.teacher, hello.subject].filter(Boolean).join(' · ');
-  $('class-info').hidden = ui.screen === 'pair';
+  // وضع الإدارة: الصفحة نفسها تعرض اسم الصف والمعلم — لا نكرره في الشريط العلوي
+  $('class-info').hidden = ui.screen === 'pair' || ui.screen === 'manage' || !hello.classLabel;
 }
 
 const cell = (v, max, extra = '') => {
@@ -815,6 +842,20 @@ function setSoftPause(on) {
   paintOutbox();
   $('screen-manage').classList.toggle('paused', on);
 }
+let resumeCode = '';
+let resumeShort = '';
+let mqrTimer = 0;
+function paintResumeQR() {
+  clearInterval(mqrTimer);
+  if (!resumeCode) return;
+  const fr = splitFrames(resumeCode, FRAME_MAX);
+  let i = 0;
+  const draw = () => { renderQR($('mqr-canvas'), fr[i], { size: 420, dark: '#111827', light: '#ffffff' }); i = (i + 1) % fr.length; };
+  draw();
+  if (fr.length > 1) mqrTimer = setInterval(draw, 900);
+  $('mqr-short').hidden = !resumeShort;
+  $('mqr-short-val').textContent = resumeShort;
+}
 async function autoResume() {
   const old = link;
   const room = old && old.room;
@@ -824,7 +865,17 @@ async function autoResume() {
   if (E2E && window.__e2e) window.__e2e.link = link;
   try { old.stopRelay && old.stopRelay(); old.closeQuiet ? old.closeQuiet() : old.stop(); } catch { /* */ }
   try {
-    await link.createOffer({ room, publish: true });
+    const code = await link.createOffer({ room, publish: true });
+    resumeCode = code;
+    $('btn-soft-qr').hidden = false;
+    // رمز قصير أيضًا لنفس الرمز (للجوال بلا كاميرا)
+    resumeShort = '';
+    if (relaySupported() && (!E2E || params.has('short'))) {
+      const sc = newShortCode();
+      resumeShort = fmtShortCode(sc);
+      shortRoom(sc).then((r) => publishShort(r, code)).catch(() => {});
+    }
+    if (!$('modal-qr').hidden) paintResumeQR();
   } catch {
     setSoftPause(false);
     showBanner(false);
@@ -1117,8 +1168,28 @@ function openModal(id) {
   m.hidden = false;
   requestAnimationFrame(() => m.classList.add('open'));
 }
+let camScanner = null;
+async function openCam() {
+  if (!link || !offerCode) return;
+  openModal('modal-cam');
+  const st = $('cam-status');
+  st.textContent = tr('وجّه رمز الرد في الجوال إلى كاميرا الكمبيوتر…');
+  const col = new FrameCollector();
+  camScanner = new QrScanner($('cam-video'), async (text) => {
+    const full = col.push(text);
+    const pr = col.progress();
+    if (!full) { if (pr.total > 1) st.textContent = T`قرأنا ${ar(pr.got)} من ${ar(pr.total)} أجزاء…`; return; }
+    stopCam();
+    try { await acceptAnswer(full); closeModals(); } catch (e) { st.textContent = e && e.message ? tr(e.message) : tr('تعذّر قراءة الرمز.'); }
+  });
+  try { await camScanner.start('user'); } catch (e) { stopCam(); st.textContent = e && e.message ? tr(e.message) : tr('تعذّر فتح كاميرا الكمبيوتر.'); }
+}
+function stopCam() { if (camScanner) { camScanner.stop(); camScanner = null; } }
+
 function closeModals() {
-  for (const id of ['modal-paste']) {
+  stopCam();
+  clearInterval(mqrTimer);
+  for (const id of ['modal-paste', 'modal-cam', 'modal-qr']) {
     const m = $(id);
     m.classList.remove('open');
     m.hidden = true;
@@ -1184,6 +1255,8 @@ function disconnect() {
 // ---------- الأحداث ----------
 function bind() {
   $('btn-paste').innerHTML = btnHtml(I.paste, tr('لصق الرد يدويًا'));
+  $('btn-cam').addEventListener('click', openCam);
+  $('btn-soft-qr').addEventListener('click', () => { openModal('modal-qr'); paintResumeQR(); });
   $('btn-copy').innerHTML = btnHtml(I.copy, tr('نسخ رمز العرض'));
   $('btn-new').innerHTML = btnHtml(I.refresh, tr('رمز جديد'));
   $('btn-disconnect').innerHTML = btnHtml(I.unlink, tr('قطع الاتصال'));

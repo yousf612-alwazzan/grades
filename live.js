@@ -445,6 +445,36 @@ export async function newRelayRoom() {
   const key = toUrl(bytesToB64(crypto.getRandomValues(new Uint8Array(32))));
   return { key, topic: await relayTopic(key) };
 }
+// ---------- الرمز القصير: ٨ أحرف تُكتب في الجوال بدل تصوير QR (يحتاج إنترنت) ----------
+// يُشتق من الرمز غرفة ومفتاح؛ الكمبيوتر ينشر فيها رمز العرض مشفّرًا، والجوال يجلبه ويكمل كالمعتاد.
+// رمز العرض نفسه يحمل غرفة عشوائية قوية للرد ولإعادة الاتصال؛ الرمز القصير لهذه الخطوة فقط ويتغير مع كل «رمز جديد».
+const SHORT_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // بلا O/0 و I/1 حتى لا تختلط
+export const SHORT_LEN = 8;
+export function newShortCode() {
+  return [...crypto.getRandomValues(new Uint8Array(SHORT_LEN))].map((b) => SHORT_ABC[b & 31]).join('');
+}
+/** ينظّف ما كتبه المعلم: أرقام عربية، أحرف صغيرة، مسافات وشرطات. يرجع الرمز أو '' إن لم يكن صالحًا. */
+export function normShortCode(s) {
+  const t = String(s || '').replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).toUpperCase()
+    .replace(/[\s\-–_.]/g, '').replace(/O/g, '0');
+  return t.length === SHORT_LEN && [...t].every((ch) => SHORT_ABC.includes(ch)) ? t : '';
+}
+export const fmtShortCode = (c) => `${c.slice(0, 4)}-${c.slice(4)}`;
+export async function shortRoom(code) {
+  const h = new Uint8Array(await subtle().digest('SHA-256', enc('gfu-short:' + code)));
+  const key = toUrl(bytesToB64(h));
+  return { key, topic: await relayTopic(key) };
+}
+/** ينشر رمز العرض في غرفة الرمز القصير (يعيد المحاولة حتى ينجح أو يُلغى). */
+export async function publishShort(room, code, { signal, tries = 40 } = {}) {
+  for (let i = 0; i < tries; i++) {
+    if (signal && signal.aborted) return false;
+    try { if (await relayPost(room, code, { tries: 1, signal })) return true; } catch { /* */ }
+    await sleep(3000, signal);
+  }
+  return false;
+}
+
 function importKey(keyB64) {
   const raw = b64ToBytes(fromUrl(String(keyB64 || '')));
   if (raw.length !== 32) throw new Error(BAD_CODE);

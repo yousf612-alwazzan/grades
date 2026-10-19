@@ -119,7 +119,7 @@ const S = {
   grades: {},
   meta: {},
   stack: [],          // [{name, p}]
-  ui: { tab: {}, search: '', missingOnly: false, filter: 'all', fscope: 'week', selected: null, undo: null },
+  ui: { tab: {}, search: '', missingOnly: false, filter: 'all', fscope: 'week', selected: null, undo: null, sideHidden: deskPref('gfu-side') },
   saving: false,
   dirty: new Set(),
 };
@@ -302,7 +302,7 @@ function render({ scrollTop = false } = {}) {
   main().className = 'main' + (isRoot ? '' : ' no-tabbar') + (r.name === 'class' && WIDE.matches && cls(r.p.id) && cls(r.p.id).names.length ? ' desk-class' : '');
   document.body.classList.toggle('no-tabbar', !isRoot);
   document.getElementById('tabbar').classList.toggle('hide', !isRoot);
-  main().innerHTML = shareBarHTML() + (REMOTE ? T`<div class="remote-bar">${icon('phone')} <span><b>متصل بجوالك</b> — كل التعديلات تُحفظ في جوالك</span></div>` : '') + `<div class="screen-enter">${fn(r.p)}</div>`;
+  main().innerHTML = shareBarHTML() + `<div class="screen-enter">${fn(r.p)}</div>`;
   renderNav();
   main().querySelectorAll('[data-save-state]').forEach(paintSave);
   if (scrollTop) window.scrollTo(0, 0);
@@ -323,12 +323,21 @@ function renderShareBar() {
   else if (html) main().insertAdjacentHTML('afterbegin', html);
 }
 
+// تفضيلات شكل سطح المكتب (إخفاء القائمة/لوحة الأدوات) — لهذا المتصفح فقط
+function deskPref(k) { try { return localStorage.getItem(k) === '1'; } catch { return false; } }
+function setDeskPref(k, on) { try { localStorage.setItem(k, on ? '1' : '0'); } catch { /* */ } }
+
 function renderNav() {
   const cur = ROOTS.includes(route().name) ? route().name : (S.stack[0] || {}).name;
   const items = [['home', 'users', tr('الصفوف')], ['reports', 'sheet', tr('التقارير')], ['live', 'monitor', REMOTE ? tr('عرض للطلاب') : tr('العرض')], ['tools', 'bolt', tr('الأدوات')], ['settings', 'gear', tr('الإعدادات')]];
-  const btns = items.map(([n, ic, label]) => `<button type="button" class="tab" data-act="nav" data-to="${n}" ${cur === n ? 'aria-current="page"' : ''}><span class="tab-ico">${icon(ic)}</span><span>${label}</span></button>`).join('');
+  const btns = items.map(([n, ic, label]) => `<button type="button" class="tab" data-act="nav" data-to="${n}" ${cur === n ? 'aria-current="page"' : ''} title="${esc(label)}"><span class="tab-ico">${icon(ic)}</span><span class="tab-label">${label}</span></button>`).join('');
   document.getElementById('tabbar').innerHTML = btns;
-  document.getElementById('rail').innerHTML = T`<div class="brand"><img src="icons/icon-192.png" alt=""><span>${esc(tr(CONFIG.appName))}</span></div>${btns}<div class="rail-foot">الإصدار ${ar(CONFIG.version)}<br>بياناتك على هذا الجهاز فقط</div>`;
+  const mini = deskPref('gfu-rail');
+  document.body.classList.toggle('rail-mini', mini);
+  const foot = REMOTE ? T`<span class="remote-note">${icon('phone')} <span><b>متصل بجوالك</b> — كل التعديلات تُحفظ في جوالك</span></span>` : T`الإصدار ${ar(CONFIG.version)}<br>بياناتك على هذا الجهاز فقط`;
+  document.getElementById('rail').innerHTML = T`<div class="brand"><img src="icons/icon-192.png" alt=""><span>${esc(tr(CONFIG.appName))}</span></div>
+    <button type="button" class="tab rail-toggle" data-act="rail-toggle" aria-expanded="${!mini}" title="${mini ? tr('إظهار القائمة') : tr('إخفاء القائمة')}"><span class="tab-ico">${icon(mini ? 'menu' : 'sidebar')}</span><span class="tab-label">إخفاء القائمة</span></button>
+    ${btns}<div class="rail-foot">${foot}</div>`;
 }
 
 function appbar({ title, sub = '', backBtn = true, actions = '', save = false }) {
@@ -676,7 +685,13 @@ function ClassScreen(p) {
   }
 
   void tools; void chips;
-  return `<div class="cls-head">${appbar({ title: c.label, sub: students(n), save: true, actions: menuBtn })}${n && !wide ? weekbar : ''}</div>${body}`;
+  const strip = wide && n ? T`<div class="wk-strip" role="tablist" aria-label="الأسابيع">${Array.from({ length: WEEKS }, (_, j) => {
+    const x = j + 1;
+    const done = weekComplete(d, x, n);
+    return T`<button type="button" role="tab" class="chip wk-s ${done ? 'done' : ''}" aria-selected="${p.tab === x}" data-act="tab" data-tab="${x}" aria-label="الأسبوع ${ar(x)}" title="الأسبوع ${ar(x)}">${ar(x)}</button>`;
+  }).join('')}<button type="button" role="tab" class="chip wk-s fin ${!finalsRemaining(d, n) ? 'done' : ''}" aria-selected="${p.tab === 'fin'}" data-act="tab" data-tab="fin">الدرجات النهائية</button></div>
+    <button type="button" class="icon-btn labeled side-toggle" data-act="side-toggle" aria-pressed="${!S.ui.sideHidden}" title="${S.ui.sideHidden ? tr('إظهار لوحة الأدوات') : tr('إخفاء لوحة الأدوات')}">${icon('sidebar')}<span>الأدوات</span></button>` : '';
+  return `<div class="cls-head">${appbar({ title: c.label, sub: students(n), save: true, actions: wide ? strip : menuBtn })}${n && !wide ? weekbar : ''}</div>${body}`;
 }
 afterRender.class = (p) => {
   if (!p.painted) {
@@ -699,22 +714,11 @@ function skeleton() {
 
 // الكمبيوتر: عمود جانبي ثابت (يسار) — الأسابيع، أدوات الأسبوع، الإجراءات، الملخص
 function deskSide(c, d, inner) {
+  if (S.ui.sideHidden) return '';
   const p = route().p || {};
-  const n = c.names.length;
-  const w = p.tab;
-  const weeks = Array.from({ length: WEEKS }, (_, j) => {
-    const x = j + 1;
-    const done = n && weekComplete(d, x, n);
-    return T`<button type="button" role="tab" class="chip wk-mini ${done ? 'done' : ''}" aria-selected="${w === x}" data-act="tab" data-tab="${x}" aria-label="الأسبوع ${ar(x)}">${ar(x)}</button>`;
-  }).join('');
-  const finDone = n && !finalsRemaining(d, n);
   const act = (a, ic, label, extra = '') => `<button type="button" class="side-act" data-act="${a}" data-id="${c.id}" ${extra}>${icon(ic)}<span>${label}</span></button>`;
   return T`<aside class="cls-side">
-    <div class="side-card">
-      <div class="side-title">الأسابيع</div>
-      <div class="wk-mini-grid" role="tablist" aria-label="الأسابيع">${weeks}</div>
-      <button type="button" role="tab" class="chip wk-mini fin ${finDone ? 'done' : ''}" aria-selected="${w === 'fin'}" data-act="tab" data-tab="fin">الدرجات النهائية</button>
-    </div>
+    <div class="side-sum" id="side-sum" aria-label="ملخص الصف">${sideSumHTML(c, d)}</div>
     <div class="side-card side-acts">
       ${REMOTE ? act('present', 'monitor', tr('اعرض للطلاب وارصد')) : act('go-live', 'monitor', tr('عرض على الكمبيوتر'))}
       ${act('edit-class', 'users', tr('الطلاب'))}
@@ -732,20 +736,18 @@ function asideHTML(c, d, p) {
   if (S.ui.selected && S.ui.selected.id === c.id && S.ui.selected.idx < c.names.length) {
     return `<div class="card">${studentCardBody(c, S.ui.selected.idx, { compact: true })}</div>`;
   }
+  void d; void p;
+  return T`<p class="hint side-hint">${icon('info')} اضغط اسم أي طالب لعرض بطاقته هنا.</p>`;
+}
+// ملخص الصف: ثلاث خانات صغيرة أعلى اللوحة (ظاهرة دائمًا بلا تمرير)
+function sideSumHTML(c, d) {
   const n = c.names.length;
   const totals = c.names.map((_, i) => finalTotal(d, i)).filter((v) => v != null);
   const avg = totals.length ? totals.reduce((a, b) => a + b, 0) / totals.length : null;
   const pr = progress(d, n);
-  return T`<div class="side-card">
-    <div class="side-title">ملخص الصف</div>
-    <div class="kv">
-      <div>نسبة الرصد</div><div class="num">${ar(Math.round(pr.ratio * 100))}%</div>
-      <div>اكتمل مجموعهم النهائي</div><div class="num">${ar(totals.length)} / ${ar(n)}</div>
-      <div>متوسط المجموع النهائي</div><div class="num">${fmt(avg)}</div>
-      ${p.tab !== 'fin' ? T`<div>باقي في الأسبوع ${ar(p.tab)}</div><div class="num">${ar(weekRemaining(d, p.tab, n))}</div>` : ''}
-    </div>
-    <p class="hint" style="margin-top:8px">اضغط اسم أي طالب لعرض بطاقته هنا.</p>
-  </div>`;
+  return T`<div class="sum-tile"><b class="num">${ar(Math.round(pr.ratio * 100))}%</b><small>نسبة الرصد</small></div>
+    <div class="sum-tile"><b class="num">${ar(totals.length)}/${ar(n)}</b><small>اكتمل النهائي</small></div>
+    <div class="sum-tile"><b class="num">${fmt(avg)}</b><small>المتوسط</small></div>`;
 }
 function refreshAside() {
   const r = route();
@@ -753,6 +755,8 @@ function refreshAside() {
   const a = document.getElementById('aside');
   const c = cls(r.p.id);
   if (a && c) a.innerHTML = asideHTML(c, dataOf(c.id), r.p);
+  const sm = document.getElementById('side-sum');
+  if (sm && c) sm.innerHTML = sideSumHTML(c, dataOf(c.id));
 }
 
 // ----- فلتر الطلاب: الناقص، الغائبون، المميّزون، عليهم ملاحظات (هذا الأسبوع أو كل الأسابيع) -----
@@ -908,13 +912,13 @@ function weekTab(c, d, w) {
       </div>
       ${S.ui.undo && S.ui.undo.classId === c.id && S.ui.undo.week === w ? T`<button type="button" class="btn sm danger-ghost block" style="margin-top:8px" data-act="undo-bulk">${icon('undo')} تراجع عن «${S.ui.undo.label}»</button>` : ''}
     </div>`;
-  return T`<div class="cls-desk">
+  return T`<div class="cls-desk ${S.ui.sideHidden ? 'side-off' : ''}">
     <div class="cls-main">
       <div class="main-bar">
         <span id="week-status">${weekStatusHTML(d, w, n)}</span>
         <div class="search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب أو رقمه" value="${esc(q)}" aria-label="بحث"></div>
+        <div id="fbar" class="fbar desk">${filterBar(c, d, w)}</div>
       </div>
-      <div id="fbar" class="fbar desk">${filterBar(c, d, w)}</div>
       <div id="stu-list" class="stu-scroll">${list || `<p class="hint" style="text-align:center;padding:24px">${f === 'missing' && !q ? tr('لا يوجد طلاب ناقصون في هذا الأسبوع') : (f !== 'all' && !q ? filterEmpty(f) : tr('لا نتائج'))}</p>`}</div>
     </div>
     ${deskSide(c, d, side)}
@@ -1102,7 +1106,7 @@ function finTab(c, d) {
   }
   void intro; void status;
   const side = T`<div class="side-card"><div class="side-title">الدرجات النهائية</div><p class="hint" style="margin:0">${FINS.map((f) => T`${esc(f.label)} من ${ar(f.max)}`).join(tr('، '))}. المجموع من ${ar(100)} يظهر عند اكتمال كل الأسابيع والدرجات.</p></div>`;
-  return T`<div class="cls-desk">
+  return T`<div class="cls-desk ${S.ui.sideHidden ? 'side-off' : ''}">
     <div class="cls-main">
       <div class="main-bar">
         <span id="week-status">${rem ? T`<span class="status-pill">${icon('warn')} باقي ${ar(rem)} من ${ar(n)} طالب</span>` : T`<span class="status-pill ok">${icon('checkCircle')} اكتملت الدرجات النهائية</span>`}</span>
@@ -2079,7 +2083,7 @@ const LOG_TEXT = {
   connected: 'اتصل بالكمبيوتر', disconnected: 'انقطع', 'app-background': 'خرجت من التطبيق / قفلت الشاشة', 'app-foreground': 'رجعت للتطبيق',
   'resume-try': 'محاولة إعادة الاتصال', 'resume-offer': 'وُجد رمز الكمبيوتر — جارٍ الاتصال', 'resume-none': 'لم يُعثر على رمز الكمبيوتر بعد',
   'ice-failed': 'فشل مسار الشبكة', 'pc-failed': 'فشل الاتصال', 'channel-closed': 'أُغلقت القناة', 'transport-down': 'الشبكة غير متاحة', 'no-heartbeat': 'لا رد من الكمبيوتر',
-  stopped: 'أوقفت المشاركة',
+  stopped: 'أوقفت المشاركة', restored: 'فُتح التطبيق — جارٍ الرجوع للكمبيوتر',
 };
 function logHTML() {
   if (!L.log.length) return '';
@@ -2143,7 +2147,7 @@ function Live() {
     body = T`<p class="hint">1) افتح على الكمبيوتر: <b>شاشة العرض</b>${viewUrl ? T` — <button type="button" class="link-btn" data-act="copy-view">${icon('copy')} نسخ الرابط</button>` : ''}</p>
       <p class="hint">2) اضغط الزر وصوّر الرمز الظاهر على الكمبيوتر. يتصل الكمبيوتر بعدها تلقائيًا.</p>
       <button type="button" class="btn primary lg block" data-act="live-scan" ${L.mode === 'display' && !S.classes.length ? 'disabled' : ''}>${icon('camera')} صوّر رمز الكمبيوتر</button>
-      <button type="button" class="link-btn" data-act="live-paste">لا تعمل الكاميرا؟ الصق الرمز بدلًا من ذلك</button>`;
+      <button type="button" class="link-btn" data-act="live-paste">ما تعمل الكاميرا؟ اكتب الرمز الظاهر في الكمبيوتر</button>`;
   } else if (L.phase === 'scan') {
     const pr = L.collector ? L.collector.progress() : { got: 0, total: 0 };
     body = T`<div class="video-box"><video playsinline muted autoplay data-live-video></video><div class="frame"></div></div>
@@ -2155,12 +2159,15 @@ function Live() {
     const rs = L.link && L.link.relayState;
     const failed = rs === 'failed' || rs === 'none';
     body = T`${failed
-      ? T`<div class="alert warn">${icon('warn')}<div class="grow"><strong>تعذّر الإرسال تلقائيًا</strong><p style="margin:0">انسخ الرمز وأرسله لنفسك، ثم الصقه في صفحة العرض («مشاكل الاتصال؟» ← «لصق الرد يدويًا»).</p></div></div>`
+      ? T`<div class="alert warn">${icon('warn')}<div class="grow"><strong>لا يوجد إنترنت — صوّر الرد بالكمبيوتر</strong><p style="margin:0">في الكمبيوتر افتح «مشاكل الاتصال؟» واضغط «صوّر رد الجوال بكاميرا الكمبيوتر»، ثم وجّه هذه الشاشة إلى كاميرا الكمبيوتر.</p></div></div>
+        <div class="answer-qr"><canvas data-answer-qr width="360" height="360" aria-label="رمز الرد"></canvas><small data-frame-label></small></div>`
       : T`<div class="live-wait"><span class="spinner-lg" aria-hidden="true"></span><h3>${rs === 'sending' ? tr('جارٍ الإرسال للكمبيوتر…') : tr('أُرسل للكمبيوتر ✓')}</h3><p class="hint">يتصل الكمبيوتر خلال ثوانٍ. أبقِ الشاشة مفتوحة.</p></div>
         ${L.slow ? T`<div class="alert warn">${icon('warn')}<div class="grow"><strong>تأخر الاتصال؟</strong><p style="margin:0">اضغط «رمز جديد» على الكمبيوتر ثم صوّره مرة ثانية. وتأكد أن الجهازين على نفس الشبكة.</p></div></div>
         <button type="button" class="btn primary block" data-act="live-scan">${icon('camera')} صوّر الرمز من جديد</button>` : ''}`}
-      <details class="flat-details" ${failed ? 'open' : ''}><summary>${icon('paste')} لم يتصل؟ النسخ واللصق</summary>
-        <button type="button" class="btn block" data-act="live-copy">${icon('copy')} نسخ رمز الرد</button></details>
+      ${failed ? '' : T`<details class="flat-details" data-offline-qr><summary>${icon('wifi')} بدون إنترنت؟ اعرض رمز الرد للكمبيوتر</summary>
+        <p class="hint">في الكمبيوتر: «مشاكل الاتصال؟» ← «صوّر رد الجوال بكاميرا الكمبيوتر»، ثم وجّه هذه الشاشة إلى كاميرا الكمبيوتر.</p>
+        <div class="answer-qr"><canvas data-answer-qr width="360" height="360" aria-label="رمز الرد"></canvas><small data-frame-label></small></div></details>`}
+      <button type="button" class="link-btn" data-act="live-copy">${icon('copy')} نسخ رمز الرد كنص</button>
       <button type="button" class="btn ghost block" data-act="live-stop">إلغاء</button>`;
   } else if (L.phase === 'connected') {
     body = L.mode === 'manage'
@@ -2171,10 +2178,11 @@ function Live() {
         <button type="button" class="btn ${L.blank ? 'primary' : 'soft'} lg block" data-act="live-blank">${icon(L.blank ? 'eye' : 'eyeOff')} ${L.blank ? tr('إظهار الدرجات') : tr('إخفاء الدرجات مؤقتًا')}</button>
         <button type="button" class="btn danger block" data-act="live-stop">${icon('power')} إيقاف العرض</button>`;
   } else if (L.phase === 'resuming') {
-    body = T`<div class="live-wait"><span class="spinner-lg" aria-hidden="true"></span><h3>جارٍ إعادة الاتصال تلقائيًا…</h3><p class="hint">لا حاجة لتصوير الرمز من جديد.</p></div>
+    body = T`<div class="live-wait"><span class="spinner-lg" aria-hidden="true"></span><h3>جارٍ إعادة الاتصال تلقائيًا…</h3><p class="hint">لا حاجة لتصوير الرمز من جديد. إن طال الانتظار صوّر الرمز الظاهر في الكمبيوتر.</p></div>
+      <button type="button" class="btn block" data-act="live-scan">${icon('camera')} صوّر رمز الكمبيوتر</button>
       <button type="button" class="btn ghost block" data-act="live-stop">إيقاف المشاركة</button>`;
   } else if (L.phase === 'lost') {
-    body = T`<div class="alert err">${icon('warn')}<div class="grow"><strong>انقطع الاتصال بالكمبيوتر</strong><p style="margin:0">قد يكون الجوال قُفل أو تغيّرت الشبكة. اضغط «إعادة الاتصال» في الكمبيوتر ثم صوّر الرمز الجديد.</p></div></div>
+    body = T`<div class="alert err">${icon('warn')}<div class="grow"><strong>انقطع الاتصال بالكمبيوتر</strong><p style="margin:0">قد يكون الجوال قُفل أو تغيّرت الشبكة. صوّر الرمز الظاهر في الكمبيوتر (في الشريط السفلي «اعرض الرمز»).</p></div></div>
       <button type="button" class="btn primary lg block" data-act="live-scan">${icon('refresh')} صوّر الرمز الجديد</button>
       <button type="button" class="btn block" data-act="live-reset">رجوع</button>`;
   }
@@ -2326,6 +2334,7 @@ function setLiveState(st) {
     if (L.mode === 'manage') sendState(); else sendSnapshot();
     if (document.hidden && L.link.setAway) L.link.setAway(true);
     if (L.link && L.link.room) L.room = L.link.room;
+    saveLiveRoom();
     const c0 = cls(L.classId);
     if (platform.sharingStart) platform.sharingStart(L.mode === 'manage' ? tr('متصل بالكمبيوتر — اضغط للعودة') : T`${c0 ? c0.label : tr('الصف')} — اضغط للعودة`);
     toast(tr('تم الاتصال بالكمبيوتر ✓'));
@@ -2335,6 +2344,30 @@ function setLiveState(st) {
     tryResume();
   }
   if (route().name === 'live') render(); else renderShareBar();
+}
+
+// تذكّر الربط على هذا الجوال فقط (مفتاح المصافحة — لا أسماء ولا درجات) حتى يرجع الاتصال تلقائيًا
+// بعد إطفاء الجوال أو إغلاق التطبيق، ما دامت صفحة الكمبيوتر مفتوحة. يُمسح عند «إيقاف المشاركة».
+const LIVE_KEY = 'gfu-live';
+const LIVE_KEEP_MS = 12 * 60 * 60 * 1000;
+function saveLiveRoom() {
+  if (REMOTE || !L.room) return;
+  try { localStorage.setItem(LIVE_KEY, JSON.stringify({ key: L.room.key, topic: L.room.topic, mode: L.mode, classId: L.classId, t: Date.now() })); } catch { /* تصفح خاص */ }
+}
+function clearLiveRoom() { try { localStorage.removeItem(LIVE_KEY); } catch { /* */ } }
+function restoreLive() {
+  if (REMOTE) return;
+  let o = null;
+  try { o = JSON.parse(localStorage.getItem(LIVE_KEY) || 'null'); } catch { o = null; }
+  if (!o) return;
+  if (typeof o.key !== 'string' || typeof o.topic !== 'string' || !(Date.now() - Number(o.t) < LIVE_KEEP_MS)) { clearLiveRoom(); return; }
+  if (o.mode === 'display' && !cls(o.classId)) { clearLiveRoom(); return; }
+  L.room = { key: o.key, topic: o.topic };
+  if (o.mode === 'display' || o.mode === 'manage') L.mode = o.mode;
+  if (o.classId && cls(o.classId)) L.classId = o.classId;
+  L.phase = 'lost'; L.state = 'disconnected';
+  llog('restored');
+  tryResume();
 }
 
 // الرجوع التلقائي: نجلب رمز الكمبيوتر الجديد من الوسيط (بنفس المفتاح) ونتصل بلا مسح
@@ -2622,6 +2655,7 @@ function liveStop() {
   const link = L.link;
   L.link = null;
   L.room = null; L.usedOffers = new Set();
+  clearLiveRoom();
   if (L.resumeAbort) { L.resumeAbort.abort(); L.resumeAbort = null; }
   if (link) llog('stopped');
   if (platform.sharingStop) platform.sharingStop();
@@ -2685,6 +2719,8 @@ document.addEventListener('click', async (e) => {
     case 'fscope': S.ui.fscope = el.dataset.s === 'all' ? 'all' : 'week'; rerenderList(); break;
     case 'filter-share': shareFilter(cls(p.id), p.tab); break;
     case 'filter-sheet': openFilterSheet(cls(p.id), p.tab); break;
+    case 'side-toggle': S.ui.sideHidden = !S.ui.sideHidden; setDeskPref('gfu-side', S.ui.sideHidden); render(); break;
+    case 'rail-toggle': setDeskPref('gfu-rail', !deskPref('gfu-rail')); renderNav(); break;
     case 'undo-bulk': if (S.ui.undo) S.ui.undo.fn(); break;
     case 'quick-note': quickNote(cls(p.id), typeof p.tab === 'number' ? p.tab : null, +el.dataset.idx); break;
     case 'star': {
@@ -2758,7 +2794,7 @@ document.addEventListener('click', async (e) => {
     case 'class-menu': showClassMenu(p); break;
     case 'open-student': {
       const idx = +el.dataset.idx;
-      if (ASIDE.matches && r.name === 'class') { S.ui.selected = { id: p.id, idx }; refreshAside(); }
+      if (ASIDE.matches && r.name === 'class' && !S.ui.sideHidden) { S.ui.selected = { id: p.id, idx }; refreshAside(); }
       else go('student', { id: p.id, idx, week: typeof p.tab === 'number' ? p.tab : null });
       break;
     }
@@ -2868,15 +2904,27 @@ document.addEventListener('click', async (e) => {
     case 'live-scan': L.phase = 'scan'; render(); break;
     case 'live-cancel': stopScanner(); L.phase = 'setup'; render(); break;
     case 'live-paste': {
-      const s = openSheet(T`<h2>الصق رمز العرض</h2><p>على الكمبيوتر اضغط «نسخ رمز العرض» وأرسله لنفسك (واتساب مثلًا)، ثم الصقه هنا.</p>
-        <textarea class="textarea" dir="ltr" data-code style="min-height:120px" placeholder="الصق الرمز هنا"></textarea>
+      const s = openSheet(T`<h2>اكتب رمز الكمبيوتر</h2><p>تحت رمز QR في الكمبيوتر يظهر رمز من ٨ أحرف (مثل ABCD-EFGH). اكتبه هنا — يحتاج إنترنت في الجهازين.</p>
+        <textarea class="textarea short-input" dir="ltr" data-code rows="1" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABCD-EFGH"></textarea>
         <div class="actions"><button type="button" class="btn" data-x="0">إلغاء</button><button type="button" class="btn primary" data-x="1">متابعة</button></div>`, { label: tr('لصق الرمز') });
       s.sheet.addEventListener('click', (ev) => {
         const b = ev.target.closest('[data-x]'); if (!b) return;
         const code = s.sheet.querySelector('[data-code]').value.trim();
         s.close();
         if (b.dataset.x === '1' && code) {
-          liveMod().then((m) => { const col = new m.FrameCollector(); let full = null; for (const part of code.split(/\s+/)) full = col.push(part) || full; startLiveFromCode(full || code); });
+          liveMod().then(async (m) => {
+            const sc = m.normShortCode(code);
+            if (sc) {
+              // رمز قصير: نجلب رمز العرض المشفّر من الوسيط
+              L.phase = 'connecting'; if (route().name === 'live') render();
+              const full = await m.fetchLatestOffer(await m.shortRoom(sc), new Set(), { timeoutMs: 15000 });
+              if (full) return startLiveFromCode(full);
+              L.phase = 'setup'; if (route().name === 'live') render();
+              toast(tr('لم يُعثر على الرمز. تأكد من الأحرف ومن اتصال الجهازين بالإنترنت، أو اضغط «رمز جديد» في الكمبيوتر.'), { err: true, ms: 7000 });
+              return;
+            }
+            const col = new m.FrameCollector(); let full = null; for (const part of code.split(/\s+/)) full = col.push(part) || full; startLiveFromCode(full || code);
+          });
         }
       });
       break;
@@ -3216,6 +3264,7 @@ async function boot() {
   translateStatic(document.body);
   applyTheme();
   autoPlans();
+  restoreLive();
   if (platform.isNative && !REMOTE) {
     const LN = platform.plugin('LocalNotifications');
     if (LN) {

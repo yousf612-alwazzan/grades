@@ -81,12 +81,13 @@
             </ul>
             <div class="manual">
               <div class="manual-text">
-                <strong>بدون إنترنت؟ اربط يدويًا</strong>
-                <span>انسخ «رمز الرد» من الجوال (عبر الرسائل أو البريد) والصقه هنا.</span>
+                <strong>بدون إنترنت؟ صوّر الرمزين</strong>
+                <span>١) صوّر رمز الكمبيوتر بالجوال كالمعتاد. ٢) يظهر في الجوال «رمز الرد» — اضغط الزر هنا ووجّه شاشة الجوال إلى كاميرا الكمبيوتر.</span>
               </div>
               <div class="manual-actions">
-                <button class="btn" id="btn-paste" type="button"></button>
-                <button class="btn ghost" id="btn-copy" type="button"></button>
+                <button class="btn primary" id="btn-cam" type="button">صوّر رد الجوال بكاميرا الكمبيوتر</button>
+                <button class="btn ghost" id="btn-paste" type="button"></button>
+                <button class="btn ghost" id="btn-copy" type="button" hidden></button>
               </div>
             </div>
           </div>
@@ -105,6 +106,7 @@
           <canvas id="qr-canvas" width="360" height="360" aria-label="رمز QR للاقتران" role="img"></canvas>
           <div class="qr-loading" id="qr-loading"><span class="spinner" aria-hidden="true"></span><span>جارٍ تجهيز الرمز…</span></div>
         </div>
+        <p class="short-code" id="short-code" hidden><span>ما تعمل الكاميرا؟ اكتب هذا الرمز في الجوال:</span><b id="short-code-val" dir="ltr"></b></p>
         <p class="qr-status" id="pair-status" role="status" aria-live="polite" data-kind=""><span class="status-dot" aria-hidden="true"></span><span id="pair-status-text">جارٍ تجهيز الرمز…</span></p>
       </section>
     </main>
@@ -129,6 +131,7 @@
       <span class="spinner" aria-hidden="true"></span>
       <span><strong>الجوال غير متصل الآن</strong> — كمّل شغلك هنا عادي، والتعديلات تنتقل للجوال أول ما تفتح التطبيق فيه</span>
       <span class="soft-count" id="soft-count" hidden></span>
+      <button class="btn primary" id="btn-soft-qr" type="button" hidden>اعرض الرمز</button>
       <button class="btn ghost" id="btn-soft-end" type="button">إنهاء</button>
     </div>
   </div>
@@ -151,6 +154,32 @@
         <button class="btn primary big" type="button" id="paste-submit">اتصال</button>
         <button class="btn big" type="button" data-close>إلغاء</button>
       </div>
+    </div>
+  </div>
+
+  <!-- رمز الكمبيوتر أثناء غياب الجوال (للتصوير من جديد، مثل الآيفون بعد إعادة التشغيل) -->
+  <div class="modal-backdrop" id="modal-qr" hidden>
+    <div class="modal narrow" role="dialog" aria-modal="true" aria-labelledby="mqr-title">
+      <div class="modal-head">
+        <h2 id="mqr-title">صوّر هذا الرمز بالجوال</h2>
+        <button class="btn ghost icon-only" type="button" data-close aria-label="إغلاق"></button>
+      </div>
+      <p class="muted">في الجوال: «العرض» ← «صوّر رمز الكمبيوتر». يرجع الاتصال وتنتقل كل تعديلاتك.</p>
+      <div class="qr-box"><canvas id="mqr-canvas" width="360" height="360" role="img" aria-label="رمز QR"></canvas></div>
+      <p class="short-code" id="mqr-short" hidden><span>أو اكتب في الجوال:</span><b id="mqr-short-val" dir="ltr"></b></p>
+    </div>
+  </div>
+
+  <!-- تصوير رد الجوال بكاميرا الكمبيوتر (بدون إنترنت) -->
+  <div class="modal-backdrop" id="modal-cam" hidden>
+    <div class="modal narrow" role="dialog" aria-modal="true" aria-labelledby="cam-title">
+      <div class="modal-head">
+        <h2 id="cam-title">صوّر رد الجوال</h2>
+        <button class="btn ghost icon-only" type="button" data-close aria-label="إغلاق"></button>
+      </div>
+      <div class="cam-box"><video id="cam-video" playsinline muted autoplay></video></div>
+      <p class="muted" id="cam-status" role="status" aria-live="polite"></p>
+      <div class="modal-actions"><button class="btn big" type="button" data-close>إلغاء</button></div>
     </div>
   </div>
 
