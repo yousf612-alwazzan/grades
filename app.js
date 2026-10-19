@@ -153,7 +153,13 @@ function cloudChip() {
   const s = C.state;
   return T`<button type="button" class="cloud-chip s-${s}" data-act="nav" data-to="settings" data-cloud-chip title="${esc(tr(CLOUD_TEXT[s] || ''))}">${icon(s === 'offline' || s === 'auth' ? 'cloudOff' : 'cloud')}<span>${tr(CLOUD_TEXT[s] || '')}</span></button>`;
 }
+function raSyncHTML() {
+  const bad = C.state === 'offline' || C.state === 'auth';
+  const txt = C.state === 'ok' ? tr('محفوظ') : tr(CLOUD_TEXT[C.state] || '');
+  return `${icon(bad ? 'cloudOff' : 'cloud')}<span class="tab-label">${esc(txt)}</span>`;
+}
 function paintCloud() {
+  document.querySelectorAll('[data-ra-sync]').forEach((el) => { el.className = 'ra-sync s-' + C.state; el.innerHTML = raSyncHTML(); });
   document.querySelectorAll('[data-cloud-chip]').forEach((el) => { el.outerHTML = cloudChip(); });
   const st = document.querySelector('[data-cloud-state]');
   if (st) st.textContent = tr(CLOUD_TEXT[C.state] || '');
@@ -665,15 +671,19 @@ function setDeskPref(k, on) { try { localStorage.setItem(k, on ? '1' : '0'); } c
 
 function renderNav() {
   const cur = ROOTS.includes(route().name) ? route().name : (S.stack[0] || {}).name;
-  const items = [['home', 'users', tr('الصفوف')], ['reports', 'sheet', tr('التقارير')], ['live', 'monitor', REMOTE ? tr('عرض للطلاب') : IOS_WEB ? tr('الكمبيوتر') : tr('العرض')], ['tools', 'bolt', tr('الأدوات')], ['settings', 'gear', tr('الإعدادات')]];
+  const items = [['home', 'users', tr('الصفوف')], ['reports', 'sheet', tr('التقارير')], ['live', 'monitor', REMOTE ? tr('عرض للطلاب') : IOS_WEB ? tr('الكمبيوتر') : tr('العرض')], ['tools', 'bolt', tr('الإدارة')], ['settings', 'gear', tr('الإعدادات')]];
   const btns = items.filter(([n]) => !(DESK_WEB && WIDE.matches && n === 'live')).map(([n, ic, label]) => `<button type="button" class="tab" data-act="nav" data-to="${n}" ${cur === n ? 'aria-current="page"' : ''} title="${esc(label)}"><span class="tab-ico">${icon(ic)}</span><span class="tab-label">${label}</span></button>`).join('');
   document.getElementById('tabbar').innerHTML = btns;
   const mini = deskPref('gfu-rail');
   document.body.classList.toggle('rail-mini', mini);
-  // الترتيب: الشعار (وزر إخفاء صغير) ← التنقل ← تحت: بطاقة الحساب ثم رقم الإصدار
+  // الترتيب: الشعار (وزر إخفاء صغير) ← التنقل (+ لوحة الأدوات في شاشة الصف) ← تحت: حالة الحفظ والحساب ثم رقم الإصدار
+  const onClass = route().name === 'class' && WIDE.matches;
+  const sideBtn = onClass ? T`<button type="button" class="tab rail-side" data-act="side-toggle" aria-pressed="${!S.ui.sideHidden}" title="${S.ui.sideHidden ? tr('إظهار لوحة الأدوات') : tr('إخفاء لوحة الأدوات')}"><span class="tab-ico">${icon('sidebar')}</span><span class="tab-label">لوحة الأدوات</span></button>` : '';
+  document.body.classList.toggle('cloud-desk', !!(DESK_WEB && C.session));
   const user = C.session ? esc(C.session.u) : '';
   const acct = !CLOUD_ON ? '' : C.session
     ? T`<div class="rail-account">
+        <div class="ra-sync s-${C.state}" data-ra-sync>${raSyncHTML()}</div>
         <div class="ra-row">
           <button type="button" class="ra-user" data-act="nav" data-to="settings" title="${user}"><span class="ra-avatar">${icon('user')}</span><span class="tab-label" dir="ltr">${user}</span></button>
           ${DESK_WEB ? T`<button type="button" class="ra-logout" data-act="cloud-logout" title="${tr('تسجيل الخروج')}" aria-label="${tr('تسجيل الخروج')}">${icon('logout')}</button>` : ''}
@@ -684,13 +694,13 @@ function renderNav() {
     : platform.isNative ? T`الإصدار ${ar(CONFIG.version)}` : T`<button type="button" class="ver-check" data-act="update-check" title="${tr('ابحث عن تحديث')}">${icon('refresh')} الإصدار ${ar(CONFIG.version)} · تحديث</button>`;
   document.getElementById('rail').innerHTML = T`<div class="brand"><img src="icons/icon-192.png" alt=""><span>${esc(tr(CONFIG.appName))}</span>
       <button type="button" class="rail-toggle" data-act="rail-toggle" aria-expanded="${!mini}" title="${mini ? tr('إظهار القائمة') : tr('إخفاء القائمة')}" aria-label="${mini ? tr('إظهار القائمة') : tr('إخفاء القائمة')}">${icon(mini ? 'menu' : 'sidebar')}</button></div>
-    <nav class="rail-nav">${btns}</nav>
+    <nav class="rail-nav">${btns}${sideBtn}</nav>
     <div class="rail-bottom">${acct}<div class="rail-foot">${foot}</div></div>`;
 }
 
 function appbar({ title, sub = '', backBtn = true, actions = '', save = false }) {
   const timer = DESK_WEB && C.session ? T`<span class="hdr-timer" title="${tr('تخرج تلقائيًا من حسابك بعد ساعة ونصف من الدخول')}"><span>خروج تلقائي</span><b class="num" data-cloud-timer dir="ltr">${fmtLeft(cloudLeftMs())}</b></span>` : '';
-  actions = timer + actions;
+  actions = actions + timer;
   return `<header class="appbar"><div class="appbar-row">
     ${backBtn ? T`<button type="button" class="icon-btn" data-act="back" aria-label="رجوع">${icon('back')}</button>` : ''}
     <h1>${esc(title)}${sub ? `<span class="sub">${sub}</span>` : ''}</h1>
@@ -747,7 +757,7 @@ function Home() {
   const helloTitle = st.teacher ? T`أهلًا أ. ${st.teacher}` : tr('أهلًا بك');
   const helloSub = `${st.subject ? esc(st.subject) + ' · ' : ''}${S.classes.length === 1 ? tr('صف واحد') : S.classes.length === 2 ? tr('صفّان') : S.classes.length ? T`${ar(S.classes.length)} صفوف` : tr('لنبدأ')}`;
   const loginBtn = CLOUD_ON && !C.session && !WIDE.matches ? T`<button type="button" class="btn sm soft" data-act="cloud-login">${icon('user')} دخول</button>` : '';
-  const addBtn = loginBtn + cloudChip() + (S.classes.length ? T`<button type="button" class="btn sm soft add-class" data-act="new-class">${icon('plus')} إضافة صف</button>` : '');
+  const addBtn = loginBtn + (WIDE.matches ? '' : cloudChip()); // «أضف صف» صارت بطاقة بين الصفوف
   if (C.loading) {
     return T`${appbar({ title: helloTitle, sub: '', backBtn: false })}<div class="wrap"><div class="live-wait card"><span class="spinner-lg" aria-hidden="true"></span><h3>جارٍ تحميل درجاتك من حسابك…</h3></div></div>`;
   }
@@ -766,7 +776,7 @@ function Home() {
       <button type="button" class="btn primary lg block" data-act="new-class">${icon('plus')} أضف صفك</button>
       <p class="hint" style="margin-top:12px">لديك نسخة احتياطية؟ <button type="button" class="btn ghost sm" data-act="restore">استرجاع نسخة</button></p></div>`;
   } else {
-    body = `<div class="home-grid stack">${S.classes.map(classCard).join('')}</div>`;
+    body = `<div class="home-grid stack">${S.classes.map(classCard).join('')}${REMOTE && false ? '' : T`<button type="button" class="card add-card" data-act="new-class">${icon('plus')}<span>أضف صفًا</span></button>`}</div>`;
   }
 
   return T`${appbar({ title: helloTitle, sub: helloSub, backBtn: false, save: true, actions: addBtn })}
@@ -888,7 +898,7 @@ async function exportScheduleICS() {
 function Tools() {
   const item = (act, ic, t, sub, extra = '') => `<button type="button" class="list-item" data-act="${act}" ${extra}>${icon(ic)}<span class="grow"><strong>${t}</strong><small>${sub}</small></span>${icon('fwd')}</button>`;
   const has = S.classes.length > 0;
-  return T`${appbar({ title: tr('الأدوات'), backBtn: false })}
+  return T`${appbar({ title: tr('الإدارة'), backBtn: false })}
   <div class="wrap stack">
     <div class="section-title">الصفوف</div>
     <div class="list">
@@ -1038,16 +1048,18 @@ function ClassScreen(p) {
   }
 
   void tools; void chips;
-  const strip = wide && n ? T`<div class="wk-strip" role="tablist" aria-label="الأسابيع">${Array.from({ length: WEEKS }, (_, j) => {
-    const x = j + 1;
-    const done = weekComplete(d, x, n);
-    return T`<button type="button" role="tab" class="chip wk-s ${done ? 'done' : ''}" aria-selected="${p.tab === x}" data-act="tab" data-tab="${x}" aria-label="الأسبوع ${ar(x)}" title="الأسبوع ${ar(x)}">${ar(x)}</button>`;
-  }).join('')}<button type="button" role="tab" class="chip wk-s fin ${!finalsRemaining(d, n) ? 'done' : ''}" aria-selected="${p.tab === 'fin'}" data-act="tab" data-tab="fin">الدرجات النهائية</button></div>
-    <button type="button" class="icon-btn labeled side-toggle" data-act="side-toggle" aria-pressed="${!S.ui.sideHidden}" title="${S.ui.sideHidden ? tr('إظهار لوحة الأدوات') : tr('إخفاء لوحة الأدوات')}">${icon('sidebar')}<span>الأدوات</span></button>` : '';
+  // الكمبيوتر: الرأس فيه كل بيانات الصف (والأسابيع في بطاقة «الأسبوع والتاريخ» باللوحة)
+  const statusNow = !n ? '' : p.tab === 'fin'
+    ? (finalsRemaining(d, n) ? T`<span class="status-pill">${icon('warn')} باقي ${ar(finalsRemaining(d, n))} من ${ar(n)} طالب</span>` : T`<span class="status-pill ok">${icon('checkCircle')} اكتملت الدرجات النهائية</span>`)
+    : weekStatusHTML(d, p.tab, n);
+  // اللوحة مخفية: الأسابيع تظهر مختصرة في الرأس (لا طريقة أخرى لتغيير الأسبوع)
+  const miniWeeks = S.ui.sideHidden ? `<select class="select hdr-week" data-week-select aria-label="${tr('الأسبوع')}">${Array.from({ length: WEEKS }, (_, k) => k + 1).map((x) => `<option value="${x}" ${p.tab === x ? 'selected' : ''}>${T`الأسبوع ${ar(x)}`}</option>`).join('')}<option value="fin" ${p.tab === 'fin' ? 'selected' : ''}>${tr('الدرجات النهائية')}</option></select>` : '';
+  const hdr = wide && n ? T`${miniWeeks}<span id="week-status" class="hdr-status">${statusNow}</span>
+    <div class="search hdr-search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب أو رقمه" value="${esc(S.ui.search)}" aria-label="بحث"></div>` : '';
   // الكمبيوتر: عنوان درس الأسبوع (من خطة المنهج) يظهر تلقائيًا تحت اسم الصف — للعرض فقط
   const lessonNow = wide && n && typeof p.tab === 'number' ? getWeekMeta(d, p.tab).lesson : '';
   const sub = students(n) + (lessonNow ? T` · <span class="lesson-now" title="عنوان الدرس">${icon('note')} ${esc(lessonNow)}</span>` : '');
-  return `<div class="cls-head">${appbar({ title: c.label, sub, save: true, actions: wide ? strip : menuBtn })}${n && !wide ? weekbar : ''}</div>${body}`;
+  return `<div class="cls-head">${appbar({ title: c.label, sub, save: true, actions: wide ? hdr : menuBtn })}${n && !wide ? weekbar : ''}</div>${body}`;
 }
 afterRender.class = (p) => {
   if (!p.painted) {
@@ -1069,6 +1081,24 @@ function skeleton() {
 }
 
 // الكمبيوتر: عمود جانبي ثابت (يسار) — الأسابيع، أدوات الأسبوع، الإجراءات، الملخص
+// الكمبيوتر: اختيار الأسبوع + التاريخ في بطاقة واحدة داخل لوحة الأدوات
+function weekDateCard(c, d, p) {
+  const n = c.names.length;
+  const w = p.tab;
+  const weeks = Array.from({ length: WEEKS }, (_, j) => {
+    const x = j + 1;
+    const done = n && weekComplete(d, x, n);
+    return T`<button type="button" role="tab" class="chip wk-mini ${done ? 'done' : ''}" aria-selected="${w === x}" data-act="tab" data-tab="${x}" aria-label="الأسبوع ${ar(x)}">${ar(x)}</button>`;
+  }).join('');
+  const meta = typeof w === 'number' ? getWeekMeta(d, w) : null;
+  return T`<div class="side-card wd-card">
+    <div class="side-title">الأسبوع والتاريخ</div>
+    <div class="wk-mini-grid" role="tablist" aria-label="الأسابيع">${weeks}</div>
+    <button type="button" role="tab" class="chip wk-mini fin ${n && !finalsRemaining(d, n) ? 'done' : ''}" aria-selected="${w === 'fin'}" data-act="tab" data-tab="fin">الدرجات النهائية</button>
+    ${meta ? T`<div class="row wd-date"><input id="wdate" class="input" data-meta="date" value="${esc(meta.date)}" placeholder="التاريخ: 12/10" aria-label="التاريخ" autocomplete="off"><button type="button" class="btn sm" data-act="today" title="تاريخ اليوم">${icon('calendar')} اليوم</button></div>` : ''}
+  </div>`;
+}
+
 function deskSide(c, d, inner) {
   if (S.ui.sideHidden) return '';
   const p = route().p || {};
@@ -1256,11 +1286,8 @@ function weekTab(c, d, w) {
 
   const list = weekGrid(c, d, w, visible);
   const side = T`
+    ${weekDateCard(c, d, route().p || { tab: w })}
     ${S.ui.sideHidden ? '' : `<div id="fbar" class="side-card fbar fbar-side">${filterBar(c, d, w)}</div>`}
-    <div class="side-card date-card">
-      <label class="side-title" for="wdate">التاريخ</label>
-      <div class="row"><input id="wdate" class="input" data-meta="date" value="${esc(meta.date)}" placeholder="مثال: 12/10" autocomplete="off"><button type="button" class="btn sm" data-act="today" title="تاريخ اليوم">${icon('calendar')} اليوم</button></div>
-    </div>
     <div class="side-card">
       <div class="side-title">تعبئة سريعة <span class="hint">الخانات الفارغة فقط</span></div>
       <div class="fill-tools">
@@ -1271,11 +1298,6 @@ function weekTab(c, d, w) {
     </div>`;
   return T`<div class="cls-desk ${S.ui.sideHidden ? 'side-off' : ''}">
     <div class="cls-main">
-      <div class="main-bar">
-        <span id="week-status">${weekStatusHTML(d, w, n)}</span>
-        <div class="search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب أو رقمه" value="${esc(q)}" aria-label="بحث"></div>
-        ${S.ui.sideHidden ? `<div id="fbar" class="fbar desk">${filterBar(c, d, w)}</div>` : ''}
-      </div>
       <div id="stu-list" class="stu-scroll">${list || `<p class="hint" style="text-align:center;padding:24px">${f === 'missing' && !q ? tr('لا يوجد طلاب ناقصون في هذا الأسبوع') : (f !== 'all' && !q ? filterEmpty(f) : tr('لا نتائج'))}</p>`}</div>
     </div>
     ${deskSide(c, d, side)}
@@ -1462,14 +1484,11 @@ function finTab(c, d) {
     </div>`;
   }
   void intro; void status;
-  const side = T`<div class="side-card"><div class="side-title">الدرجات النهائية</div><p class="hint" style="margin:0">${FINS.map((f) => T`${esc(f.label)} من ${ar(f.max)}`).join(tr('، '))}. المجموع من ${ar(100)} يظهر عند اكتمال كل الأسابيع والدرجات.</p></div>`;
+  const side = T`${weekDateCard(c, d, route().p || { tab: 'fin' })}
+    <div class="side-card"><button type="button" class="btn sm block ${S.ui.missingOnly ? 'primary' : ''}" data-act="missing-toggle" aria-pressed="${S.ui.missingOnly}">الناقص فقط</button></div>
+    <div class="side-card"><div class="side-title">الدرجات النهائية</div><p class="hint" style="margin:0">${FINS.map((f) => T`${esc(f.label)} من ${ar(f.max)}`).join(tr('، '))}. المجموع من ${ar(100)} يظهر عند اكتمال كل الأسابيع والدرجات.</p></div>`;
   return T`<div class="cls-desk ${S.ui.sideHidden ? 'side-off' : ''}">
     <div class="cls-main">
-      <div class="main-bar">
-        <span id="week-status">${rem ? T`<span class="status-pill">${icon('warn')} باقي ${ar(rem)} من ${ar(n)} طالب</span>` : T`<span class="status-pill ok">${icon('checkCircle')} اكتملت الدرجات النهائية</span>`}</span>
-        ${search}
-        <label class="toggle-line">الناقص فقط <input type="checkbox" class="switch" data-act="missing" ${S.ui.missingOnly ? 'checked' : ''}></label>
-      </div>
       <div id="stu-list" class="stu-scroll">${list || tr('<p class="hint" style="text-align:center;padding:24px">لا نتائج</p>')}</div>
     </div>
     ${deskSide(c, d, side)}
@@ -3456,6 +3475,10 @@ function rerenderList() {
   const pos = active ? document.activeElement.selectionStart : null;
   box.innerHTML = r.p.tab === 'fin' ? finTab(c, dataOf(c.id)) : weekTab(c, dataOf(c.id), r.p.tab);
   if (active) { const s = box.querySelector('[data-search]'); s.focus(); try { s.setSelectionRange(pos, pos); } catch { /* */ } }
+  // الكمبيوتر: حالة الأسبوع في الرأس (خارج منطقة الجدول التي أُعيد رسمها)
+  const hs = WIDE.matches && document.querySelector('.hdr-status');
+  if (hs) { const d = dataOf(c.id); const n = c.names.length; const w = r.p.tab;
+    hs.innerHTML = w === 'fin' ? (finalsRemaining(d, n) ? T`<span class="status-pill">${icon('warn')} باقي ${ar(finalsRemaining(d, n))} من ${ar(n)} طالب</span>` : T`<span class="status-pill ok">${icon('checkCircle')} اكتملت الدرجات النهائية</span>`) : weekStatusHTML(d, w, n); }
   const sub = document.getElementById('week-sub');
   if (sub) { const d = dataOf(c.id); const n = c.names.length; const w = r.p.tab;
     sub.textContent = w === 'fin' ? (finalsRemaining(d, n) ? T`باقي ${ar(finalsRemaining(d, n))}` : tr('مكتملة ✓')) : (weekComplete(d, w, n) ? tr('مكتمل ✓') : T`باقي ${ar(weekRemaining(d, w, n))} من ${ar(n)}`); }
@@ -3551,6 +3574,7 @@ document.addEventListener('change', async (e) => {
   const t = e.target;
   const r = route();
   if (t.matches('[data-setting-bool]')) { S.settings[t.dataset.settingBool] = t.checked; await saveSettingsNow(); if (t.dataset.settingBool === 'remindersOn') { await syncReminders(); render(); } return; }
+  if (t.matches('[data-week-select]') && r.name === 'class') { S.ui.undo = null; r.p.tab = t.value === 'fin' ? 'fin' : +t.value; S.ui.tab[r.p.id] = r.p.tab; S.ui.search = ''; r.p.painted = true; render(); return; }
   if (t.matches('[data-sec]')) { const x = t.dataset.sec; r.p.pick ||= new Set(); if (t.checked) r.p.pick.add(x); else r.p.pick.delete(x); render(); return; }
   if (t.matches('[data-sel]')) { const i = +t.dataset.sel; if (t.checked) r.p.sel.add(i); else r.p.sel.delete(i); render(); return; }
   if (t.matches('[data-pick-st]')) { const i = +t.dataset.pickSt; if (t.checked) r.p.pick.add(i); else r.p.pick.delete(i); render(); return; }

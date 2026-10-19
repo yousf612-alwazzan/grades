@@ -802,3 +802,11 @@ body { font-family: 'IBM Plex Sans Arabic', system-ui, -apple-system, 'Segoe UI'
 .acct-card:hover { filter: brightness(.98); }
 .acct-ico { flex: none; width: 26px; height: 26px; background: var(--primary); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3Cpath d='M4 21a8 8 0 0 1 16 0'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3Cpath d='M4 21a8 8 0 0 1 16 0'/%3E%3C/svg%3E") center / contain no-repeat; }
 @media (max-height: 760px) { .pair .eyebrow, .pair .ver-note { display: none; } .steps span { display: none; } }
+
+/* نافذة الدخول بالحساب */
+.login-form { display: grid; gap: 12px; margin-top: 8px; }
+.login-form .lf { display: grid; gap: 6px; font-weight: 700; font-size: 14px; }
+.login-form .lf input { min-height: 48px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); padding: 0 14px; font: inherit; font-size: 16px; }
+.login-form .lf input:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
+.login-form .field-error { color: var(--error); font-weight: 600; margin: 0; }
+.login-form .lf-help { font-size: 13px; margin: 0; }

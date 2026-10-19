@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://ntfy.sh; media-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://ntfy.sh https://grades-sync.grades-sync.workers.dev; media-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="robots" content="noindex">
   <title>شاشة العرض — متابعة الدرجات</title>
@@ -34,7 +34,7 @@
       </div>
       <p class="qr-status" id="pair-status" role="status" aria-live="polite" data-kind=""><span class="status-dot" aria-hidden="true"></span><span id="pair-status-text">جارٍ تجهيز الرمز…</span></p>
       <div class="top-spacer"></div>
-      <a class="btn primary" id="btn-account" href="./?login=1">تسجيل الدخول بحسابي</a>
+      <button class="btn primary" id="btn-account" type="button">تسجيل الدخول بحسابي</button>
       <span class="pill" id="conn-pill" data-state="idle" role="status" aria-live="polite" hidden>
         <span class="pill-dot" aria-hidden="true"></span><span id="conn-text"></span>
       </span>
@@ -73,10 +73,6 @@
           <li><span class="step-num">2</span><div><strong>اضغط «صوّر رمز الكمبيوتر» ووجّه الكاميرا لهذا الرمز</strong><span>أبقِ الجوال ثابتًا على بُعد خطوة من الشاشة حتى يُقرأ الرمز.</span></div></li>
           <li><span class="step-num">3</span><div><strong>انتظر — يتصل الكمبيوتر تلقائيًا</strong><span>تظهر درجات الصف هنا خلال ثوانٍ.</span></div></li>
         </ol>
-        <a class="acct-card" href="./?login=1">
-          <span class="acct-ico" aria-hidden="true"></span>
-          <span><strong>عندك حساب (معلمو الآيفون)؟</strong><small>ما تحتاج الرمز — سجّل دخولك باسم المستخدم وكلمة السر، وكل شيء يتزامن تلقائيًا.</small></span>
-        </a>
         <details class="help" id="help">
           <summary><span class="help-icon" aria-hidden="true"></span>مشاكل الاتصال؟</summary>
           <div class="help-body">
@@ -136,6 +132,24 @@
   <!-- لوحة تفاصيل الطالب -->
   <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
   <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden></aside>
+
+  <!-- تسجيل الدخول بالحساب (فوق صفحة الربط؛ لا ندخل التطبيق إلا ببيانات صحيحة) -->
+  <div class="modal-backdrop" id="modal-login" hidden>
+    <div class="modal narrow" role="dialog" aria-modal="true" aria-labelledby="login-title">
+      <div class="modal-head">
+        <h2 id="login-title">تسجيل الدخول</h2>
+        <button class="btn ghost icon-only" type="button" data-close aria-label="إغلاق"></button>
+      </div>
+      <p class="muted">درجاتك تُشفَّر بكلمة سرك — وعلى هذا الكمبيوتر لا يُحفظ شيء، وتخرج تلقائيًا بعد ساعة ونصف.</p>
+      <form id="login-form" class="login-form" autocomplete="on">
+        <label class="lf"><span>اسم المستخدم</span><input id="lg-u" dir="ltr" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+        <label class="lf"><span>كلمة السر</span><input id="lg-p" dir="ltr" type="password" name="password" autocomplete="current-password" required></label>
+        <p class="field-error" id="lg-err" role="alert" hidden></p>
+        <div class="modal-actions"><button class="btn primary big" type="submit" id="lg-go">دخول</button></div>
+        <p class="muted lf-help">نسيت اسم المستخدم أو كلمة السر؟ اسم المستخدم مكتوب في جوالك (الإعدادات ← الحساب والمزامنة)، وكلمة السر يرجّعها لك مسؤول التطبيق.</p>
+      </form>
+    </div>
+  </div>
 
   <!-- رمز الكمبيوتر أثناء غياب الجوال (للتصوير من جديد، مثل الآيفون بعد إعادة التشغيل) -->
   <div class="modal-backdrop" id="modal-qr" hidden>

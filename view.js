@@ -6,6 +6,7 @@ import {
   studentSummary, getItems, getFin, getWeekMeta, progress, weekRemaining, arCompare, round2,
 } from './grades-core.js';
 import { T, tr, trCrit, setLang, lang as curLang, translateStatic } from './i18n.js';
+import { signIn, USER_RE, normUser, CLOUD } from './cloud.js';
 
 const params = new URLSearchParams(location.search);
 const E2E = params.has('e2e');
@@ -1176,7 +1177,7 @@ function openModal(id) {
 }
 function closeModals() {
   clearInterval(mqrTimer);
-  for (const id of ['modal-qr']) {
+  for (const id of ['modal-qr', 'modal-login']) {
     const m = $(id);
     m.classList.remove('open');
     m.hidden = true;
@@ -1192,6 +1193,29 @@ function disconnect() {
 // ---------- الأحداث ----------
 function bind() {
   $('btn-soft-qr').addEventListener('click', () => { openModal('modal-qr'); paintResumeQR(); });
+  // تسجيل الدخول بالحساب (معلمو الآيفون): النافذة فوق صفحة الربط، وننتقل للتطبيق فقط بعد دخول صحيح
+  if (!CLOUD) $('btn-account').hidden = true;
+  $('btn-account').addEventListener('click', () => {
+    openModal('modal-login');
+    $('lg-err').hidden = true;
+    try { $('lg-u').value = localStorage.getItem('gfu-cloud-last') || ''; } catch { /* */ }
+    setTimeout(() => ($('lg-u').value ? $('lg-p') : $('lg-u')).focus(), 30);
+  });
+  $('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = (m) => { $('lg-err').textContent = m; $('lg-err').hidden = false; };
+    const user = $('lg-u').value; const pass = $('lg-p').value;
+    if (!USER_RE.test(normUser(user))) return err(tr('اسم المستخدم: أحرف إنجليزية صغيرة وأرقام فقط (٣ أحرف على الأقل).'));
+    const btn = $('lg-go'); btn.disabled = true; btn.textContent = tr('جارٍ التحقق…');
+    try {
+      await signIn({ user, password: pass, remember: false }); // جلسة لهذا التبويب فقط
+      location.href = './';
+    } catch (x) {
+      const code = x && x.code;
+      err(code === 'wrong' ? tr('اسم المستخدم أو كلمة السر غير صحيحة.') : code === 'locked' ? tr('محاولات كثيرة خاطئة — انتظر ١٠ دقائق ثم حاول.') : code === 'offline' ? tr('لا يوجد اتصال بالإنترنت.') : tr('تعذّر الدخول. حاول مرة ثانية.'));
+      btn.disabled = false; btn.textContent = tr('دخول');
+    }
+  });
   // الرمز المكتوب مخفي (الشاشة غالبًا معروضة للطلاب) ويظهر عند الطلب فقط
   $('btn-show-code').addEventListener('click', () => { $('sc-reveal').hidden = false; $('btn-show-code').hidden = true; });
   $('btn-show-code2').addEventListener('click', () => { $('sc-reveal2').hidden = false; $('btn-show-code2').hidden = true; });
