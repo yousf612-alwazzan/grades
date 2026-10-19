@@ -679,6 +679,7 @@ export default {
   "حذف صف واحد: من قائمة ⋯ داخل الصف، ومن العمود الجانبي على الكمبيوتر، ومن «الأدوات»": "Delete a single class: from the ⋯ menu in the class, the side column on the computer, and Tools",
   "حذف كل البيانات": "Delete all data",
   "حذف كل البيانات؟": "Delete all data?",
+  "حذف وضع الخصوصية من الكمبيوتر": "Removed privacy mode from the computer",
   "حساب لكل معلم آيفون: الدرجات تتزامن مشفّرة بين الجوال وأي كمبيوتر تلقائيًا": "An account for each iPhone teacher: grades sync encrypted between the phone and any computer automatically",
   "حسابك المشفّر": "Your encrypted account",
   "حسابك جاهز:": "Your account is ready:",

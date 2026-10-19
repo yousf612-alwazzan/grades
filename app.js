@@ -556,9 +556,7 @@ function renderNav() {
   document.getElementById('tabbar').innerHTML = btns;
   const mini = deskPref('gfu-rail');
   document.body.classList.toggle('rail-mini', mini);
-  const priv = deskPref('gfu-privacy');
-  document.body.classList.toggle('privacy', priv);
-  // الترتيب: الشعار (وزر إخفاء صغير) ← التنقل ← تحت: وضع الخصوصية ثم بطاقة الحساب ثم رقم الإصدار
+  // الترتيب: الشعار (وزر إخفاء صغير) ← التنقل ← تحت: بطاقة الحساب ثم رقم الإصدار
   const user = C.session ? esc(C.session.u) : '';
   const acct = !CLOUD_ON ? '' : C.session
     ? T`<div class="rail-account">
@@ -569,12 +567,11 @@ function renderNav() {
         ${DESK_WEB ? T`<div class="ra-timer tab-label" title="${tr('تخرج تلقائيًا من حسابك بعد ساعة ونصف من الدخول')}">${icon('lock')}<span>خروج تلقائي بعد</span><b class="num" data-cloud-timer dir="ltr">${fmtLeft(cloudLeftMs())}</b></div>` : ''}
       </div>`
     : T`<button type="button" class="tab rail-acct login" data-act="cloud-login" title="${tr('تسجيل الدخول')}"><span class="tab-ico">${icon('user')}</span><span class="tab-label">تسجيل الدخول</span></button>`;
-  const privBtn = REMOTE || !platform.isNative ? T`<button type="button" class="tab rail-priv" data-act="privacy-toggle" aria-pressed="${priv}" title="${priv ? tr('إيقاف وضع الخصوصية') : tr('وضع الخصوصية (للشاشة المعروضة للطلاب)')}"><span class="tab-ico">${icon(priv ? 'eyeOff' : 'eye')}</span><span class="tab-label">${priv ? tr('الخصوصية مفعّلة') : tr('وضع الخصوصية')}</span></button>` : '';
   const foot = REMOTE ? T`<span class="remote-note">${icon('phone')} <span><b>متصل بجوالك</b> — كل التعديلات تُحفظ في جوالك</span></span>` : T`الإصدار ${ar(CONFIG.version)}`;
   document.getElementById('rail').innerHTML = T`<div class="brand"><img src="icons/icon-192.png" alt=""><span>${esc(tr(CONFIG.appName))}</span>
       <button type="button" class="rail-toggle" data-act="rail-toggle" aria-expanded="${!mini}" title="${mini ? tr('إظهار القائمة') : tr('إخفاء القائمة')}" aria-label="${mini ? tr('إظهار القائمة') : tr('إخفاء القائمة')}">${icon(mini ? 'menu' : 'sidebar')}</button></div>
     <nav class="rail-nav">${btns}</nav>
-    <div class="rail-bottom">${privBtn}${acct}<div class="rail-foot">${foot}</div></div>`;
+    <div class="rail-bottom">${acct}<div class="rail-foot">${foot}</div></div>`;
 }
 
 function appbar({ title, sub = '', backBtn = true, actions = '', save = false }) {
@@ -2995,7 +2992,6 @@ document.addEventListener('click', async (e) => {
     case 'cloud-login': openCloudLogin(); break;
     case 'cloud-account': openAccountSheet(false); break;
     case 'copy-site': if (await platform.copyText(siteUrl())) toast(tr('نُسخ الرابط ✓')); break;
-    case 'privacy-toggle': { const on = !deskPref('gfu-privacy'); setDeskPref('gfu-privacy', on); renderNav(); if (on) toast(tr('وضع الخصوصية: الأسماء والدرجات مغبّشة على الشاشة — مرّر الماوس على السطر لتشوفه.'), { ms: 6000 }); break; }
     case 'cloud-logout': cloudLogout(); break;
     case 'cloud-sync': if (C.sync) { C.sync.pull(); C.sync.flushSoon(10); toast(tr('جارٍ المزامنة…')); } break;
     case 'side-toggle': S.ui.sideHidden = !S.ui.sideHidden; setDeskPref('gfu-side', S.ui.sideHidden); render(); break;

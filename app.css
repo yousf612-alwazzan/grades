@@ -1300,11 +1300,6 @@ body.remote .rail { padding-top: 16px; }
   .rail .rail-acct { color: var(--primary); font-weight: 700; margin-bottom: 6px; }
   .rail .rail-acct.login { background: var(--primary); color: var(--primary-ink); }
   .rail .rail-acct.login svg.i { color: inherit; }
-  .rail .rail-priv { margin-top: 8px; color: var(--muted); }
-  .rail .rail-priv[aria-pressed="true"] { background: var(--warning-soft, #fff4e0); color: var(--warning, #9a5b00); }
-  /* وضع الخصوصية: الشاشة معروضة للطلاب (HDMI) — الأسماء والدرجات مغبّشة إلا السطر الذي عليه الماوس أو الكتابة */
-  body.privacy :is(table.grid tbody tr, .class-card, .srow, .stu, #aside, .side-sum, .report-card, .appbar h1, .home-wrap .alert, .note-list, .stu-card):not(:hover):not(:focus-within) { filter: blur(7px); transition: filter .15s; }
-  body.privacy :is(table.grid tbody tr, .class-card, .srow, .stu, #aside, .side-sum, .report-card, .appbar h1, .home-wrap .alert, .note-list, .stu-card) { transition: filter .15s; }
 }
 
 /* شاشة الدخول الإجبارية (آيفون) */
@@ -1335,7 +1330,6 @@ body.remote .rail { padding-top: 16px; }
   .rail-nav { display: flex; flex-direction: column; gap: 4px; }
   .rail-bottom { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding-top: 12px; }
   .rail .rail-bottom .rail-foot { margin-top: 0; }
-  .rail .rail-priv { margin-top: 0; }
   .rail .rail-acct.login { margin-bottom: 0; justify-content: center; }
   .rail-account { border-radius: 14px; background: var(--chip); padding: 8px; display: grid; gap: 4px; }
   .ra-row { display: flex; align-items: center; gap: 6px; }
