@@ -1153,7 +1153,8 @@ function filterBar(c, d, w) {
       <div class="seg fscope" role="group" aria-label="النطاق"><button type="button" data-act="fscope" data-s="week" aria-pressed="${sc === 'week'}">الأسبوع ${ar(w)}</button><button type="button" data-act="fscope" data-s="all" aria-pressed="${sc === 'all'}">كل الأسابيع</button></div>
       <button type="button" class="btn sm" data-act="filter-share">${icon('send')} مشاركة القائمة</button>
     </div>` : '';
-  return `<div class="fchips" role="group" aria-label="${tr('فلتر الطلاب')}">${chips}</div>${extra}`;
+  if (!S.ui.sideHidden) return `<div class="side-title">${tr('فلتر الطلاب')}</div><div class="fgrid" role="group" aria-label="${tr('فلتر الطلاب')}">${chips}</div>${extra}`;
+  return `<div class="fchips wrap" role="group" aria-label="${tr('فلتر الطلاب')}">${chips}</div>${extra}`;
 }
 function filterEmpty(f) {
   return { missing: tr('🎉 كل الطلاب مكتملون في هذا الأسبوع'), absent: tr('لا يوجد طلاب غائبون'), star: tr('لا يوجد طلاب مميّزون'), notes: tr('لا توجد ملاحظات') }[f] || tr('لا نتائج');
@@ -1227,6 +1228,7 @@ function weekTab(c, d, w) {
 
   const list = weekGrid(c, d, w, visible);
   const side = T`
+    ${S.ui.sideHidden ? '' : `<div id="fbar" class="side-card fbar fbar-side">${filterBar(c, d, w)}</div>`}
     <div class="side-card">
       <div class="side-title">الأسبوع ${ar(w)}</div>
       <div class="field"><label for="wdate">التاريخ</label><div class="row"><input id="wdate" class="input" data-meta="date" value="${esc(meta.date)}" placeholder="مثال: 12/10" autocomplete="off"><button type="button" class="btn sm" data-act="today" title="تاريخ اليوم">${icon('calendar')} اليوم</button></div></div>
@@ -1245,7 +1247,7 @@ function weekTab(c, d, w) {
       <div class="main-bar">
         <span id="week-status">${weekStatusHTML(d, w, n)}</span>
         <div class="search">${icon('search')}<input class="input" type="search" data-search placeholder="ابحث باسم الطالب أو رقمه" value="${esc(q)}" aria-label="بحث"></div>
-        <div id="fbar" class="fbar desk">${filterBar(c, d, w)}</div>
+        ${S.ui.sideHidden ? `<div id="fbar" class="fbar desk">${filterBar(c, d, w)}</div>` : ''}
       </div>
       <div id="stu-list" class="stu-scroll">${list || `<p class="hint" style="text-align:center;padding:24px">${f === 'missing' && !q ? tr('لا يوجد طلاب ناقصون في هذا الأسبوع') : (f !== 'all' && !q ? filterEmpty(f) : tr('لا نتائج'))}</p>`}</div>
     </div>

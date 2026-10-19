@@ -1395,3 +1395,18 @@ body.no-tabbar .school-secs .sticky-save { bottom: 12px; }
 .ver-check { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; padding: 6px 4px; border-radius: 8px; cursor: pointer; min-height: 32px; }
 .ver-check:hover { color: var(--primary); background: var(--chip); }
 .ver-check svg.i { width: 14px; height: 14px; }
+
+/* فلتر الطلاب في الكمبيوتر: داخل لوحة الأدوات (عمودان) — أو فوق الجدول يلتف بلا تمرير */
+@media (min-width: 900px) {
+  .fbar-side { display: grid; gap: 8px; }
+  .fbar-side .side-title { margin-bottom: 0; }
+  .fgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .fgrid .fchip { justify-content: space-between; min-height: 40px; padding: 0 12px; border-radius: 10px; background: var(--chip); font-size: 13.5px; }
+  .fgrid .fchip.f-all { grid-column: span 2; justify-content: center; }
+  .fgrid .fchip[aria-pressed="true"] { background: var(--primary); color: var(--primary-ink); }
+  .fbar-side .fres { flex-direction: column; align-items: stretch; gap: 6px; }
+  .fbar-side .fres .seg { display: flex; }
+  .fbar-side .fres .seg button { flex: 1; }
+  .fbar-side .fres .btn { width: 100%; }
+  .fchips.wrap { flex-wrap: wrap; overflow: visible; }
+}

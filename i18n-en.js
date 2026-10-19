@@ -898,6 +898,7 @@ export default {
   "فلتر": "Filter",
   "فلتر الجوال بشكل أبسط: زر «فلتر» يفتح نافذة، وشريط صغير للفلتر المفعّل": "Simpler phone filter: a Filter button opens a sheet, with a small bar for the active filter",
   "فلتر الطلاب": "Student filter",
+  "فلتر الطلاب في الكمبيوتر داخل لوحة الأدوات (بلا تمرير)": "Student filter on the computer moved into the tools panel (no scrolling)",
   "فلتر للطلاب: الغائبون، المميّزون، عليهم ملاحظات، الناقص — مع مشاركة القائمة": "Student filter: absent, starred, with notes, missing — with list sharing",
   "فهمت، احفظ": "Got it, save",
   "فوق الحد": "Over the limit",
