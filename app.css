@@ -1478,3 +1478,13 @@ body.no-tabbar .school-secs .sticky-save { bottom: 12px; }
   .main.desk-class .hdr-search { flex: 0 1 300px; margin-inline-start: 0; }
   .appbar h1 .sub .hdr-status .status-pill { font-size: 13.5px; }
 }
+
+/* البحث في رأس الصف: نفس عرض لوحة الأدوات تحته ومحاذٍ لها تمامًا */
+@media (min-width: 900px) {
+  .main.desk-class .appbar-row { padding-inline: 16px; }
+  .main.desk-class .hdr-search { flex: 0 0 340px; width: 340px; max-width: 340px; margin-inline-start: 0; }
+  .main.desk-class .hdr-search .input { width: 100%; }
+}
+@media (min-width: 900px) and (max-width: 1180px) {
+  .main.desk-class .hdr-search { flex-basis: 290px; width: 290px; max-width: 290px; }
+}

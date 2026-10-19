@@ -318,6 +318,7 @@ export default {
   "الاسم": "Name",
   "الانتقال التلقائي للطالب التالي": "Auto-advance to next student",
   "الاهتزاز الخفيف": "Light vibration",
+  "البحث في رأس الصف بنفس عرض لوحة الأدوات ومحاذٍ لها": "The class header search matches the tools panel width and aligns with it",
   "البنائي": "Formative",
   "التاريخ": "Date",
   "التاريخ: 12/10": "Date: 12/10",
