@@ -408,6 +408,13 @@ export class QrScanner {
     }
   }
 
+  /** يوقف القراءة ويُبقي الكاميرا شغالة: آيفون (Safari) لا يكشف عنوان الجوال في الشبكة المحلية لاتصال WebRTC
+   *  إلا والكاميرا تعمل — فنبقيها حتى يتم الاتصال (أو تنتهي المهلة) ثم stop(). */
+  pause() {
+    this.running = false;
+    clearTimeout(this.timer);
+  }
+
   stop() {
     this.running = false;
     clearTimeout(this.timer);

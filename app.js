@@ -2418,6 +2418,7 @@ async function startLiveFromCode(code) {
     clearTimeout(L.slowTimer);
     L.slowTimer = setTimeout(() => { if (L.phase === 'answer' && L.state !== 'connected') { L.slow = true; if (route().name === 'live') render(); } }, 12000);
   } catch (e) {
+    stopScanner();
     L.phase = 'setup'; L.state = 'idle';
     toast(e && /[؀-ۿ]/.test(e.message || '') ? e.message : tr('الرمز غير صالح. أنشئ رمزًا جديدًا على الكمبيوتر.'), { err: true, ms: 5000 });
   }
@@ -2426,7 +2427,8 @@ async function startLiveFromCode(code) {
 
 async function startScanner() {
   const video = main().querySelector('[data-live-video]');
-  if (!video || L.scanner) return;
+  if (!video || (L.scanner && L.scanner.running)) return;
+  stopScanner(); // كاميرا مُبقاة من محاولة سابقة
   const m = await liveMod();
   L.collector = new m.FrameCollector();
   L.scanner = new m.QrScanner(video, (text) => {
@@ -2434,7 +2436,14 @@ async function startScanner() {
     const prog = main().querySelector('[data-scan-progress]');
     const pr = L.collector.progress();
     if (prog && pr.total > 1) prog.textContent = T`قرأنا ${ar(pr.got)} من ${ar(pr.total)} أجزاء… أبقِ الكاميرا على الرمز`;
-    if (full) { haptic('success'); stopScanner(); startLiveFromCode(full); }
+    if (full) {
+      haptic('success');
+      // نُبقي الكاميرا شغالة أثناء الاتصال (شرط في آيفون ليصل الكمبيوتر إلى الجوال مباشرة)، وتُغلق عند الاتصال أو بعد دقيقة
+      L.scanner.pause();
+      clearTimeout(L.camTimer);
+      L.camTimer = setTimeout(() => { if (L.scanner && !L.scanner.running) stopScanner(); }, 60000);
+      startLiveFromCode(full);
+    }
   });
   try {
     await L.scanner.start('environment');
@@ -2449,7 +2458,7 @@ async function startScanner() {
     toast(msg, { err: true, ms: 7000 });
   }
 }
-function stopScanner() { if (L.scanner) { L.scanner.stop(); L.scanner = null; } }
+function stopScanner() { clearTimeout(L.camTimer); if (L.scanner) { L.scanner.stop(); L.scanner = null; } }
 
 async function paintAnswerQR() {
   const m = await liveMod();
