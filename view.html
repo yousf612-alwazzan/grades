@@ -81,11 +81,10 @@
             </ul>
             <div class="manual">
               <div class="manual-text">
-                <strong>بدون إنترنت؟ صوّر الرمزين</strong>
-                <span>١) صوّر رمز الكمبيوتر بالجوال كالمعتاد. ٢) يظهر في الجوال «رمز الرد» — اضغط الزر هنا ووجّه شاشة الجوال إلى كاميرا الكمبيوتر.</span>
+                <strong>ما في واي فاي؟</strong>
+                <span>شغّل «نقطة الاتصال» في الجوال ووصّل الكمبيوتر بها — بيانات الجوال تكفي للربط، ثم اضغط «رمز جديد».</span>
               </div>
               <div class="manual-actions">
-                <button class="btn primary" id="btn-cam" type="button">صوّر رد الجوال بكاميرا الكمبيوتر</button>
                 <button class="btn ghost" id="btn-paste" type="button"></button>
                 <button class="btn ghost" id="btn-copy" type="button" hidden></button>
               </div>
@@ -147,7 +146,7 @@
         <h2 id="paste-title">لصق رمز الرد</h2>
         <button class="btn ghost icon-only" type="button" data-close aria-label="إغلاق"></button>
       </div>
-      <p class="muted">للحالات الخاصة فقط: إذا كان عندك «رمز الرد» كنص على هذا الكمبيوتر نفسه، الصقه هنا. بدون إنترنت استعمل «صوّر رد الجوال بكاميرا الكمبيوتر».</p>
+      <p class="muted">للحالات الخاصة فقط: إذا كان عندك «رمز الرد» كنص على هذا الكمبيوتر نفسه، الصقه هنا.</p>
       <textarea id="paste-input" rows="5" dir="ltr" spellcheck="false" autocomplete="off" placeholder="الصق الرمز هنا…" aria-label="رمز الرد"></textarea>
       <p class="field-error" id="paste-error" role="alert" hidden></p>
       <div class="modal-actions">
@@ -167,19 +166,6 @@
       <p class="muted">في الجوال: «العرض» ← «صوّر رمز الكمبيوتر». يرجع الاتصال وتنتقل كل تعديلاتك.</p>
       <div class="qr-box"><canvas id="mqr-canvas" width="360" height="360" role="img" aria-label="رمز QR"></canvas></div>
       <p class="short-code" id="mqr-short" hidden><span>أو اكتب في الجوال:</span><b id="mqr-short-val" dir="ltr"></b></p>
-    </div>
-  </div>
-
-  <!-- تصوير رد الجوال بكاميرا الكمبيوتر (بدون إنترنت) -->
-  <div class="modal-backdrop" id="modal-cam" hidden>
-    <div class="modal narrow" role="dialog" aria-modal="true" aria-labelledby="cam-title">
-      <div class="modal-head">
-        <h2 id="cam-title">صوّر رد الجوال</h2>
-        <button class="btn ghost icon-only" type="button" data-close aria-label="إغلاق"></button>
-      </div>
-      <div class="cam-box"><video id="cam-video" playsinline muted autoplay></video></div>
-      <p class="muted" id="cam-status" role="status" aria-live="polite"></p>
-      <div class="modal-actions"><button class="btn big" type="button" data-close>إلغاء</button></div>
     </div>
   </div>
 

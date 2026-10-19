@@ -1,6 +1,6 @@
 // شاشة العرض على الكمبيوتر/جهاز العرض: قراءة فقط، في الذاكرة فقط، لا تخزين لأي بيانات.
 import CONFIG from './config.js';
-import { ViewerLink, FrameCollector, QrScanner, renderQR, splitFrames, iceServersFrom, wakeLock, newShortCode, shortRoom, publishShort, fmtShortCode, relaySupported } from './live.js';
+import { ViewerLink, FrameCollector, renderQR, splitFrames, iceServersFrom, wakeLock, newShortCode, shortRoom, publishShort, fmtShortCode, relaySupported } from './live.js';
 import {
   WEEKS, FIN_MAX, toArabicDigits, fmt, weekTotal, periodScore, formative, finalTotal,
   studentSummary, getItems, getFin, getWeekMeta, progress, weekRemaining, arCompare, round2,
@@ -146,7 +146,7 @@ function setPairStatus(text, kind = '') {
 const RELAY_TEXT = {
   waiting: ['بانتظار الجوال…', 'wait'],
   received: ['تم استلام الرد، جارٍ الاتصال…', 'busy'],
-  unreachable: ['لا يوجد إنترنت — افتح «مشاكل الاتصال؟» وصوّر رد الجوال بكاميرا الكمبيوتر', 'error'],
+  unreachable: ['لا يوجد إنترنت — وصّل الكمبيوتر بنقطة اتصال الجوال ثم اضغط «رمز جديد»', 'error'],
   expired: ['انتهت صلاحية الرمز. اضغط «رمز جديد».', 'error'],
 };
 function onRelay(s) {
@@ -188,7 +188,7 @@ function showOffer(code) {
   if (link && link.room) onRelay(link.relayState === 'off' ? 'waiting' : link.relayState);
   else {
     // متصفح لا يدعم التشفير/الوسيط: اللصق اليدوي فقط
-    setPairStatus(tr('صوّر الرمز بالجوال، ثم صوّر رد الجوال بكاميرا الكمبيوتر'), 'wait');
+    setPairStatus(tr('هذا المتصفح قديم — حدّثه أو استعمل Chrome أو Edge'), 'error');
     $('help').open = true;
   }
 }
@@ -280,7 +280,7 @@ function onConnState(s) {
   ui.connState = s;
   if (s === 'connected') {
     if (shortAbort) { shortAbort.abort(); shortAbort = null; }
-    if (!$('modal-qr').hidden || !$('modal-cam').hidden) closeModals();
+    if (!$('modal-qr').hidden) closeModals();
     $('btn-soft-qr').hidden = true; resumeCode = '';
     wakeLock(true);
     hideBanner();
@@ -1168,28 +1168,9 @@ function openModal(id) {
   m.hidden = false;
   requestAnimationFrame(() => m.classList.add('open'));
 }
-let camScanner = null;
-async function openCam() {
-  if (!link || !offerCode) return;
-  openModal('modal-cam');
-  const st = $('cam-status');
-  st.textContent = tr('وجّه رمز الرد في الجوال إلى كاميرا الكمبيوتر…');
-  const col = new FrameCollector();
-  camScanner = new QrScanner($('cam-video'), async (text) => {
-    const full = col.push(text);
-    const pr = col.progress();
-    if (!full) { if (pr.total > 1) st.textContent = T`قرأنا ${ar(pr.got)} من ${ar(pr.total)} أجزاء…`; return; }
-    stopCam();
-    try { await acceptAnswer(full); closeModals(); } catch (e) { st.textContent = e && e.message ? tr(e.message) : tr('تعذّر قراءة الرمز.'); }
-  });
-  try { await camScanner.start('user'); } catch (e) { stopCam(); st.textContent = e && e.message ? tr(e.message) : tr('تعذّر فتح كاميرا الكمبيوتر.'); }
-}
-function stopCam() { if (camScanner) { camScanner.stop(); camScanner = null; } }
-
 function closeModals() {
-  stopCam();
   clearInterval(mqrTimer);
-  for (const id of ['modal-paste', 'modal-cam', 'modal-qr']) {
+  for (const id of ['modal-paste', 'modal-qr']) {
     const m = $(id);
     m.classList.remove('open');
     m.hidden = true;
@@ -1255,7 +1236,6 @@ function disconnect() {
 // ---------- الأحداث ----------
 function bind() {
   $('btn-paste').innerHTML = btnHtml(I.paste, tr('لصق رمز نصي'));
-  $('btn-cam').addEventListener('click', openCam);
   $('btn-soft-qr').addEventListener('click', () => { openModal('modal-qr'); paintResumeQR(); });
   $('btn-copy').innerHTML = btnHtml(I.copy, tr('نسخ رمز العرض'));
   $('btn-new').innerHTML = btnHtml(I.refresh, tr('رمز جديد'));

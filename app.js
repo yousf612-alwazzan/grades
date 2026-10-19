@@ -4,6 +4,7 @@
 import CONFIG from './config.js';
 import { CHANGELOG } from './changelog.js';
 import { PLAN_NAME, planFor, gradeOf } from './lesson-plans.js';
+import * as cloud from './cloud.js';
 import { DAYS, SCHOOL_DAYS, REMIND_CHOICES, sanitizeSchedule, sortSchedule, nextOccurrence, buildICS, syncNativeReminders, minutesText } from './reminders.js';
 import {
   WEEKS, ITEMS, MAX_STUDENTS, parseScore, fmt, emptyClassData, getItems, setItem, getFin, setFin,
@@ -60,10 +61,11 @@ function remoteStore(base) {
 function syncingStore(base) {
   return {
     ...base,
-    async saveClasses(c) { await base.saveClasses(c); manageSend({ type: 'put-classes', classes: c }); },
-    async saveGrades(id, d) { await base.saveGrades(id, d); manageSend({ type: 'put-grades', id, data: d }); },
-    async deleteGrades(id) { await base.deleteGrades(id); manageSend({ type: 'del-grades', id }); },
-    async saveSettings(st) { await base.saveSettings(st); manageSend({ type: 'put-settings', settings: pickTeacher(st) }); },
+    async saveClasses(c) { await base.saveClasses(c); manageSend({ type: 'put-classes', classes: c }); cloudTouch('classes'); },
+    async saveGrades(id, d) { await base.saveGrades(id, d); manageSend({ type: 'put-grades', id, data: d }); cloudTouch('g:' + id); },
+    async deleteGrades(id) { await base.deleteGrades(id); manageSend({ type: 'del-grades', id }); cloudTouch('g:' + id); },
+    async saveSettings(st) { await base.saveSettings(st); manageSend({ type: 'put-settings', settings: pickTeacher(st) }); cloudTouch('settings'); },
+    async replaceAll(x) { await base.replaceAll(x); cloudTouch('*'); },
   };
 }
 const store = REMOTE ? remoteStore(localStore) : syncingStore(localStore);
@@ -99,6 +101,143 @@ function pickTeacher(st) {
   }
   return o;
 }
+// ===================== الحساب والمزامنة المشفّرة (آيفون والموقع فقط) =====================
+// أندرويد (تطبيق أصلي) لا يستعمل الحسابات: يبقى على الربط المباشر كما هو.
+const CLOUD_ON = !REMOTE && !platform.isNative && !!cloud.CLOUD;
+const C = { session: null, sync: null, state: 'off', loading: false, memMeta: null };
+function cloudTouch(k) {
+  if (!C.sync) return;
+  if (k === '*') { for (const x of cloudKeys()) C.sync.touch(x); return; }
+  C.sync.touch(k);
+}
+function cloudKeys() { return ['classes', 'settings', ...S.classes.map((c) => 'g:' + c.id)]; }
+function cloudGet(k) {
+  if (k === 'classes') return S.classes.map((c) => ({ id: c.id, label: c.label, names: c.names.slice() }));
+  if (k === 'settings') return pickTeacher(S.settings);
+  const id = k.slice(2);
+  return cls(id) && S.grades[id] ? JSON.parse(JSON.stringify(S.grades[id])) : null;
+}
+// تعديل وصل من الحساب (جهاز آخر): يُحفظ محليًا بلا إعادة إرسال
+async function cloudApply(k, data) {
+  if (k === 'classes') {
+    const clean = (Array.isArray(data) ? data : []).filter((c) => c && typeof c.id === 'string' && c.id.length < 40 && typeof c.label === 'string' && Array.isArray(c.names))
+      .slice(0, 100).map((c) => ({ id: c.id, label: c.label.slice(0, 100), names: c.names.slice(0, MAX_STUDENTS).map((x) => String(x ?? '').slice(0, 120)) }));
+    const ids = new Set(clean.map((c) => c.id));
+    for (const id of Object.keys(S.grades)) if (!ids.has(id)) { delete S.grades[id]; await localStore.deleteGrades(id); }
+    for (const c of clean) S.grades[c.id] ||= emptyClassData();
+    S.classes = clean;
+    await localStore.saveClasses(S.classes);
+    manageSend({ type: 'put-classes', classes: S.classes });
+  } else if (k === 'settings') {
+    if (data && typeof data === 'object') { Object.assign(S.settings, pickTeacher(data)); await localStore.saveSettings(S.settings); manageSend({ type: 'put-settings', settings: pickTeacher(S.settings) }); }
+  } else if (k.startsWith('g:')) {
+    const id = k.slice(2);
+    if (data === null) { if (!cls(id)) { delete S.grades[id]; await localStore.deleteGrades(id); } }
+    else { S.grades[id] = localStore.sanitizeClassData(data); await localStore.saveGrades(id, S.grades[id]); manageSend({ type: 'put-grades', id, data: S.grades[id] }); }
+  }
+  noteChange();
+  if (route().name !== 'live') softRender();
+}
+const CLOUD_TEXT = { syncing: 'جارٍ المزامنة…', ok: 'محفوظ في حسابك', offline: 'بدون إنترنت — تتزامن لاحقًا', auth: 'انتهت الجلسة — سجّل الدخول', idle: 'جارٍ الاتصال…', off: '' };
+function cloudChip() {
+  if (!C.session) return '';
+  const s = C.state;
+  return T`<button type="button" class="cloud-chip s-${s}" data-act="nav" data-to="settings" data-cloud-chip title="${esc(tr(CLOUD_TEXT[s] || ''))}">${icon(s === 'offline' || s === 'auth' ? 'cloudOff' : 'cloud')}<span>${tr(CLOUD_TEXT[s] || '')}</span></button>`;
+}
+function paintCloud() {
+  document.querySelectorAll('[data-cloud-chip]').forEach((el) => { el.outerHTML = cloudChip(); });
+  const st = document.querySelector('[data-cloud-state]');
+  if (st) st.textContent = tr(CLOUD_TEXT[C.state] || '');
+}
+async function startCloud(session, key) {
+  C.session = session;
+  if (!key) {
+    try {
+      key = session.eph ? await cloud.importKey(Uint8Array.from(atob(String(session.k || '').replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((String(session.k || '').length + 3) % 4)), (c) => c.charCodeAt(0)))
+        : await localStore.getMeta('cloudKey');
+    } catch { key = null; }
+  }
+  if (!key) { cloud.clearSession(); C.session = null; return; }
+  C.sync = new cloud.CloudSync(session, key, {
+    keys: cloudKeys,
+    get: cloudGet,
+    apply: cloudApply,
+    loadMeta: async () => (session.eph ? C.memMeta : await localStore.getMeta('cloudSync')),
+    saveMeta: async (m) => { if (session.eph) C.memMeta = JSON.parse(JSON.stringify(m)); else await localStore.setMeta('cloudSync', JSON.parse(JSON.stringify(m))); },
+    onState: (s) => { C.state = s; paintCloud(); },
+    onAuthLost: () => { cloud.clearSession(); C.sync = null; toast(tr('انتهت جلسة الحساب — سجّل الدخول من جديد. درجاتك على هذا الجهاز لم تتأثر.'), { err: true, ms: 8000 }); },
+  });
+  C.state = 'idle'; paintCloud();
+  C.loading = session.eph;
+  if (C.loading) render();
+  try { await C.sync.start(); } finally { if (C.loading) { C.loading = false; render(); } }
+}
+async function cloudLogout() {
+  const eph = C.session && C.session.eph;
+  const ok = await confirmDialog({ title: tr('الخروج من الحساب؟'), text: eph ? tr('تُمسح درجاتك من هذا الكمبيوتر، وتبقى محفوظة في حسابك وجوالك.') : tr('تبقى درجاتك على هذا الجهاز، وتتوقف المزامنة حتى تسجّل الدخول مرة ثانية.'), ok: tr('خروج') });
+  if (!ok) return;
+  if (C.sync) { await C.sync.flush(); await C.sync.logout(); }
+  C.sync = null;
+  cloud.clearSession();
+  if (eph) { location.reload(); return; }
+  try { await localStore.setMeta('cloudKey', null); await localStore.setMeta('cloudSync', null); } catch { /* */ }
+  C.session = null; C.state = 'off';
+  render();
+  toast(tr('خرجت من الحساب'));
+}
+function openCloudLogin(first = false) {
+  const s = openSheet('<div data-cl></div>', { label: tr('تسجيل الدخول') });
+  let mode = first ? 'first' : 'login';
+  const remember0 = !WIDE.matches; // الجوال: يتذكر. الكمبيوتر (غالبًا مشترك): لا يحفظ شيئًا
+  const paint = (err = '') => {
+    s.sheet.querySelector('[data-cl]').innerHTML = T`<h2>${icon('lock')} حسابك المشفّر</h2>
+      <p class="hint">درجاتك تُشفَّر بكلمة سرك على جهازك قبل ما تطلع منه — ولا أحد غيرك يقدر يقرأها.</p>
+      <div class="seg cl-tabs" role="group"><button type="button" data-clm="login" aria-pressed="${mode === 'login'}">دخول</button><button type="button" data-clm="first" aria-pressed="${mode === 'first'}">أول مرة (رمز دعوة)</button></div>
+      <form class="stack" data-clform autocomplete="on">
+        <div class="field"><label for="cl-u">اسم المستخدم</label><input id="cl-u" class="input" dir="ltr" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required></div>
+        ${mode === 'first' ? T`<div class="field"><label for="cl-i">رمز الدعوة</label><input id="cl-i" class="input short-input" dir="ltr" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" required></div>` : ''}
+        <div class="field"><label for="cl-p">${mode === 'first' ? tr('اختر كلمة سر (٨ أحرف على الأقل)') : tr('كلمة السر')}</label><input id="cl-p" class="input" dir="ltr" type="password" name="password" autocomplete="${mode === 'first' ? 'new-password' : 'current-password'}" required></div>
+        ${mode === 'first' ? T`<div class="field"><label for="cl-p2">أعد كتابة كلمة السر</label><input id="cl-p2" class="input" dir="ltr" type="password" autocomplete="new-password" required></div>` : ''}
+        <label class="list-item cl-remember"><span class="grow"><strong>تذكّرني على هذا الجهاز</strong><small>ألغِه في كمبيوتر المدرسة المشترك: لا يُحفظ عليه شيء ويُمسح عند إغلاق الصفحة.</small></span><input type="checkbox" class="switch" data-clr ${remember0 ? 'checked' : ''}></label>
+        ${err ? `<p class="field-error" role="alert">${esc(err)}</p>` : ''}
+        <button type="submit" class="btn primary lg block" data-clgo>${mode === 'first' ? tr('إنشاء الحساب') : tr('دخول')}</button>
+        ${mode === 'first' ? T`<p class="hint">مهم: احفظ كلمة السر. لو نسيتها يعطيك المسؤول رمز دعوة جديد، وترفع درجاتك من جوالك من جديد.</p>` : ''}
+      </form>`;
+  };
+  paint();
+  const keep = {};
+  s.sheet.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-clm]');
+    if (!t) return;
+    for (const id of ['cl-u', 'cl-p']) { const el = s.sheet.querySelector('#' + id); if (el) keep[id] = el.value; }
+    mode = t.dataset.clm; paint();
+    for (const [id, v] of Object.entries(keep)) { const el = s.sheet.querySelector('#' + id); if (el) el.value = v; }
+  });
+  s.sheet.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const q = (id) => (s.sheet.querySelector('#' + id) || {}).value || '';
+    const user = q('cl-u'); const pass = q('cl-p'); const remember = s.sheet.querySelector('[data-clr]').checked;
+    const fail = (m) => { const u = q('cl-u'); paint(m); s.sheet.querySelector('#cl-u').value = u; };
+    if (!cloud.USER_RE.test(cloud.normUser(user))) return fail(tr('اسم المستخدم: أحرف إنجليزية صغيرة وأرقام فقط (٣ أحرف على الأقل).'));
+    if (mode === 'first' && pass.length < 8) return fail(tr('كلمة السر قصيرة — ٨ أحرف على الأقل.'));
+    if (mode === 'first' && pass !== q('cl-p2')) return fail(tr('كلمتا السر غير متطابقتين.'));
+    const btn = s.sheet.querySelector('[data-clgo]');
+    btn.disabled = true; btn.textContent = tr('جارٍ التحقق…');
+    try {
+      const r = await cloud.signIn({ user, password: pass, invite: mode === 'first' ? q('cl-i') : '', remember });
+      s.close();
+      if (!remember) { location.reload(); return; } // جلسة مؤقتة: نبدأ من ذاكرة فارغة بلا لمس بيانات هذا الجهاز
+      await localStore.setMeta('cloudKey', r.key);
+      toast(tr('تم الدخول ✓ — جارٍ مزامنة درجاتك'));
+      await startCloud(r.session, r.key);
+      render();
+    } catch (err) {
+      const code = err && err.code;
+      fail(code === 'wrong' ? tr('اسم المستخدم أو كلمة السر غير صحيحة.') : code === 'locked' ? tr('محاولات كثيرة خاطئة — انتظر ١٠ دقائق ثم حاول.') : code === 'bad-invite' ? tr('رمز الدعوة غير صحيح أو مستخدم من قبل.') : code === 'offline' ? tr('لا يوجد اتصال بالإنترنت.') : tr('تعذّر الدخول. حاول مرة ثانية.'));
+    }
+  });
+}
+
 // إعادة رسم لا تقطع الكتابة
 function softRender() {
   const a = document.activeElement;
@@ -396,7 +535,13 @@ function Home() {
     ? T`<p class="hint" data-testid="backup-ok" style="color:var(--success);font-weight:700">${icon('checkCircle')} نسختك الاحتياطية محدّثة (${days < 1 ? tr('اليوم') : T`قبل ${ar(Math.floor(days))} يوم`})</p>` : '';
   const helloTitle = st.teacher ? T`أهلًا أ. ${st.teacher}` : tr('أهلًا بك');
   const helloSub = `${st.subject ? esc(st.subject) + ' · ' : ''}${S.classes.length === 1 ? tr('صف واحد') : S.classes.length === 2 ? tr('صفّان') : S.classes.length ? T`${ar(S.classes.length)} صفوف` : tr('لنبدأ')}`;
-  const addBtn = S.classes.length ? T`<button type="button" class="btn sm soft add-class" data-act="new-class">${icon('plus')} إضافة صف</button>` : '';
+  const addBtn = cloudChip() + (S.classes.length ? T`<button type="button" class="btn sm soft add-class" data-act="new-class">${icon('plus')} إضافة صف</button>` : '');
+  if (C.loading) {
+    return T`${appbar({ title: helloTitle, sub: '', backBtn: false })}<div class="wrap"><div class="live-wait card"><span class="spinner-lg" aria-hidden="true"></span><h3>جارٍ تحميل درجاتك من حسابك…</h3></div></div>`;
+  }
+  if (CLOUD_ON && !C.session && !S.classes.length) {
+    alerts.push(T`<div class="alert info cloud-invite">${icon('cloud')}<div class="grow"><strong>عندك حساب؟</strong><p>سجّل الدخول وتظهر صفوفك ودرجاتك هنا، وأي تعديل يوصل لجوالك تلقائيًا.</p><button type="button" class="btn sm primary" data-act="cloud-login">${icon('user')} تسجيل الدخول</button></div></div>`);
+  }
 
   let body;
   if (!S.classes.length) {
@@ -1752,6 +1897,16 @@ function Settings() {
     ${REMOTE ? '' : T`<div class="section-title">التحديثات</div>
     <div class="card stack" data-testid="update-card">${updateCardHTML()}</div>`}
 
+    ${CLOUD_ON ? (C.session ? T`<div class="section-title">الحساب والمزامنة</div>
+    <div class="list">
+      <div class="list-item">${icon('user')}<span class="grow"><strong dir="ltr" style="text-align:start">${esc(C.session.u)}</strong><small data-cloud-state>${tr(CLOUD_TEXT[C.state] || '')}</small></span>${icon('lock')}</div>
+      <button type="button" class="list-item" data-act="cloud-sync">${icon('refresh')}<span class="grow"><strong>مزامنة الآن</strong><small>${C.session.eph ? tr('جلسة مؤقتة: لا يُحفظ شيء على هذا الجهاز') : tr('درجاتك على هذا الجهاز + نسخة مشفّرة في حسابك')}</small></span></button>
+      <button type="button" class="list-item" data-act="cloud-logout">${icon('logout')}<span class="grow"><strong>خروج من الحساب</strong></span></button>
+    </div>` : T`<div class="section-title">الحساب والمزامنة</div>
+    <div class="list">
+      <button type="button" class="list-item" data-act="cloud-login">${icon('cloud')}<span class="grow"><strong>تسجيل الدخول</strong><small>احفظ درجاتك مشفّرة واستخدمها من الكمبيوتر — بدون ربط ولا QR</small></span>${icon('fwd')}</button>
+    </div>`) : ''}
+
     <div class="section-title">بياناتي</div>
     <div class="card stack">
       <div class="field"><label for="s-teacher">اسم المعلم</label><input id="s-teacher" class="input" data-setting="teacher" value="${esc(st.teacher)}" placeholder="مثل: يوسف أحمد" autocomplete="name"></div>
@@ -1796,7 +1951,7 @@ function Settings() {
         <div class="field"><label for="s-tp">كلمة المرور</label><input id="s-tp" class="input" dir="ltr" type="password" data-setting="turnPass" value="${esc(st.turnPass)}" autocomplete="off"></div>
       </div>
     </details>`}
-    <p class="hint" style="text-align:center;margin:16px 0">${icon('shield')} ${REMOTE ? tr('وضع الإدارة: البيانات محفوظة في جوالك، ولا شيء يُحفظ على هذا الكمبيوتر.') : tr('لا حسابات: كل الدرجات على هذا الجهاز فقط.')}</p>
+    <p class="hint" style="text-align:center;margin:16px 0">${icon('shield')} ${REMOTE ? tr('وضع الإدارة: البيانات محفوظة في جوالك، ولا شيء يُحفظ على هذا الكمبيوتر.') : (C.session ? tr('درجاتك على هذا الجهاز، ونسخة مشفّرة بكلمة سرك في حسابك.') : tr('لا حسابات: كل الدرجات على هذا الجهاز فقط.'))}</p>
   </div>`;
 }
 
@@ -2159,15 +2314,12 @@ function Live() {
     const rs = L.link && L.link.relayState;
     const failed = rs === 'failed' || rs === 'none';
     body = T`${failed
-      ? T`<div class="alert warn">${icon('warn')}<div class="grow"><strong>لا يوجد إنترنت — صوّر الرد بالكمبيوتر</strong><p style="margin:0">في الكمبيوتر افتح «مشاكل الاتصال؟» واضغط «صوّر رد الجوال بكاميرا الكمبيوتر»، ثم وجّه هذه الشاشة إلى كاميرا الكمبيوتر.</p></div></div>
-        <div class="answer-qr"><canvas data-answer-qr width="360" height="360" aria-label="رمز الرد"></canvas><small data-frame-label></small></div>`
+      ? T`<div class="alert warn">${icon('warn')}<div class="grow"><strong>تعذّر الإرسال — لا يوجد إنترنت</strong><p style="margin:0">الربط يحتاج إنترنت في الجوال (بيانات الجوال تكفي). شغّلها ثم اضغط «رمز جديد» في الكمبيوتر وصوّره من جديد.</p></div></div>
+        <button type="button" class="btn primary block" data-act="live-scan">${icon('camera')} صوّر الرمز من جديد</button>`
       : T`<div class="live-wait"><span class="spinner-lg" aria-hidden="true"></span><h3>${rs === 'sending' ? tr('جارٍ الإرسال للكمبيوتر…') : tr('أُرسل للكمبيوتر ✓')}</h3><p class="hint">يتصل الكمبيوتر خلال ثوانٍ. أبقِ الشاشة مفتوحة.</p></div>
         ${L.slow ? T`<div class="alert warn">${icon('warn')}<div class="grow"><strong>تأخر الاتصال؟</strong><p style="margin:0">اضغط «رمز جديد» على الكمبيوتر ثم صوّره مرة ثانية. وتأكد أن الجهازين على نفس الشبكة.</p></div></div>
         <button type="button" class="btn primary block" data-act="live-scan">${icon('camera')} صوّر الرمز من جديد</button>` : ''}`}
-      ${failed ? '' : T`<details class="flat-details" data-offline-qr><summary>${icon('wifi')} بدون إنترنت؟ اعرض رمز الرد للكمبيوتر</summary>
-        <p class="hint">في الكمبيوتر: «مشاكل الاتصال؟» ← «صوّر رد الجوال بكاميرا الكمبيوتر»، ثم وجّه هذه الشاشة إلى كاميرا الكمبيوتر.</p>
-        <div class="answer-qr"><canvas data-answer-qr width="360" height="360" aria-label="رمز الرد"></canvas><small data-frame-label></small></div></details>`}
-      <button type="button" class="link-btn" data-act="live-copy">${icon('copy')} نسخ رمز الرد كنص</button>
+
       <button type="button" class="btn ghost block" data-act="live-stop">إلغاء</button>`;
   } else if (L.phase === 'connected') {
     body = L.mode === 'manage'
@@ -2719,6 +2871,9 @@ document.addEventListener('click', async (e) => {
     case 'fscope': S.ui.fscope = el.dataset.s === 'all' ? 'all' : 'week'; rerenderList(); break;
     case 'filter-share': shareFilter(cls(p.id), p.tab); break;
     case 'filter-sheet': openFilterSheet(cls(p.id), p.tab); break;
+    case 'cloud-login': openCloudLogin(false); break;
+    case 'cloud-logout': cloudLogout(); break;
+    case 'cloud-sync': if (C.sync) { C.sync.pull(); C.sync.flushSoon(10); toast(tr('جارٍ المزامنة…')); } break;
     case 'side-toggle': S.ui.sideHidden = !S.ui.sideHidden; setDeskPref('gfu-side', S.ui.sideHidden); render(); break;
     case 'rail-toggle': setDeskPref('gfu-rail', !deskPref('gfu-rail')); renderNav(); break;
     case 'undo-bulk': if (S.ui.undo) S.ui.undo.fn(); break;
@@ -3244,8 +3399,11 @@ function registerSW() {
 }
 
 async function boot() {
+  const cloudSession = CLOUD_ON ? cloud.readSession() : null;
+  if (cloudSession && cloudSession.eph) localStore.useMemory(); // كمبيوتر مشترك: لا نقرأ ولا نكتب بيانات هذا الجهاز
   try {
     await loadState();
+    if (cloudSession && cloudSession.eph) S.settings.tourDone = true;
   } catch {
     main().innerHTML = T`<div class="wrap"><div class="alert err">${icon('warn')}<div class="grow"><strong>تعذّر فتح التخزين</strong><p>قد يكون المتصفح في وضع التصفح الخاص أو يمنع حفظ البيانات. افتح التطبيق في وضع عادي.</p></div></div></div>`;
     return;
@@ -3265,6 +3423,7 @@ async function boot() {
   applyTheme();
   autoPlans();
   restoreLive();
+  if (cloudSession) setTimeout(() => startCloud(cloudSession), 0); // بعد أول رسم للشاشة
   if (platform.isNative && !REMOTE) {
     const LN = platform.plugin('LocalNotifications');
     if (LN) {

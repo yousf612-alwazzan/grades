@@ -1273,3 +1273,15 @@ body.remote .rail { padding-top: 16px; }
   .side-hint { display: flex; gap: 6px; align-items: center; margin: 2px 4px; font-size: 13px; }
   .side-hint svg.i { width: 16px; height: 16px; }
 }
+
+/* ===== الحساب والمزامنة ===== */
+.cloud-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 10px; border: 0; border-radius: 999px; background: var(--success-soft); color: var(--success); font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.cloud-chip svg.i { width: 16px; height: 16px; }
+.cloud-chip.s-syncing, .cloud-chip.s-idle { background: var(--primary-soft); color: var(--primary); }
+.cloud-chip.s-offline { background: var(--chip); color: var(--muted); }
+.cloud-chip.s-auth { background: var(--error-soft); color: var(--error); }
+@media (max-width: 899px) { .cloud-chip span { display: none; } .cloud-chip { min-width: 40px; justify-content: center; } }
+.cl-tabs { display: flex; margin-bottom: 4px; }
+.cl-tabs button { flex: 1; }
+.cl-remember { padding-inline: 0; border: 0; }
+.field-error { color: var(--error); font-weight: 600; margin: 0; }

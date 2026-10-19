@@ -4,7 +4,7 @@
 
 export const CONFIG = {
   appName: 'متابعة الدرجات',
-  version: '2.16.1',
+  version: '2.17.0',
   releaseDate: '2026-10-19',
 
   // قواعد الدرجات
@@ -34,6 +34,8 @@ export const CONFIG = {
   // رابط صفحة العرض على الكمبيوتر. فارغ = نفس رابط التطبيق + view.html
   // (في تطبيق أندرويد ضع هنا رابط الاستضافة، مثل https://example.netlify.app/view.html)
   viewUrl: 'https://yousf612-alwazzan.github.io/grades/view.html',
+  // خادم المزامنة المشفّرة (نسخة الآيفون والموقع فقط — أندرويد لا يستعمله). فارغ = بلا حسابات.
+  cloudUrl: 'https://grades-sync.grades-sync.workers.dev',
 
   toastMs: 2600,
   saveDebounceMs: 200,

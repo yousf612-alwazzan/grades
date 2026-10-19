@@ -777,6 +777,4 @@ body { font-family: 'IBM Plex Sans Arabic', system-ui, -apple-system, 'Segoe UI'
 /* الرمز القصير وتصوير رد الجوال */
 .short-code { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 12px; margin: 10px 0 0; font-size: 14px; color: var(--muted, #5b6474); text-align: center; }
 .short-code b { font-size: 26px; letter-spacing: .12em; font-weight: 800; color: var(--text, #111827); font-family: ui-monospace, Consolas, monospace; }
-.cam-box { border-radius: 14px; overflow: hidden; background: #000; aspect-ratio: 4 / 3; }
-.cam-box video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
 .manual-actions { flex-wrap: wrap; }

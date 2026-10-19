@@ -14,6 +14,12 @@ const SCHEMA = 3;
 let dbPromise = null;
 let memory = null;   // بديل في الذاكرة إن تعذّر IndexedDB (وضع خاص قديم مثلًا)
 
+/** جلسة حساب مؤقتة (كمبيوتر مشترك): كل شيء في الذاكرة فقط، ولا يُلمس IndexedDB على هذا الجهاز. */
+export function useMemory() {
+  memory = Object.fromEntries(STORES.map(s => [s, new Map()]));
+  dbPromise = Promise.resolve(null);
+}
+
 function openDb() {
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((resolve) => {
