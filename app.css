@@ -1410,3 +1410,20 @@ body.no-tabbar .school-secs .sticky-save { bottom: 12px; }
   .fbar-side .fres .btn { width: 100%; }
   .fchips.wrap { flex-wrap: wrap; overflow: visible; }
 }
+
+/* الكمبيوتر: بطاقة التاريخ وحدها، وعنوان الدرس في الرأس */
+@media (min-width: 900px) {
+  .date-card .side-title { display: block; margin-bottom: 8px; }
+  .date-card .row { gap: 6px; }
+  .appbar h1 .sub .lesson-now { display: inline-flex; align-items: center; gap: 4px; color: var(--primary); font-weight: 600; max-width: 38vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+  .appbar h1 .sub .lesson-now svg.i { width: 14px; height: 14px; flex: none; }
+}
+
+/* شاشات الكمبيوتر الأصغر (١٣٦٦): الجدول كامل بلا قص — خانات وأزرار أضيق */
+@media (min-width: 900px) and (max-width: 1500px) {
+  .stu-scroll table.grid th, .stu-scroll table.grid td { padding: 6px 4px; }
+  .stu-scroll table.grid .score-input { min-width: 44px; width: 52px; }
+  .stu-scroll table.grid td.name { min-width: 150px; }
+  .stu-scroll table.grid .btn-full { padding: 0 8px; }
+  .stu-scroll table.grid td.total { min-width: 44px; }
+}

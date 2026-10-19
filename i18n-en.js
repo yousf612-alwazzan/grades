@@ -420,6 +420,7 @@ export default {
   "الكمبيوتر يكمل العمل والجوال مقفل أو في تطبيق ثاني: التعديلات تنتظر وتنتقل للجوال تلقائيًا عند رجوعك": "The computer keeps working while the phone is locked or in another app: changes wait and move to the phone automatically when you return",
   "الكمبيوتر: الجدول بطول الشاشة بتمرير واحد، وكل الأدوات (الأسابيع، التاريخ والدرس، التعبئة السريعة، العرض، Excel، الطلاب، النقل، الملخص) في عمود ثابت على اليسار": "Computer: full-height table with one scroll, and all tools (weeks, date and lesson, quick fill, display, Excel, students, transfer, summary) in a fixed left column",
   "الكمبيوتر: الجدول بطول الشاشة وكل الأدوات في عمود يسار، وشعار واسم واحد": "Computer: full-height table, all tools in a left column, and a single logo and name",
+  "الكمبيوتر: بطاقة التاريخ وحدها، وعنوان الدرس يظهر تلقائيًا في رأس الصف، والجدول كامل على الشاشات الأصغر": "Computer: a single date card, the lesson title appears automatically in the class header, and the full table fits smaller screens",
   "اللغة · Language": "Language",
   "اللغة الإنجليزية: الإعدادات ← اللغة (عربي/إنجليزي) للتطبيق كامل وشاشة الكمبيوتر": "English language: Settings → Language (Arabic/English) for the whole app and the computer screen",
   "المادة": "Subject",

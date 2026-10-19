@@ -1019,7 +1019,10 @@ function ClassScreen(p) {
     return T`<button type="button" role="tab" class="chip wk-s ${done ? 'done' : ''}" aria-selected="${p.tab === x}" data-act="tab" data-tab="${x}" aria-label="الأسبوع ${ar(x)}" title="الأسبوع ${ar(x)}">${ar(x)}</button>`;
   }).join('')}<button type="button" role="tab" class="chip wk-s fin ${!finalsRemaining(d, n) ? 'done' : ''}" aria-selected="${p.tab === 'fin'}" data-act="tab" data-tab="fin">الدرجات النهائية</button></div>
     <button type="button" class="icon-btn labeled side-toggle" data-act="side-toggle" aria-pressed="${!S.ui.sideHidden}" title="${S.ui.sideHidden ? tr('إظهار لوحة الأدوات') : tr('إخفاء لوحة الأدوات')}">${icon('sidebar')}<span>الأدوات</span></button>` : '';
-  return `<div class="cls-head">${appbar({ title: c.label, sub: students(n), save: true, actions: wide ? strip : menuBtn })}${n && !wide ? weekbar : ''}</div>${body}`;
+  // الكمبيوتر: عنوان درس الأسبوع (من خطة المنهج) يظهر تلقائيًا تحت اسم الصف — للعرض فقط
+  const lessonNow = wide && n && typeof p.tab === 'number' ? getWeekMeta(d, p.tab).lesson : '';
+  const sub = students(n) + (lessonNow ? T` · <span class="lesson-now" title="عنوان الدرس">${icon('note')} ${esc(lessonNow)}</span>` : '');
+  return `<div class="cls-head">${appbar({ title: c.label, sub, save: true, actions: wide ? strip : menuBtn })}${n && !wide ? weekbar : ''}</div>${body}`;
 }
 afterRender.class = (p) => {
   if (!p.painted) {
@@ -1229,10 +1232,9 @@ function weekTab(c, d, w) {
   const list = weekGrid(c, d, w, visible);
   const side = T`
     ${S.ui.sideHidden ? '' : `<div id="fbar" class="side-card fbar fbar-side">${filterBar(c, d, w)}</div>`}
-    <div class="side-card">
-      <div class="side-title">الأسبوع ${ar(w)}</div>
-      <div class="field"><label for="wdate">التاريخ</label><div class="row"><input id="wdate" class="input" data-meta="date" value="${esc(meta.date)}" placeholder="مثال: 12/10" autocomplete="off"><button type="button" class="btn sm" data-act="today" title="تاريخ اليوم">${icon('calendar')} اليوم</button></div></div>
-      <div class="field" style="margin-top:8px"><label for="wlesson">عنوان الدرس</label><input id="wlesson" class="input" data-meta="lesson" value="${esc(meta.lesson)}" placeholder="اكتب عنوان الدرس" autocomplete="off"></div>
+    <div class="side-card date-card">
+      <label class="side-title" for="wdate">التاريخ</label>
+      <div class="row"><input id="wdate" class="input" data-meta="date" value="${esc(meta.date)}" placeholder="مثال: 12/10" autocomplete="off"><button type="button" class="btn sm" data-act="today" title="تاريخ اليوم">${icon('calendar')} اليوم</button></div>
     </div>
     <div class="side-card">
       <div class="side-title">تعبئة سريعة <span class="hint">الخانات الفارغة فقط</span></div>
