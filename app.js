@@ -104,6 +104,10 @@ function pickTeacher(st) {
 // ===================== الحساب والمزامنة المشفّرة (آيفون والموقع فقط) =====================
 // أندرويد (تطبيق أصلي) لا يستعمل الحسابات: يبقى على الربط المباشر كما هو.
 const CLOUD_ON = !REMOTE && !platform.isNative && !!cloud.CLOUD;
+// الآيفون: الدخول إجباري ويبقى محفوظًا. الكمبيوتر: جلسة مؤقتة (لا يُحفظ شيء) تنتهي تلقائيًا بعد ساعة ونصف.
+const IOS_WEB = CLOUD_ON && platform.isIOS && !(typeof window !== 'undefined' && window.__gfuNoGate);
+const DESK_WEB = CLOUD_ON && !platform.isIOS;
+const DESK_SESSION_MS = 90 * 60 * 1000;
 const C = { session: null, sync: null, state: 'off', loading: false, memMeta: null };
 function cloudTouch(k) {
   if (!C.sync) return;
@@ -176,8 +180,31 @@ async function startCloud(session, key) {
   try { await startP; } finally { if (C.loading) { C.loading = false; render(); } }
   if (session.mustChange && C.sync && !hasSheet() && !document.querySelector('[data-acform]')) openAccountSheet(true);
 }
-async function cloudLogout() {
+function cloudLeftMs() { return C.session && DESK_WEB ? Math.max(0, (Number(C.session.t) || Date.now()) + DESK_SESSION_MS - Date.now()) : Infinity; }
+function fmtLeft(ms) {
+  const sec = Math.ceil(ms / 1000);
+  const h = Math.floor(sec / 3600); const m = Math.floor((sec % 3600) / 60); const x = sec % 60;
+  return `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}`;
+}
+let warned5 = false;
+setInterval(() => {
+  if (!C.session || !DESK_WEB) return;
+  const left = cloudLeftMs();
+  document.querySelectorAll('[data-cloud-timer]').forEach((el) => { el.textContent = fmtLeft(left); el.classList.toggle('soon', left < 5 * 60 * 1000); });
+  if (left < 5 * 60 * 1000 && left > 0 && !warned5) { warned5 = true; toast(tr('باقي ٥ دقائق وتخرج من حسابك تلقائيًا — تعديلاتك محفوظة.'), { ms: 8000 }); }
+  if (left <= 0) cloudLogout(true);
+}, 1000);
+async function cloudLogout(auto = false) {
   const eph = C.session && C.session.eph;
+  if (auto) {
+    if (C.loggingOut) return;
+    C.loggingOut = true;
+    try { if (C.sync) { await Promise.race([C.sync.settle(8000), new Promise((r) => setTimeout(r, 9000))]); await C.sync.logout(); } } catch { /* */ }
+    cloud.clearSession();
+    try { sessionStorage.setItem('gfu-cloud-ended', '1'); } catch { /* */ }
+    location.reload();
+    return;
+  }
   const ok = await confirmDialog({ title: tr('الخروج من الحساب؟'), text: eph ? tr('تُمسح درجاتك من هذا الكمبيوتر، وتبقى محفوظة في حسابك وجوالك.') : tr('تبقى درجاتك على هذا الجهاز، وتتوقف المزامنة حتى تسجّل الدخول مرة ثانية.'), ok: tr('خروج') });
   if (!ok) return;
   if (C.sync) { await C.sync.flush(); await C.sync.logout(); }
@@ -189,47 +216,58 @@ async function cloudLogout() {
   render();
   toast(tr('خرجت من الحساب'));
 }
-function openCloudLogin() {
-  const s = openSheet('<div data-cl></div>', { label: tr('تسجيل الدخول') });
-  const remember0 = !WIDE.matches; // الجوال: يتذكر. الكمبيوتر (غالبًا مشترك): لا يحفظ شيئًا
-  const paint = (err = '', user = cloud.lastUser()) => {
-    s.sheet.querySelector('[data-cl]').innerHTML = T`<h2>${icon('lock')} تسجيل الدخول</h2>
-      <p class="hint">درجاتك تُشفَّر بكلمة سرك على جهازك قبل ما تطلع منه — ولا أحد غيرك يقدر يقرأها.</p>
-      <form class="stack" data-clform autocomplete="on">
-        <div class="field"><label for="cl-u">اسم المستخدم</label><input id="cl-u" class="input" dir="ltr" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" value="${esc(user)}" required></div>
-        <div class="field"><label for="cl-p">كلمة السر</label><input id="cl-p" class="input" dir="ltr" type="password" name="password" autocomplete="current-password" required></div>
-        <label class="list-item cl-remember"><span class="grow"><strong>تذكّرني على هذا الجهاز</strong><small>ألغِه في كمبيوتر المدرسة المشترك: لا يُحفظ عليه شيء ويُمسح عند إغلاق الصفحة.</small></span><input type="checkbox" class="switch" data-clr ${remember0 ? 'checked' : ''}></label>
-        ${err ? `<p class="field-error" role="alert">${esc(err)}</p>` : ''}
-        <button type="submit" class="btn primary lg block" data-clgo>دخول</button>
-        <button type="button" class="link-btn" data-cl-forgot>نسيت اسم المستخدم أو كلمة السر؟</button>
-      </form>`;
-  };
-  paint();
-  s.sheet.addEventListener('click', (e) => {
-    if (!e.target.closest('[data-cl-forgot]')) return;
-    const f = s.sheet.querySelector('[data-cl-forgot]');
+function loginFormHTML(err = '', user = cloud.lastUser()) {
+  return T`<form class="stack" data-clform autocomplete="on">
+      <div class="field"><label for="cl-u">اسم المستخدم</label><input id="cl-u" class="input" dir="ltr" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" value="${esc(user)}" required></div>
+      <div class="field"><label for="cl-p">كلمة السر</label><input id="cl-p" class="input" dir="ltr" type="password" name="password" autocomplete="current-password" required></div>
+      ${DESK_WEB ? T`<p class="hint">${icon('lock')} على الكمبيوتر لا يُحفظ شيء، وتخرج تلقائيًا بعد ساعة ونصف.</p>` : ''}
+      ${err ? `<p class="field-error" role="alert">${esc(err)}</p>` : ''}
+      <button type="submit" class="btn primary lg block" data-clgo>دخول</button>
+      <button type="button" class="link-btn" data-cl-forgot>نسيت اسم المستخدم أو كلمة السر؟</button>
+    </form>`;
+}
+// يربط نموذج الدخول داخل box ([data-cl]). onDone يُستدعى قبل بدء المزامنة (لإغلاق النافذة مثلًا).
+function bindLoginForm(box, onDone = () => {}) {
+  box.addEventListener('click', (e) => {
+    const f = e.target.closest('[data-cl-forgot]');
+    if (!f) return;
     f.outerHTML = T`<div class="alert info">${icon('info')}<div class="grow"><p style="margin:0"><b>اسم المستخدم:</b> مكتوب في جوالك في «الإعدادات ← الحساب والمزامنة»، ويتعبّى هنا تلقائيًا على الجهاز اللي دخلت منه قبل.<br><b>نسيت كلمة السر أو الاسم؟</b> كلّم مسؤول التطبيق: يرجّع حسابك بكلمة السر المبدئية، وتختار كلمة جديدة. درجاتك ما تضيع لأنها محفوظة في جوالك وترتفع من جديد.</p></div></div>`;
   });
-  s.sheet.addEventListener('submit', async (e) => {
+  box.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const q = (id) => (s.sheet.querySelector('#' + id) || {}).value || '';
-    const user = q('cl-u'); const pass = q('cl-p'); const remember = s.sheet.querySelector('[data-clr]').checked;
-    if (!cloud.USER_RE.test(cloud.normUser(user))) return paint(tr('اسم المستخدم: أحرف إنجليزية صغيرة وأرقام فقط (٣ أحرف على الأقل).'), user);
-    const btn = s.sheet.querySelector('[data-clgo]');
+    const q = (id) => (box.querySelector('#' + id) || {}).value || '';
+    const user = q('cl-u'); const pass = q('cl-p');
+    const fail = (m) => { box.querySelector('[data-cl]').innerHTML = loginFormHTML(m, user); };
+    if (!cloud.USER_RE.test(cloud.normUser(user))) return fail(tr('اسم المستخدم: أحرف إنجليزية صغيرة وأرقام فقط (٣ أحرف على الأقل).'));
+    const btn = box.querySelector('[data-clgo]');
     btn.disabled = true; btn.textContent = tr('جارٍ التحقق…');
     try {
-      const r = await cloud.signIn({ user, password: pass, remember });
-      s.close();
-      if (!remember) { location.reload(); return; } // جلسة مؤقتة: نبدأ من ذاكرة فارغة بلا لمس بيانات هذا الجهاز
+      // الآيفون يتذكّر الدخول؛ الكمبيوتر جلسة مؤقتة في هذا التبويب فقط
+      const r = await cloud.signIn({ user, password: pass, remember: !DESK_WEB });
+      onDone();
+      if (DESK_WEB) { location.reload(); return; } // نبدأ من ذاكرة فارغة بلا لمس بيانات هذا الجهاز
       await localStore.setMeta('cloudKey', r.key);
       toast(tr('تم الدخول ✓ — جارٍ مزامنة درجاتك'));
       await startCloud(r.session, r.key);
       render();
     } catch (err) {
       const code = err && err.code;
-      paint(code === 'wrong' ? tr('اسم المستخدم أو كلمة السر غير صحيحة.') : code === 'locked' ? tr('محاولات كثيرة خاطئة — انتظر ١٠ دقائق ثم حاول.') : code === 'offline' ? tr('لا يوجد اتصال بالإنترنت.') : tr('تعذّر الدخول. حاول مرة ثانية.'), user);
+      fail(code === 'wrong' ? tr('اسم المستخدم أو كلمة السر غير صحيحة.') : code === 'locked' ? tr('محاولات كثيرة خاطئة — انتظر ١٠ دقائق ثم حاول.') : code === 'offline' ? tr('لا يوجد اتصال بالإنترنت.') : tr('تعذّر الدخول. حاول مرة ثانية.'));
     }
   });
+}
+function openCloudLogin() {
+  const s = openSheet(T`<h2>${icon('lock')} تسجيل الدخول</h2><p class="hint">درجاتك تُشفَّر بكلمة سرك على جهازك قبل ما تطلع منه — ولا أحد غيرك يقدر يقرأها.</p><div data-cl>${loginFormHTML()}</div>`, { label: tr('تسجيل الدخول') });
+  bindLoginForm(s.sheet, () => s.close());
+}
+// الآيفون: شاشة دخول إجبارية قبل استعمال التطبيق
+function LoginGate() {
+  return T`<div class="gate"><div class="gate-card card">
+    <img class="gate-logo" src="icons/icon-192.png" alt="">
+    <h1>متابعة الدرجات</h1>
+    <p class="hint">سجّل دخولك بحسابك — درجاتك تُحفظ مشفّرة، وتظهر في الكمبيوتر تلقائيًا.</p>
+    <div data-cl data-gate>${loginFormHTML()}</div>
+  </div></div>`;
 }
 
 // أول دخول (أو من الإعدادات): يختار المعلم اسم المستخدم وكلمة السر بنفسه
@@ -471,6 +509,15 @@ const main = () => document.getElementById('main');
 
 function render({ scrollTop = false } = {}) {
   const r = route();
+  if (IOS_WEB && !C.session && r.name !== 'guide') {
+    main().className = 'main no-tabbar gate-main';
+    document.body.classList.add('no-tabbar');
+    document.getElementById('tabbar').classList.add('hide');
+    main().innerHTML = LoginGate();
+    bindLoginForm(main().querySelector('.gate-card'));
+    renderNav();
+    return;
+  }
   const screens = { schedule: Schedule, home: Home, reports: Reports, tools: Tools, class: ClassScreen, student: StudentScreen, editor: Editor, settings: Settings, live: Live, transferOut: TransferOut, transferIn: TransferIn, guide: Guide };
   const fn = screens[r.name] || Home;
   const isRoot = ROOTS.includes(r.name);
@@ -512,7 +559,10 @@ function renderNav() {
   const priv = deskPref('gfu-privacy');
   document.body.classList.toggle('privacy', priv);
   const acct = !CLOUD_ON ? '' : C.session
-    ? `<button type="button" class="tab rail-acct" data-act="nav" data-to="settings" title="${esc(C.session.u)}"><span class="tab-ico">${icon('user')}</span><span class="tab-label" dir="ltr">${esc(C.session.u)}</span></button>`
+    ? (DESK_WEB ? T`<div class="rail-session"><button type="button" class="tab rail-acct" data-act="nav" data-to="settings" title="${esc(C.session.u)}"><span class="tab-ico">${icon('user')}</span><span class="tab-label" dir="ltr">${esc(C.session.u)}</span></button>
+        <div class="rail-timer tab-label" title="${tr('تخرج تلقائيًا من حسابك بعد ساعة ونصف من الدخول')}">${icon('lock')}<span>خروج تلقائي بعد</span><b class="num" data-cloud-timer dir="ltr">${fmtLeft(cloudLeftMs())}</b></div>
+        <button type="button" class="tab rail-logout" data-act="cloud-logout" title="${tr('تسجيل الخروج')}"><span class="tab-ico">${icon('logout')}</span><span class="tab-label">تسجيل الخروج</span></button></div>`
+      : `<button type="button" class="tab rail-acct" data-act="nav" data-to="settings" title="${esc(C.session.u)}"><span class="tab-ico">${icon('user')}</span><span class="tab-label" dir="ltr">${esc(C.session.u)}</span></button>`)
     : T`<button type="button" class="tab rail-acct login" data-act="cloud-login" title="${tr('تسجيل الدخول')}"><span class="tab-ico">${icon('user')}</span><span class="tab-label">تسجيل الدخول</span></button>`;
   const privBtn = REMOTE || !platform.isNative ? T`<button type="button" class="tab rail-priv" data-act="privacy-toggle" aria-pressed="${priv}" title="${priv ? tr('إيقاف وضع الخصوصية') : tr('وضع الخصوصية (للشاشة المعروضة للطلاب)')}"><span class="tab-ico">${icon(priv ? 'eyeOff' : 'eye')}</span><span class="tab-label">${priv ? tr('الخصوصية مفعّلة') : tr('وضع الخصوصية')}</span></button>` : '';
   const foot = REMOTE ? T`<span class="remote-note">${icon('phone')} <span><b>متصل بجوالك</b> — كل التعديلات تُحفظ في جوالك</span></span>` : T`الإصدار ${ar(CONFIG.version)}<br>بياناتك على هذا الجهاز فقط`;
@@ -2303,7 +2353,6 @@ function defaultViewUrl() {
 async function liveMod() { return (L.mod ||= await import('./live.js')); }
 
 // الآيفون (الموقع): لا ربط بالـ QR — المعلم يسجّل دخوله في الكمبيوتر بنفس الحساب وكل شيء يتزامن
-const IOS_WEB = CLOUD_ON && platform.isIOS;
 function siteUrl() { return location.origin + location.pathname.replace(/index\.html$/, ''); }
 function IphoneComputer() {
   const acct = C.session
@@ -3494,6 +3543,7 @@ async function boot() {
   try {
     await loadState();
     if (cloudSession && cloudSession.eph) S.settings.tourDone = true;
+    if (IOS_WEB && !cloudSession) S.settings.tourDone = true; // شاشة الدخول أولًا
   } catch {
     main().innerHTML = T`<div class="wrap"><div class="alert err">${icon('warn')}<div class="grow"><strong>تعذّر فتح التخزين</strong><p>قد يكون المتصفح في وضع التصفح الخاص أو يمنع حفظ البيانات. افتح التطبيق في وضع عادي.</p></div></div></div>`;
     return;
@@ -3519,6 +3569,7 @@ async function boot() {
     S.settings.tourDone = true;
     setTimeout(() => { history.replaceState(history.state, '', location.pathname + location.hash); openCloudLogin(); }, 300);
   }
+  try { if (sessionStorage.getItem('gfu-cloud-ended')) { sessionStorage.removeItem('gfu-cloud-ended'); setTimeout(() => toast(tr('خرجت من حسابك تلقائيًا (مرّت ساعة ونصف). سجّل الدخول من جديد للمتابعة.'), { ms: 9000 }), 500); } } catch { /* */ }
   if (platform.isNative && !REMOTE) {
     const LN = platform.plugin('LocalNotifications');
     if (LN) {

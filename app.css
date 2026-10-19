@@ -1306,3 +1306,21 @@ body.remote .rail { padding-top: 16px; }
   body.privacy :is(table.grid tbody tr, .class-card, .srow, .stu, #aside, .side-sum, .report-card, .appbar h1, .home-wrap .alert, .note-list, .stu-card):not(:hover):not(:focus-within) { filter: blur(7px); transition: filter .15s; }
   body.privacy :is(table.grid tbody tr, .class-card, .srow, .stu, #aside, .side-sum, .report-card, .appbar h1, .home-wrap .alert, .note-list, .stu-card) { transition: filter .15s; }
 }
+
+/* شاشة الدخول الإجبارية (آيفون) */
+.gate-main { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px calc(24px + var(--safe-b, 0px)); }
+.gate { width: 100%; max-width: 420px; }
+.gate-card { padding: 28px 22px; text-align: center; }
+.gate-card form { text-align: start; margin-top: 10px; }
+.gate-logo { width: 64px; height: 64px; border-radius: 16px; margin: 0 auto 10px; display: block; }
+.gate-card h1 { font-size: 24px; font-weight: 800; margin: 0 0 6px; }
+/* الكمبيوتر: الاسم والعدّاد والخروج */
+@media (min-width: 900px) {
+  .rail-session { display: grid; gap: 2px; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  .rail-timer { display: flex; align-items: center; gap: 6px; padding: 0 var(--s3); font-size: 12.5px; color: var(--muted); min-height: 28px; }
+  .rail-timer svg.i { width: 14px; height: 14px; }
+  .rail-timer b { font-weight: 800; color: var(--text); margin-inline-start: auto; font-variant-numeric: tabular-nums; }
+  .rail-timer b.soon { color: var(--error); }
+  .rail .rail-logout { color: var(--error); min-height: 40px; }
+  body.rail-mini .rail-timer { display: none; }
+}

@@ -121,7 +121,7 @@ export async function signIn({ user, password, invite = '', remember = true }) {
   } catch { throw codeErr('offline'); }
   if (r.status === 429) throw codeErr('locked');
   if (r.status !== 200 || !r.j.token) throw codeErr(invite ? 'bad-invite' : 'wrong');
-  const session = { u, token: r.j.token, eph: !remember, mustChange: !!r.j.mustChange };
+  const session = { u, token: r.j.token, eph: !remember, mustChange: !!r.j.mustChange, t: Date.now() };
   if (remember) { try { localStorage.setItem('gfu-cloud-last', u); } catch { /* */ } }
   // المفتاح: في جلسة مؤقتة يبقى في هذا التبويب فقط؛ في الجوال يُحفظ في IndexedDB كمفتاح غير قابل للاستخراج
   if (!remember) session.k = toB64u(rawKey);
@@ -148,7 +148,7 @@ export async function changeAccount(sync, { user2, password }) {
   if (r.status === 401) throw codeErr('auth');
   if (r.status !== 200 || !r.j.token) throw codeErr('failed');
   sync.stop();
-  const session = { u: r.j.u, token: r.j.token, eph: !!s.eph, mustChange: false };
+  const session = { u: r.j.u, token: r.j.token, eph: !!s.eph, mustChange: false, t: s.t || Date.now() };
   if (s.eph) session.k = toB64u(rawKey);
   else { try { localStorage.setItem('gfu-cloud-last', r.j.u); } catch { /* */ } }
   writeSession(session);
