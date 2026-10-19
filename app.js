@@ -5,6 +5,7 @@ import CONFIG from './config.js';
 import { CHANGELOG } from './changelog.js';
 import { PLAN_NAME, planFor, gradeOf } from './lesson-plans.js';
 import * as cloud from './cloud.js';
+import { sanitizeRoster, gradeName, sectionLabel, sortedSections, sortedGrades } from './school.js';
 import { DAYS, SCHOOL_DAYS, REMIND_CHOICES, sanitizeSchedule, sortSchedule, nextOccurrence, buildICS, syncNativeReminders, minutesText } from './reminders.js';
 import {
   WEEKS, ITEMS, MAX_STUDENTS, parseScore, fmt, emptyClassData, getItems, setItem, getFin, setFin,
@@ -178,6 +179,7 @@ async function startCloud(session, key) {
   // كلمة سر مبدئية: نطلب اختيار الاسم وكلمة السر فورًا (الحفظ ينتظر انتهاء المزامنة الأولى بنفسه)
   if (session.mustChange && !C.loading && !hasSheet()) openAccountSheet(true);
   try { await startP; } finally { if (C.loading) { C.loading = false; render(); } }
+  loadSchoolRoster().catch(() => {});
   if (session.mustChange && C.sync && !hasSheet() && !document.querySelector('[data-acform]')) openAccountSheet(true);
 }
 function cloudLeftMs() { return C.session && DESK_WEB ? Math.max(0, (Number(C.session.t) || Date.now()) + DESK_SESSION_MS - Date.now()) : Infinity; }
@@ -268,6 +270,92 @@ function LoginGate() {
     <p class="hint">سجّل دخولك بحسابك — درجاتك تُحفظ مشفّرة، وتظهر في الكمبيوتر تلقائيًا.</p>
     <div data-cl data-gate>${loginFormHTML()}</div>
   </div></div>`;
+}
+
+// ===================== صفوف المدرسة: يختار المعلم شعبه من القائمة الكاملة =====================
+// المصدر: الخادم (للمسجّلين) أو ملف المدرسة (أندرويد). يُحفظ على الجهاز للاستعمال بلا إنترنت.
+async function loadSchoolRoster() {
+  if (!C.session) return null;
+  const r = sanitizeRoster(await cloud.fetchRoster(C.session));
+  if (!r) return null;
+  S.meta.schoolRoster = r;
+  await store.setMeta('schoolRoster', r).catch(() => {});
+  if (route().name === 'school') softRender();
+  return r;
+}
+async function importSchoolFile() {
+  const file = await platform.pickFile('.json,application/json');
+  if (!file) return;
+  let r = null;
+  try { r = sanitizeRoster(JSON.parse(await file.text())); } catch { r = null; }
+  if (!r) { toast(tr('هذا ليس ملف صفوف المدرسة.'), { err: true, ms: 5000 }); return; }
+  S.meta.schoolRoster = r;
+  await store.setMeta('schoolRoster', r).catch(() => {});
+  toast(T`تم ✓ ${ar(Object.values(r.grades).reduce((a, g) => a + Object.keys(g).length, 0))} شعبة`);
+  render();
+}
+function School(p) {
+  const r = S.meta.schoolRoster;
+  const mine = new Set(S.classes.map((c) => c.label));
+  const head = (title, back = true) => appbar({ title, backBtn: back });
+  if (!r) {
+    const how = platform.isNative || !CLOUD_ON
+      ? T`<p>اطلب من مسؤول التطبيق «ملف صفوف المدرسة» (يصلك بالواتساب مثلًا)، ثم استورده هنا مرة واحدة.</p>
+        <button type="button" class="btn primary lg block" data-act="school-import">${icon('upload')} استيراد ملف صفوف المدرسة</button>`
+      : C.session ? T`<p>جارٍ جلب القوائم من حسابك… إن لم تظهر فالمسؤول لم يرفعها بعد.</p><button type="button" class="btn block" data-act="school-reload">${icon('refresh')} حاول مرة ثانية</button>`
+        : T`<p>سجّل الدخول وتظهر لك قوائم صفوف المدرسة كاملة.</p><button type="button" class="btn primary lg block" data-act="cloud-login">${icon('user')} تسجيل الدخول</button>`;
+    return T`${head(tr('صفوف المدرسة'))}<div class="wrap stack"><div class="empty card">${ART_USERS}<h2>قوائم المدرسة غير موجودة بعد</h2>${how}
+      <button type="button" class="btn ghost block" data-act="new-class-manual">${icon('plus')} إضافة صف يدويًا</button></div></div>`;
+  }
+  const grades = sortedGrades(r);
+  if (!p.grade || !r.grades[p.grade]) {
+    // الخطوة ١: الصفوف الأربعة
+    const tiles = grades.map((g) => {
+      const secs = r.grades[g];
+      const nSec = Object.keys(secs).length;
+      const have = sortedSections(secs).filter((x) => mine.has(sectionLabel(g, x))).length;
+      return T`<button type="button" class="card grade-tile" data-act="school-grade" data-g="${g}"><b>الصف ${gradeName(g)}</b><small>${ar(nSec)} شعبة</small>${have ? T`<span class="gt-mine">${icon('check')} ${ar(have)} عندك</span>` : ''}</button>`;
+    }).join('');
+    return T`${head(tr('صفوف المدرسة'))}<div class="wrap stack">
+      <p class="hint">اختر الصف، ثم حدّد شعبك وتنضاف لصفحة «الصفوف» بأسماء طلابها.</p>
+      <div class="grade-tiles">${tiles}</div>
+      <button type="button" class="btn ghost block" data-act="new-class-manual">${icon('plus')} شعبة غير موجودة؟ أضفها يدويًا</button>
+      ${platform.isNative || !CLOUD_ON ? T`<button type="button" class="link-btn" data-act="school-import">${icon('upload')} تحديث ملف صفوف المدرسة</button>` : ''}
+    </div>`;
+  }
+  // الخطوة ٢: شعب الصف المختار
+  const g = p.grade;
+  p.pick ||= new Set();
+  const rows = sortedSections(r.grades[g]).map((x) => {
+    const lab = sectionLabel(g, x); const has = mine.has(lab); const on = has || p.pick.has(x);
+    return T`<label class="list-item sec-row ${has ? 'mine' : ''}"><input type="checkbox" class="check" data-sec="${x}" ${on ? 'checked' : ''} ${has ? 'disabled' : ''}><span class="grow"><strong>الشعبة ${ar(x)}</strong><small>${students(r.grades[g][x].length)}${has ? T` · مضافة عندك` : ''}</small></span></label>`;
+  }).join('');
+  const n = p.pick.size;
+  return T`${head(T`الصف ${gradeName(g)}`)}<div class="wrap stack school-secs">
+    <p class="hint">حدّد الشعب اللي تدرّسها:</p>
+    <div class="list">${rows}</div>
+    <div class="sticky-save"><button type="button" class="btn primary lg block" data-act="school-save" ${n ? '' : 'disabled'}>${n ? T`حفظ ${ar(n)} شعبة في صفوفي` : tr('اختر شعبة أو أكثر')}</button></div>
+  </div>`;
+}
+async function saveSchoolPick(p) {
+  const r = S.meta.schoolRoster;
+  if (!r || !p.grade || !p.pick || !p.pick.size) return;
+  const mine = new Set(S.classes.map((c) => c.label));
+  let added = 0;
+  for (const x of sortedSections(r.grades[p.grade])) {
+    if (!p.pick.has(x)) continue;
+    const label = sectionLabel(p.grade, x);
+    if (mine.has(label)) continue;
+    const id = uid();
+    S.classes.push({ id, label, names: r.grades[p.grade][x].slice(0, MAX_STUDENTS) });
+    S.grades[id] = emptyClassData();
+    await store.saveGrades(id, S.grades[id]);
+    added++;
+  }
+  await saveClassesNow();
+  toast(T`أُضيفت ${ar(added)} شعبة إلى صفوفك ✓`);
+  S.stack = [{ name: 'home', p: {} }];
+  render({ scrollTop: true });
 }
 
 // أول دخول (أو من الإعدادات): يختار المعلم اسم المستخدم وكلمة السر بنفسه
@@ -518,7 +606,7 @@ function render({ scrollTop = false } = {}) {
     renderNav();
     return;
   }
-  const screens = { schedule: Schedule, home: Home, reports: Reports, tools: Tools, class: ClassScreen, student: StudentScreen, editor: Editor, settings: Settings, live: Live, transferOut: TransferOut, transferIn: TransferIn, guide: Guide };
+  const screens = { school: School, schedule: Schedule, home: Home, reports: Reports, tools: Tools, class: ClassScreen, student: StudentScreen, editor: Editor, settings: Settings, live: Live, transferOut: TransferOut, transferIn: TransferIn, guide: Guide };
   const fn = screens[r.name] || Home;
   const isRoot = ROOTS.includes(r.name);
   main().className = 'main' + (isRoot ? '' : ' no-tabbar') + (r.name === 'class' && WIDE.matches && cls(r.p.id) && cls(r.p.id).names.length ? ' desk-class' : '');
@@ -647,7 +735,8 @@ function Home() {
         <li><span class="n">${ar(2)}</span><span>الصق أسماء الطلاب أو استوردها من Excel أو PDF</span></li>
         <li><span class="n">${ar(3)}</span><span>ارصد الدرجات ثم صدّر الكشف</span></li>
       </ol>
-      <button type="button" class="btn primary lg block" data-act="new-class">${icon('plus')} إضافة صف</button>
+      <button type="button" class="btn primary lg block" data-act="go" data-to="school">${icon('users')} اختر صفوفك من قائمة المدرسة</button>
+      <button type="button" class="btn lg block" style="margin-top:8px" data-act="new-class">${icon('plus')} إضافة صف يدويًا</button>
       <button type="button" class="btn lg block" style="margin-top:8px" data-act="import-classes">${icon('upload')} إنشاء الصفوف من ملف (Excel أو PDF)</button>
       <p class="hint" style="margin-top:12px">لديك نسخة احتياطية؟ <button type="button" class="btn ghost sm" data-act="restore">استرجاع نسخة</button></p></div>`;
   } else {
@@ -1565,6 +1654,7 @@ function Editor(p) {
   }).join('');
   return T`${appbar({ title: p.id ? tr('تعديل الصف') : tr('صف جديد'), actions: `<button type="button" class="btn primary sm" data-act="save-class">${p.id ? tr('حفظ') : tr('إنشاء')}</button>` })}
   <div class="wrap stack">
+    ${p.id || p.manual ? '' : T`<button type="button" class="card school-pick" data-act="go" data-to="school">${icon('users')}<span class="grow"><strong>اختر من صفوف المدرسة</strong><small>الصف ← الشعب، وتنضاف بأسماء طلابها جاهزة</small></span>${icon('fwd')}</button>`}
     <div class="card"><div class="field"><label for="cls-label">اسم الصف</label><input id="cls-label" class="input" data-draft-label value="${esc(dr.label)}" placeholder="مثل: العاشر / 3" autocomplete="off"></div></div>
     <div class="card stack">
       <h3>إضافة طلاب</h3>
@@ -2988,6 +3078,11 @@ document.addEventListener('click', async (e) => {
     case 'filter-sheet': openFilterSheet(cls(p.id), p.tab); break;
     case 'cloud-login': openCloudLogin(); break;
     case 'cloud-account': openAccountSheet(false); break;
+    case 'school-grade': go('school', { grade: el.dataset.g, pick: new Set() }); break; // صفحة مستقلة: «رجوع» يعيد لاختيار الصف
+    case 'school-save': saveSchoolPick(p); break;
+    case 'school-import': importSchoolFile(); break;
+    case 'school-reload': loadSchoolRoster().then((r) => { if (!r) toast(tr('القوائم غير موجودة في الخادم بعد.'), { err: true }); }); break;
+    case 'new-class-manual': go('editor', { manual: true }); break;
     case 'copy-site': if (await platform.copyText(siteUrl())) toast(tr('نُسخ الرابط ✓')); break;
     case 'cloud-logout': cloudLogout(); break;
     case 'cloud-sync': if (C.sync) { C.sync.pull(); C.sync.flushSoon(10); toast(tr('جارٍ المزامنة…')); } break;
@@ -3403,6 +3498,7 @@ document.addEventListener('change', async (e) => {
   const t = e.target;
   const r = route();
   if (t.matches('[data-setting-bool]')) { S.settings[t.dataset.settingBool] = t.checked; await saveSettingsNow(); if (t.dataset.settingBool === 'remindersOn') { await syncReminders(); render(); } return; }
+  if (t.matches('[data-sec]')) { const x = t.dataset.sec; r.p.pick ||= new Set(); if (t.checked) r.p.pick.add(x); else r.p.pick.delete(x); render(); return; }
   if (t.matches('[data-sel]')) { const i = +t.dataset.sel; if (t.checked) r.p.sel.add(i); else r.p.sel.delete(i); render(); return; }
   if (t.matches('[data-pick-st]')) { const i = +t.dataset.pickSt; if (t.checked) r.p.pick.add(i); else r.p.pick.delete(i); render(); return; }
   if (t.matches('[data-tgt]')) { r.p.target = t.dataset.tgt; render(); return; }

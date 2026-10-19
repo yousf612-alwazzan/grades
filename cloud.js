@@ -129,6 +129,13 @@ export async function signIn({ user, password, invite = '', remember = true }) {
   return { session, key: await importKey(rawKey), rawKey };
 }
 function codeErr(code) { const e = new Error(code); e.code = code; return e; }
+/** قوائم صفوف المدرسة (للمعلم المسجّل فقط). null إن لم تُرفع أو تعذّر الاتصال. */
+export async function fetchRoster(session) {
+  try {
+    const r = await api('/api/roster', { token: session.token });
+    return r.status === 200 ? r.j : null;
+  } catch { return null; }
+}
 export function lastUser() { try { return localStorage.getItem('gfu-cloud-last') || ''; } catch { return ''; } }
 
 /** تغيير كلمة السر و/أو اسم المستخدم: يعيد تشفير كل المستندات بالمفتاح الجديد ويرسلها مرة واحدة.

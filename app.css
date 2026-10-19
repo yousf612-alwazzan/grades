@@ -1372,3 +1372,22 @@ body.remote .rail { padding-top: 16px; }
 .class-card:active { transform: scale(.98); }
 .class-card:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
 @media (min-width: 900px) { .home-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; } }
+
+/* ===== صفوف المدرسة ===== */
+.grade-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (min-width: 900px) { .grade-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.grade-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 18px 16px; min-height: 104px; border: 0; text-align: start; font: inherit; color: var(--text); cursor: pointer; }
+.grade-tile b { font-size: 19px; font-weight: 800; }
+.grade-tile small { color: var(--muted); font-size: 13.5px; }
+.grade-tile .gt-mine { margin-top: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 700; color: var(--success); }
+.grade-tile .gt-mine svg.i { width: 14px; height: 14px; }
+.grade-tile:active { transform: scale(.98); }
+.sec-row { cursor: pointer; }
+.sec-row .check { width: 22px; height: 22px; accent-color: var(--primary); flex: none; }
+.sec-row.mine { opacity: .7; cursor: default; }
+.school-secs .sticky-save { position: sticky; bottom: calc(var(--tabbar-h, 64px) + 8px); padding-top: 8px; }
+body.no-tabbar .school-secs .sticky-save { bottom: 12px; }
+.school-pick { display: flex; align-items: center; gap: 12px; width: 100%; padding: 16px; border: 0; font: inherit; color: var(--text); text-align: start; background: var(--primary-soft); cursor: pointer; }
+.school-pick strong { display: block; color: var(--primary); font-size: 16px; }
+.school-pick small { display: block; color: var(--muted); font-size: 13px; }
+.school-pick > svg.i:first-child { width: 26px; height: 26px; color: var(--primary); }
