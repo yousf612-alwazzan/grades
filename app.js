@@ -2486,8 +2486,8 @@ async function startScanner() {
     render();
     const msg = e && e.code === 'denied'
       ? (platform.isIOS ? tr('رُفض إذن الكاميرا. فعّله من: الإعدادات ← Safari ← الكاميرا ← سماح، ثم أعد المحاولة.') : tr('رُفض إذن الكاميرا. فعّله من إعدادات الجهاز ← التطبيقات ← الأذونات ← الكاميرا.'))
-      : e && e.code === 'notfound' ? tr('لا توجد كاميرا متاحة. استعمل «الصق رمز العرض».')
-        : e && e.code === 'insecure' ? tr('الكاميرا تحتاج رابطًا آمنًا (https).') : tr('تعذّر فتح الكاميرا. استعمل «الصق رمز العرض».');
+      : e && e.code === 'notfound' ? tr('لا توجد كاميرا متاحة. اضغط «اكتب الرمز الظاهر في الكمبيوتر».')
+        : e && e.code === 'insecure' ? tr('الكاميرا تحتاج رابطًا آمنًا (https).') : tr('تعذّر فتح الكاميرا. اضغط «اكتب الرمز الظاهر في الكمبيوتر».');
     toast(msg, { err: true, ms: 7000 });
   }
 }
@@ -2934,7 +2934,7 @@ document.addEventListener('click', async (e) => {
       document.body.classList.toggle('qr-fullscreen', box.classList.contains('full'));
       break;
     }
-    case 'live-copy': if (await platform.copyText(L.answer || '')) toast(tr('نُسخ الرمز ✓ الصقه في صفحة العرض («لصق الرد»)')); break;
+    case 'live-copy': if (await platform.copyText(L.answer || '')) toast(tr('نُسخ رمز الرد ✓')); break;
     case 'copy-view': { let u = S.settings.viewUrl || defaultViewUrl(); if (lang() === 'en' && u) u += (u.includes('?') ? '&' : '?') + 'lang=en'; if (await platform.copyText(u)) toast(tr('نُسخ الرابط ✓')); break; }
     case 'live-blank': L.blank = !L.blank; liveSend({ type: 'blank', on: L.blank }); haptic('light'); render(); break;
     case 'live-stop': liveStop(); render(); toast(tr('أُوقف العرض')); break;

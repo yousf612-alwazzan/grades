@@ -146,7 +146,7 @@ function setPairStatus(text, kind = '') {
 const RELAY_TEXT = {
   waiting: ['بانتظار الجوال…', 'wait'],
   received: ['تم استلام الرد، جارٍ الاتصال…', 'busy'],
-  unreachable: ['تعذّر الوصول للوسيط — استعمل اللصق اليدوي', 'error'],
+  unreachable: ['لا يوجد إنترنت — افتح «مشاكل الاتصال؟» وصوّر رد الجوال بكاميرا الكمبيوتر', 'error'],
   expired: ['انتهت صلاحية الرمز. اضغط «رمز جديد».', 'error'],
 };
 function onRelay(s) {
@@ -188,7 +188,7 @@ function showOffer(code) {
   if (link && link.room) onRelay(link.relayState === 'off' ? 'waiting' : link.relayState);
   else {
     // متصفح لا يدعم التشفير/الوسيط: اللصق اليدوي فقط
-    setPairStatus(tr('امسح الرمز بالجوال، ثم الصق رمز الرد يدويًا'), 'wait');
+    setPairStatus(tr('صوّر الرمز بالجوال، ثم صوّر رد الجوال بكاميرا الكمبيوتر'), 'wait');
     $('help').open = true;
   }
 }
@@ -1254,7 +1254,7 @@ function disconnect() {
 
 // ---------- الأحداث ----------
 function bind() {
-  $('btn-paste').innerHTML = btnHtml(I.paste, tr('لصق الرد يدويًا'));
+  $('btn-paste').innerHTML = btnHtml(I.paste, tr('لصق رمز نصي'));
   $('btn-cam').addEventListener('click', openCam);
   $('btn-soft-qr').addEventListener('click', () => { openModal('modal-qr'); paintResumeQR(); });
   $('btn-copy').innerHTML = btnHtml(I.copy, tr('نسخ رمز العرض'));
