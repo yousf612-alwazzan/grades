@@ -115,13 +115,41 @@ export async function signIn({ user, password, invite = '', remember = true }) {
   } catch { throw codeErr('offline'); }
   if (r.status === 429) throw codeErr('locked');
   if (r.status !== 200 || !r.j.token) throw codeErr(invite ? 'bad-invite' : 'wrong');
-  const session = { u, token: r.j.token, eph: !remember };
+  const session = { u, token: r.j.token, eph: !remember, mustChange: !!r.j.mustChange };
+  if (remember) { try { localStorage.setItem('gfu-cloud-last', u); } catch { /* */ } }
   // المفتاح: في جلسة مؤقتة يبقى في هذا التبويب فقط؛ في الجوال يُحفظ في IndexedDB كمفتاح غير قابل للاستخراج
   if (!remember) session.k = toB64u(rawKey);
   writeSession(session);
   return { session, key: await importKey(rawKey), rawKey };
 }
 function codeErr(code) { const e = new Error(code); e.code = code; return e; }
+export function lastUser() { try { return localStorage.getItem('gfu-cloud-last') || ''; } catch { return ''; } }
+
+/** تغيير كلمة السر و/أو اسم المستخدم: يعيد تشفير كل المستندات بالمفتاح الجديد ويرسلها مرة واحدة.
+ *  الأجهزة الأخرى تخرج ويُطلب منها الدخول بالبيانات الجديدة. يحتاج إنترنت. */
+export async function changeAccount(sync, { user2, password }) {
+  const s = sync.s;
+  const u2 = normUser(user2 || s.u);
+  if (!USER_RE.test(u2)) throw codeErr('bad-user');
+  await sync.flush();
+  await sync.pull();
+  if (sync.dirty.size || sync.state === 'offline') throw codeErr('offline');
+  const { proof, rawKey } = await deriveKeys(u2, password);
+  const key = await importKey(rawKey);
+  const docs = [];
+  for (const k of sync.host.keys()) { const v = sync.host.get(k); if (v !== null && v !== undefined) docs.push({ k, d: await encryptDoc(key, k, v) }); }
+  let r;
+  try { r = await api('/api/account', { method: 'POST', token: s.token, body: { ...(u2 !== s.u ? { u2 } : {}), a: proof, docs } }); } catch { throw codeErr('offline'); }
+  if (r.status === 409) throw codeErr('taken');
+  if (r.status === 401) throw codeErr('auth');
+  if (r.status !== 200 || !r.j.token) throw codeErr('failed');
+  sync.stop();
+  const session = { u: r.j.u, token: r.j.token, eph: !!s.eph, mustChange: false };
+  if (s.eph) session.k = toB64u(rawKey);
+  else { try { localStorage.setItem('gfu-cloud-last', r.j.u); } catch { /* */ } }
+  writeSession(session);
+  return { session, key };
+}
 
 // ---------- محرك المزامنة ----------
 // host: { keys(), get(k), apply(k, data), loadMeta(), saveMeta(m), onState(s), onAuthLost() }

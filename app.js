@@ -171,6 +171,7 @@ async function startCloud(session, key) {
   C.loading = session.eph;
   if (C.loading) render();
   try { await C.sync.start(); } finally { if (C.loading) { C.loading = false; render(); } }
+  if (session.mustChange && C.sync && !hasSheet()) openAccountSheet(true);
 }
 async function cloudLogout() {
   const eph = C.session && C.session.eph;
@@ -185,46 +186,36 @@ async function cloudLogout() {
   render();
   toast(tr('خرجت من الحساب'));
 }
-function openCloudLogin(first = false) {
+function openCloudLogin() {
   const s = openSheet('<div data-cl></div>', { label: tr('تسجيل الدخول') });
-  let mode = first ? 'first' : 'login';
   const remember0 = !WIDE.matches; // الجوال: يتذكر. الكمبيوتر (غالبًا مشترك): لا يحفظ شيئًا
-  const paint = (err = '') => {
-    s.sheet.querySelector('[data-cl]').innerHTML = T`<h2>${icon('lock')} حسابك المشفّر</h2>
+  const paint = (err = '', user = cloud.lastUser()) => {
+    s.sheet.querySelector('[data-cl]').innerHTML = T`<h2>${icon('lock')} تسجيل الدخول</h2>
       <p class="hint">درجاتك تُشفَّر بكلمة سرك على جهازك قبل ما تطلع منه — ولا أحد غيرك يقدر يقرأها.</p>
-      <div class="seg cl-tabs" role="group"><button type="button" data-clm="login" aria-pressed="${mode === 'login'}">دخول</button><button type="button" data-clm="first" aria-pressed="${mode === 'first'}">أول مرة (رمز دعوة)</button></div>
       <form class="stack" data-clform autocomplete="on">
-        <div class="field"><label for="cl-u">اسم المستخدم</label><input id="cl-u" class="input" dir="ltr" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required></div>
-        ${mode === 'first' ? T`<div class="field"><label for="cl-i">رمز الدعوة</label><input id="cl-i" class="input short-input" dir="ltr" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" required></div>` : ''}
-        <div class="field"><label for="cl-p">${mode === 'first' ? tr('اختر كلمة سر (٨ أحرف على الأقل)') : tr('كلمة السر')}</label><input id="cl-p" class="input" dir="ltr" type="password" name="password" autocomplete="${mode === 'first' ? 'new-password' : 'current-password'}" required></div>
-        ${mode === 'first' ? T`<div class="field"><label for="cl-p2">أعد كتابة كلمة السر</label><input id="cl-p2" class="input" dir="ltr" type="password" autocomplete="new-password" required></div>` : ''}
+        <div class="field"><label for="cl-u">اسم المستخدم</label><input id="cl-u" class="input" dir="ltr" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" value="${esc(user)}" required></div>
+        <div class="field"><label for="cl-p">كلمة السر</label><input id="cl-p" class="input" dir="ltr" type="password" name="password" autocomplete="current-password" required></div>
         <label class="list-item cl-remember"><span class="grow"><strong>تذكّرني على هذا الجهاز</strong><small>ألغِه في كمبيوتر المدرسة المشترك: لا يُحفظ عليه شيء ويُمسح عند إغلاق الصفحة.</small></span><input type="checkbox" class="switch" data-clr ${remember0 ? 'checked' : ''}></label>
         ${err ? `<p class="field-error" role="alert">${esc(err)}</p>` : ''}
-        <button type="submit" class="btn primary lg block" data-clgo>${mode === 'first' ? tr('إنشاء الحساب') : tr('دخول')}</button>
-        ${mode === 'first' ? T`<p class="hint">مهم: احفظ كلمة السر. لو نسيتها يعطيك المسؤول رمز دعوة جديد، وترفع درجاتك من جوالك من جديد.</p>` : ''}
+        <button type="submit" class="btn primary lg block" data-clgo>دخول</button>
+        <button type="button" class="link-btn" data-cl-forgot>نسيت اسم المستخدم أو كلمة السر؟</button>
       </form>`;
   };
   paint();
-  const keep = {};
   s.sheet.addEventListener('click', (e) => {
-    const t = e.target.closest('[data-clm]');
-    if (!t) return;
-    for (const id of ['cl-u', 'cl-p']) { const el = s.sheet.querySelector('#' + id); if (el) keep[id] = el.value; }
-    mode = t.dataset.clm; paint();
-    for (const [id, v] of Object.entries(keep)) { const el = s.sheet.querySelector('#' + id); if (el) el.value = v; }
+    if (!e.target.closest('[data-cl-forgot]')) return;
+    const f = s.sheet.querySelector('[data-cl-forgot]');
+    f.outerHTML = T`<div class="alert info">${icon('info')}<div class="grow"><p style="margin:0"><b>اسم المستخدم:</b> مكتوب في جوالك في «الإعدادات ← الحساب والمزامنة»، ويتعبّى هنا تلقائيًا على الجهاز اللي دخلت منه قبل.<br><b>نسيت كلمة السر أو الاسم؟</b> كلّم مسؤول التطبيق: يرجّع حسابك بكلمة السر المبدئية، وتختار كلمة جديدة. درجاتك ما تضيع لأنها محفوظة في جوالك وترتفع من جديد.</p></div></div>`;
   });
   s.sheet.addEventListener('submit', async (e) => {
     e.preventDefault();
     const q = (id) => (s.sheet.querySelector('#' + id) || {}).value || '';
     const user = q('cl-u'); const pass = q('cl-p'); const remember = s.sheet.querySelector('[data-clr]').checked;
-    const fail = (m) => { const u = q('cl-u'); paint(m); s.sheet.querySelector('#cl-u').value = u; };
-    if (!cloud.USER_RE.test(cloud.normUser(user))) return fail(tr('اسم المستخدم: أحرف إنجليزية صغيرة وأرقام فقط (٣ أحرف على الأقل).'));
-    if (mode === 'first' && pass.length < 8) return fail(tr('كلمة السر قصيرة — ٨ أحرف على الأقل.'));
-    if (mode === 'first' && pass !== q('cl-p2')) return fail(tr('كلمتا السر غير متطابقتين.'));
+    if (!cloud.USER_RE.test(cloud.normUser(user))) return paint(tr('اسم المستخدم: أحرف إنجليزية صغيرة وأرقام فقط (٣ أحرف على الأقل).'), user);
     const btn = s.sheet.querySelector('[data-clgo]');
     btn.disabled = true; btn.textContent = tr('جارٍ التحقق…');
     try {
-      const r = await cloud.signIn({ user, password: pass, invite: mode === 'first' ? q('cl-i') : '', remember });
+      const r = await cloud.signIn({ user, password: pass, remember });
       s.close();
       if (!remember) { location.reload(); return; } // جلسة مؤقتة: نبدأ من ذاكرة فارغة بلا لمس بيانات هذا الجهاز
       await localStore.setMeta('cloudKey', r.key);
@@ -233,7 +224,49 @@ function openCloudLogin(first = false) {
       render();
     } catch (err) {
       const code = err && err.code;
-      fail(code === 'wrong' ? tr('اسم المستخدم أو كلمة السر غير صحيحة.') : code === 'locked' ? tr('محاولات كثيرة خاطئة — انتظر ١٠ دقائق ثم حاول.') : code === 'bad-invite' ? tr('رمز الدعوة غير صحيح أو مستخدم من قبل.') : code === 'offline' ? tr('لا يوجد اتصال بالإنترنت.') : tr('تعذّر الدخول. حاول مرة ثانية.'));
+      paint(code === 'wrong' ? tr('اسم المستخدم أو كلمة السر غير صحيحة.') : code === 'locked' ? tr('محاولات كثيرة خاطئة — انتظر ١٠ دقائق ثم حاول.') : code === 'offline' ? tr('لا يوجد اتصال بالإنترنت.') : tr('تعذّر الدخول. حاول مرة ثانية.'), user);
+    }
+  });
+}
+
+// أول دخول (أو من الإعدادات): يختار المعلم اسم المستخدم وكلمة السر بنفسه
+function openAccountSheet(first = false) {
+  if (!C.sync || !C.session) return;
+  const s = openSheet('<div data-ac></div>', { label: tr('اسم المستخدم وكلمة السر') });
+  const paint = (err = '', vals = {}) => {
+    s.sheet.querySelector('[data-ac]').innerHTML = T`<h2>${icon('user')} ${first ? tr('أهلًا! اختر اسمك وكلمة سرك') : tr('اسم المستخدم وكلمة السر')}</h2>
+      <p class="hint">${first ? tr('دخلت بكلمة السر المبدئية. اختر الآن اسم مستخدم تتذكره وكلمة سر خاصة فيك — تستعملها في الجوال والكمبيوتر.') : tr('بعد التغيير تخرج الأجهزة الثانية، وتدخل فيها بالاسم وكلمة السر الجديدة.')}</p>
+      <form class="stack" data-acform autocomplete="on">
+        <div class="field"><label for="ac-u">اسم المستخدم (بالإنجليزي)</label><input id="ac-u" class="input" dir="ltr" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" value="${esc(vals.u ?? C.session.u)}" required><small class="hint">أحرف إنجليزية صغيرة وأرقام و . _ - مثل: ahmad أو t.sara</small></div>
+        <div class="field"><label for="ac-p">كلمة السر الجديدة (٦ أحرف أو أرقام على الأقل)</label><input id="ac-p" class="input" dir="ltr" type="password" name="new-password" autocomplete="new-password" required></div>
+        <div class="field"><label for="ac-p2">أعد كتابة كلمة السر</label><input id="ac-p2" class="input" dir="ltr" type="password" autocomplete="new-password" required></div>
+        ${err ? `<p class="field-error" role="alert">${esc(err)}</p>` : ''}
+        <button type="submit" class="btn primary lg block" data-acgo>حفظ</button>
+      </form>`;
+  };
+  paint();
+  s.sheet.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const q = (id) => (s.sheet.querySelector('#' + id) || {}).value || '';
+    const u2 = cloud.normUser(q('ac-u')); const p1 = q('ac-p');
+    if (!cloud.USER_RE.test(u2)) return paint(tr('اسم المستخدم: أحرف إنجليزية صغيرة وأرقام فقط (٣ أحرف على الأقل).'), { u: q('ac-u') });
+    if (p1.length < 6) return paint(tr('كلمة السر قصيرة — ٦ أحرف أو أرقام على الأقل.'), { u: q('ac-u') });
+    if (p1 !== q('ac-p2')) return paint(tr('كلمتا السر غير متطابقتين.'), { u: q('ac-u') });
+    if (p1 === '12345678') return paint(tr('اختر كلمة سر غير الكلمة المبدئية.'), { u: q('ac-u') });
+    const btn = s.sheet.querySelector('[data-acgo]');
+    btn.disabled = true; btn.textContent = tr('جارٍ الحفظ والتشفير…');
+    try {
+      const r = await cloud.changeAccount(C.sync, { user2: u2, password: p1 });
+      s.close();
+      C.sync = null;
+      if (r.session.eph) C.memMeta = null;
+      else { await localStore.setMeta('cloudKey', r.key); await localStore.setMeta('cloudSync', null); }
+      await startCloud(r.session, r.key);
+      render();
+      toast(T`تم ✓ اسم المستخدم: ${r.session.u}`, { ms: 6000 });
+    } catch (err) {
+      const code = err && err.code;
+      paint(code === 'taken' ? tr('اسم المستخدم هذا مأخوذ — اختر اسمًا آخر.') : code === 'offline' ? tr('يحتاج اتصال بالإنترنت — حاول مرة ثانية.') : code === 'auth' ? tr('انتهت الجلسة — سجّل الدخول من جديد.') : tr('تعذّر الحفظ. حاول مرة ثانية.'), { u: q('ac-u') });
     }
   });
 }
@@ -1900,6 +1933,7 @@ function Settings() {
     ${CLOUD_ON ? (C.session ? T`<div class="section-title">الحساب والمزامنة</div>
     <div class="list">
       <div class="list-item">${icon('user')}<span class="grow"><strong dir="ltr" style="text-align:start">${esc(C.session.u)}</strong><small data-cloud-state>${tr(CLOUD_TEXT[C.state] || '')}</small></span>${icon('lock')}</div>
+      <button type="button" class="list-item" data-act="cloud-account">${icon('edit')}<span class="grow"><strong>تغيير اسم المستخدم أو كلمة السر</strong></span>${icon('fwd')}</button>
       <button type="button" class="list-item" data-act="cloud-sync">${icon('refresh')}<span class="grow"><strong>مزامنة الآن</strong><small>${C.session.eph ? tr('جلسة مؤقتة: لا يُحفظ شيء على هذا الجهاز') : tr('درجاتك على هذا الجهاز + نسخة مشفّرة في حسابك')}</small></span></button>
       <button type="button" class="list-item" data-act="cloud-logout">${icon('logout')}<span class="grow"><strong>خروج من الحساب</strong></span></button>
     </div>` : T`<div class="section-title">الحساب والمزامنة</div>
@@ -2871,7 +2905,8 @@ document.addEventListener('click', async (e) => {
     case 'fscope': S.ui.fscope = el.dataset.s === 'all' ? 'all' : 'week'; rerenderList(); break;
     case 'filter-share': shareFilter(cls(p.id), p.tab); break;
     case 'filter-sheet': openFilterSheet(cls(p.id), p.tab); break;
-    case 'cloud-login': openCloudLogin(false); break;
+    case 'cloud-login': openCloudLogin(); break;
+    case 'cloud-account': openAccountSheet(false); break;
     case 'cloud-logout': cloudLogout(); break;
     case 'cloud-sync': if (C.sync) { C.sync.pull(); C.sync.flushSoon(10); toast(tr('جارٍ المزامنة…')); } break;
     case 'side-toggle': S.ui.sideHidden = !S.ui.sideHidden; setDeskPref('gfu-side', S.ui.sideHidden); render(); break;
