@@ -1,6 +1,7 @@
 // ترجمة الواجهة للإنجليزية. المفتاح = النص العربي كما في الكود (و{} مكان كل قيمة متغيرة؛ {0} {1} لإعادة الترتيب).
 // لتعديل ترجمة: غيّر النص الإنجليزي فقط. نص بلا ترجمة يظهر بالعربية.
 export default {
+  "الكمبيوتر المربوط بالجوال: رأس واحد لكل صفحة بدل رأسين، وفيه حالة الاتصال وملء الشاشة وقطع الاتصال": "Computer linked to the phone: one header per page instead of two, with the connection status, full screen and disconnect in it",
   "%": "%",
   "(اختر صف كل طالب)": "(choose each student's class)",
   "(الأسابيع {}–{})": "(Weeks {}–{})",

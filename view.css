@@ -519,7 +519,9 @@ textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 
 
 /* وضع الإدارة */
 .manage { position: fixed; inset: 0; top: var(--topbar-h, 64px); background: var(--bg); }
-.app.managing .topbar { position: relative; }
+.app.managing .topbar { display: none; }
+.app.managing .manage { top: 0; }
+.app.managing .banner { position: fixed; z-index: 46; inset-inline: 16px; inset-block-end: 16px; border-radius: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
 .manage-frame { width: 100%; height: 100%; border: 0; display: block; background: var(--bg); }
 .manage-back { position: fixed; z-index: 40; inset-block-end: 20px; inset-inline-start: 20px; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
 .issue-badge { margin-inline-start: 6px; }

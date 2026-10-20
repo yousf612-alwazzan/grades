@@ -122,6 +122,7 @@ function updateFullBtn() {
   const f = isFull();
   $('btn-full').innerHTML = btnHtml(f ? I.exitFull : I.full, f ? tr('خروج من ملء الشاشة') : tr('ملء الشاشة'));
   $('btn-full').setAttribute('aria-label', f ? tr('خروج من ملء الشاشة') : tr('ملء الشاشة'));
+  hostSync();
 }
 async function toggleFull() {
   try {
@@ -279,6 +280,11 @@ function renderPill() {
   p.dataset.state = s;
   $('conn-text').textContent = tr(CONN_TEXT[ui.connState] || '');
   p.hidden = ui.screen === 'pair' && ui.connState !== 'connecting';
+  hostSync();
+}
+// وضع الإدارة: الشريط العلوي مخفي، فنرسل حالته لرأس التطبيق داخل الإطار
+function hostSync() {
+  try { if (manageFrame && manageFrame.contentWindow) manageFrame.contentWindow.postMessage({ gfu: 'host', conn: ui.connState, full: isFull() }, location.origin); } catch { /* قبل تجهيز الإطار */ }
 }
 
 function onConnState(s) {
@@ -915,7 +921,8 @@ window.addEventListener('message', (e) => {
   if (e.origin !== location.origin || !manageFrame || e.source !== manageFrame.contentWindow) return;
   const d = e.data;
   if (!d || typeof d !== 'object') return;
-  if (d.gfu === 'ready') { if (mirror) toFrame({ type: 'state', ...mirror }); return; }
+  if (d.gfu === 'ready') { if (mirror) toFrame({ type: 'state', ...mirror }); hostSync(); return; }
+  if (d.gfu === 'cmd') { if (d.cmd === 'full') toggleFull(); else if (d.cmd === 'disconnect') disconnect(); return; }
   if (d.gfu === 'op' && d.msg) {
     applyMirror(d.msg);
     // الجوال متصل: يُرسل فورًا. غائب (قفل الشاشة/تطبيق آخر): ينتظر ويُرسل عند رجوعه

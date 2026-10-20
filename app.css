@@ -632,7 +632,6 @@ table.grid .abs-btn { min-height: 40px; }
 .flat-details summary { font-weight: 800; cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 8px; }
 .remote-bar { position: sticky; top: 0; z-index: 25; display: flex; align-items: center; gap: 8px; justify-content: center; padding: 8px 16px; background: var(--primary); color: var(--primary-ink); font-size: 14px; }
 .remote-bar svg.i { width: 18px; height: 18px; }
-body.remote .appbar { top: 38px; }
 @media (min-width: 700px) { .mode-grid { grid-template-columns: 1fr 1fr; } }
 
 /* شريط «المشاركة تعمل» في كل الصفحات */
@@ -1147,7 +1146,6 @@ b, strong, h1, h2, h3, .btn, .tab { font-weight: 700; }
 }
 /* داخل شاشة الكمبيوتر: الاسم والشعار في الشريط العلوي فقط — بلا تكرار في القائمة الجانبية */
 /* body.remote .rail .brand: انظر «ترتيب القائمة الجانبية» */
-body.remote .rail { padding-top: 16px; }
 
 /* الإنجليزية (من اليسار لليمين): الأسهم تنعكس */
 :root[dir="ltr"] svg.i.dir { transform: scaleX(-1); }
@@ -1353,8 +1351,6 @@ body.remote .rail { padding-top: 16px; }
   body.rail-mini .ra-timer { display: none; }
   body.rail-mini .rail-account { padding: 6px 0; }
   /* داخل شاشة الكمبيوتر (وضع الإدارة): بلا شعار مكرر، ويبقى زر الإخفاء */
-  body.remote .rail .brand { display: flex; min-height: 36px; }
-  body.remote .rail .brand > img, body.remote .rail .brand > span { display: none; }
 }
 
 /* ===== بطاقات الصفوف: البطاقة كلها تُضغط، وبطاقتان في السطر على الجوال ===== */
@@ -1506,3 +1502,12 @@ body.cloud-on .appbar [data-save-state] { display: none; }
   body.cloud-on .cloud-chip { min-width: 0; padding: 0 10px; font-size: 12.5px; }
 }
 @media (min-width: 900px) { body.cloud-desk .appbar .cloud-chip { display: none; } } /* الكمبيوتر: الحالة في القائمة اليمين */
+
+/* ===== شاشة الكمبيوتر المربوطة بالجوال: رأس واحد (العنوان + الاتصال + ملء الشاشة + قطع الاتصال) ===== */
+.host-ctl { display: flex; align-items: center; gap: 6px; flex: none; margin-inline-start: 8px; padding-inline-start: 12px; border-inline-start: 1px solid var(--line, var(--border)); }
+.host-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--success); white-space: nowrap; }
+.host-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.host-pill[data-state="connecting"] { color: var(--warning); }
+.host-pill[data-state="disconnected"] { color: var(--error); }
+.host-ctl .btn.sm { min-height: 40px; }
+@media (max-width: 1100px) { .host-ctl .btn.sm { font-size: 0; gap: 0; padding: 0 10px; } .host-ctl .btn.sm svg.i { font-size: 16px; } }

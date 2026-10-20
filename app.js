@@ -25,6 +25,18 @@ import { T, tr, trCrit, lang, rememberLang, translateStatic } from './i18n.js';
 // REMOTE: هذا التطبيق يعمل داخل صفحة العرض على الكمبيوتر، وبياناته في جوال المعلم (لا شيء يُحفظ هنا).
 const REMOTE = new URLSearchParams(location.search).has('remote') && window.parent !== window;
 
+// حالة شاشة الكمبيوتر (الاتصال وملء الشاشة) — تظهر في رأس الصفحة بدل شريط ثانٍ فوقه
+const HOST = { conn: 'connected', full: false };
+const HOST_TEXT = { connecting: 'جارٍ الاتصال', connected: 'متصل بجوالك', disconnected: 'انقطع', closed: 'انقطع' };
+function hostCtlHTML() {
+  const st = HOST.conn === 'closed' ? 'disconnected' : HOST.conn;
+  return T`<span class="host-pill" data-state="${st}"><span class="dot"></span>${tr(HOST_TEXT[HOST.conn] || '')}</span>
+    <button type="button" class="icon-btn" data-act="host-full" title="${HOST.full ? tr('خروج من ملء الشاشة') : tr('ملء الشاشة')}" aria-label="${HOST.full ? tr('خروج من ملء الشاشة') : tr('ملء الشاشة')}">${icon(HOST.full ? 'exitFull' : 'full')}</button>
+    <button type="button" class="btn sm danger-ghost" data-act="host-disconnect">${icon('unlink')} قطع الاتصال</button>`;
+}
+function paintHost() { document.querySelectorAll('[data-host]').forEach((el) => { el.innerHTML = hostCtlHTML(); }); }
+const hostCmd = (cmd) => window.parent.postMessage({ gfu: 'cmd', cmd }, location.origin);
+
 function remoteStore(base) {
   const post = (msg) => window.parent.postMessage({ gfu: 'op', msg }, location.origin);
   let gotState;
@@ -34,6 +46,7 @@ function remoteStore(base) {
     const d = e.data;
     if (d && d.gfu === 'edit' && d.op) { presentEdit(d.op); return; }
     if (d && d.gfu === 'opt') { presentOpt(d.key, d.on); return; }
+    if (d && d.gfu === 'host') { HOST.conn = String(d.conn || ''); HOST.full = !!d.full; paintHost(); return; }
     if (!d || d.gfu !== 'phone' || !d.msg) return;
     const m = d.msg;
     if (m.type === 'state') { if (!S.booted) gotState(m); else applyPhoneState(m); return; }
@@ -707,6 +720,7 @@ function appbar({ title, sub = '', backBtn = true, actions = '', save = false })
     <h1>${esc(title)}${sub ? `<span class="sub">${sub}</span>` : ''}</h1>
     ${save ? (C.session ? cloudChip() : '<span data-save-state></span>') : ''}
     ${actions}
+    ${REMOTE ? `<div class="host-ctl" data-host>${hostCtlHTML()}</div>` : ''}
   </div></header>`;
 }
 
@@ -3162,6 +3176,8 @@ document.addEventListener('click', async (e) => {
     case 'cloud-logout': cloudLogout(); break;
     case 'cloud-sync': if (C.sync) { C.sync.pull(); C.sync.flushSoon(10); toast(tr('جارٍ المزامنة…')); } break;
     case 'side-toggle': S.ui.sideHidden = !S.ui.sideHidden; setDeskPref('gfu-side', S.ui.sideHidden); render(); break;
+    case 'host-full': hostCmd('full'); break;
+    case 'host-disconnect': hostCmd('disconnect'); break;
     case 'rail-toggle': setDeskPref('gfu-rail', !deskPref('gfu-rail')); renderNav(); break;
     case 'undo-bulk': if (S.ui.undo) S.ui.undo.fn(); break;
     case 'quick-note': quickNote(cls(p.id), typeof p.tab === 'number' ? p.tab : null, +el.dataset.idx); break;
