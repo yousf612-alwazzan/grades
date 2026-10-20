@@ -383,8 +383,11 @@ function backToPairing() {
   newOffer();
 }
 
+const viewUpd = { pending: false, reloaded: false };
 function setScreen(s) {
   ui.screen = s;
+  // تحديث وصل أثناء الاتصال: نطبّقه عند الرجوع لصفحة الربط
+  if (s === 'pair' && viewUpd.pending && ui.connState !== 'connected') { viewReload(); return; }
   $('app').dataset.screen = s;
   $('screen-pair').hidden = s !== 'pair';
   $('screen-live').hidden = s !== 'live';
@@ -1356,15 +1359,34 @@ if ('serviceWorker' in navigator && window.isSecureContext && !E2E) {
   const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').then((reg) => {
     // نسخة جديدة من صفحة العرض: قبل الاتصال نحدّث فورًا، وأثناء الاتصال نعرض زر «تحديث»
-    const ready = (w) => {
-      if (!hadController) return;
-      if (ui.screen === 'pair' && ui.connState !== 'connected' && performance.now() < 4000) { w.postMessage({ type: 'skip-waiting' }); return; }
-      const b = $('btn-update'); if (b) { b.hidden = false; b.onclick = () => w.postMessage({ type: 'skip-waiting' }); }
-    };
-    if (reg.waiting) ready(reg.waiting);
-    reg.addEventListener('updatefound', () => { const w = reg.installing; if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') ready(w); }); });
+    // نسخة قديمة تنتظر (من إصدارات سابقة): نفعّلها
+    if (reg.waiting && hadController) reg.waiting.postMessage({ type: 'skip-waiting' });
+    reg.update().catch(() => {});
     setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
   }).catch(() => {});
-  let reloaded = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
+  // النسخة الجديدة تولّت: قبل الاتصال نعيد التحميل فورًا، وأثناء الاتصال زر «تحديث متوفر» (ويُطبَّق عند الرجوع لصفحة الربط)
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || viewUpd.reloaded) return;
+    viewUpd.pending = true;
+    if (ui.screen === 'pair' && ui.connState !== 'connected') { viewReload(); return; }
+    const b = $('btn-update'); if (b) { b.hidden = false; b.onclick = viewReload; }
+  });
+  // احتياط لمتصفح عالق على نسخة قديمة: إن كان الإصدار المنشور أحدث، نمسح نسخ الملفات المخزّنة (لا بيانات هنا) ونعيد التحميل — مرة واحدة لكل إصدار
+  setTimeout(async () => {
+    if (viewUpd.reloaded || !navigator.onLine || ui.screen !== 'pair' || ui.connState === 'connected') return;
+    try {
+      const t = await (await fetch('config.js?v=' + Date.now(), { cache: 'no-store' })).text();
+      const m = /version:\s*'([\d.]+)'/.exec(t);
+      const pub = m && m[1];
+      if (!pub || !newerVer(pub, CONFIG.version)) return;
+      if (sessionStorage.getItem('gfu-hard-upd') === pub) return;
+      sessionStorage.setItem('gfu-hard-upd', pub);
+      if ('caches' in window) for (const k of await caches.keys()) if (k.startsWith('grades-')) await caches.delete(k);
+      const r = await navigator.serviceWorker.getRegistration(); if (r) await r.unregister();
+      viewUpd.reloaded = true;
+      location.replace(location.pathname + '?u=' + Date.now());
+    } catch { /* نحاول في المرة القادمة */ }
+  }, 25000);
 }
+function newerVer(a, b) { const x = String(a).split('.').map(Number); const y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; }
+function viewReload() { if (viewUpd.reloaded) return; viewUpd.reloaded = true; location.reload(); }

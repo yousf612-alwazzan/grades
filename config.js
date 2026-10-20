@@ -4,7 +4,7 @@
 
 export const CONFIG = {
   appName: 'متابعة الدرجات',
-  version: '2.23.6',
+  version: '2.23.7',
   releaseDate: '2026-10-20',
 
   // قواعد الدرجات

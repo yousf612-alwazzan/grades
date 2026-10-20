@@ -2241,14 +2241,17 @@ async function publishedVersion() {
 const newerThan = (a, b) => { const x = String(a).split('.').map(Number); const y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
 async function checkForUpdate({ quiet = false } = {}) {
   if (!navigator.onLine) { UPD.state = 'offline'; paintUpdate(); if (!quiet) toast(tr('لا يوجد اتصال بالإنترنت'), { err: true }); return; }
-  UPD.state = 'checking'; paintUpdate();
+  if (UPD.reload) { UPD.state = 'ready'; paintUpdate(); if (!quiet) toast(tr('تحديث جديد جاهز — اضغط «حدّث الآن»'), { action: { label: tr('حدّث الآن'), fn: applyUpdate } }); return; }
+  UPD.state = 'checking'; UPD.checking = true; paintUpdate();
   try {
     const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
     if (reg) {
       await reg.update();
       const w = reg.waiting || reg.installing;
-      if (w && w.state !== 'installed') await new Promise((res) => { w.addEventListener('statechange', () => { if (w.state === 'installed' || w.state === 'redundant') res(); }); setTimeout(res, 20000); });
-      if (w && w.state === 'installed') { UPD.state = 'ready'; UPD.worker = w; }
+      const done = () => !w || ['activated', 'redundant'].includes(w.state) || reg.waiting === w;
+      if (!done()) await new Promise((res) => { w.addEventListener('statechange', () => { if (done()) res(); }); setTimeout(res, 30000); });
+      if (UPD.reload || (w && w.state === 'activated')) { UPD.state = 'ready'; UPD.reload = true; }
+      else if (w && reg.waiting === w) { UPD.state = 'ready'; UPD.worker = w; }
     }
     if (UPD.state !== 'ready') {
       const pub = await publishedVersion();
@@ -2256,12 +2259,15 @@ async function checkForUpdate({ quiet = false } = {}) {
       else UPD.state = 'latest';
     }
   } catch { UPD.state = navigator.onLine ? 'latest' : 'offline'; }
+  UPD.checking = false;
   paintUpdate();
   if (!quiet) toast(UPD.state === 'ready' ? tr('تحديث جديد جاهز — اضغط «حدّث الآن»') : UPD.state === 'latest' ? tr('عندك آخر إصدار ✓') : tr('لا يوجد اتصال بالإنترنت'), { err: UPD.state === 'offline', action: UPD.state === 'ready' ? { label: tr('حدّث الآن'), fn: applyUpdate } : undefined });
 }
 // تطبيق التحديث: عبر الـ Service Worker، أو تحديث كامل (مسح نسخ الملفات المخزّنة فقط — الدرجات لا تُلمس)
 async function applyUpdate() {
   if (S.dirty.size) await flushSave();
+  UPD.applying = true;
+  if (UPD.reload && !UPD.hard) { location.reload(); return; }
   if (UPD.worker && !UPD.hard) { UPD.worker.postMessage({ type: 'skip-waiting' }); return; }
   try { if ('caches' in window) for (const k of await caches.keys()) if (k.startsWith('grades-')) await caches.delete(k); } catch { /* */ }
   try { const reg = await navigator.serviceWorker.getRegistration(); if (reg) await reg.unregister(); } catch { /* */ }
@@ -3723,22 +3729,25 @@ function registerSW() {
       toast(tr('تحديث متوفر، أعد التشغيل'), { ms: 0, action: { label: tr('أعد التشغيل'), fn: () => w.postMessage({ type: 'skip-waiting' }) } });
     };
     if (reg.waiting && hadController) ask(reg.waiting, true);
-    reg.addEventListener('updatefound', () => {
-      const w = reg.installing;
-      if (!w) return;
-      w.addEventListener('statechange', () => { if (w.state === 'installed' && hadController) ask(w); });
-    });
+    // النسخة الجديدة تتفعّل بنفسها (انظر controllerchange أدناه)
     // آيفون يُبقي التطبيق معلّقًا في الخلفية: نفحص التحديث كلما رجع المعلم للتطبيق
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
       const away = hiddenAt && Date.now() - hiddenAt > 60 * 1000;
       if (reg.waiting && hadController && away && safeToApply()) { reg.waiting.postMessage({ type: 'skip-waiting' }); return; }
+      if (UPD.reload && away && safeToApply()) { location.reload(); return; }
       reg.update().catch(() => {});
     });
     setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
   }).catch(() => {});
+  // نسخة جديدة تولّت: نعيد التحميل فورًا إن كانت اللحظة آمنة، وإلا نعرض «أعد التشغيل» (ويُطبَّق تلقائيًا عند الرجوع للتطبيق)
   let reloaded = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded && hadController) { reloaded = true; location.reload(); } });
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloaded || !hadController) return;
+    if (UPD.applying || (!touched && safeToApply())) { reloaded = true; location.reload(); return; }
+    UPD.state = 'ready'; UPD.worker = null; UPD.hard = false; UPD.reload = true; paintUpdate();
+    if (!UPD.checking) toast(tr('تحديث متوفر، أعد التشغيل'), { ms: 0, action: { label: tr('أعد التشغيل'), fn: applyUpdate } });
+  });
 }
 
 async function boot() {

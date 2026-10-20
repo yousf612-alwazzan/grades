@@ -1,21 +1,27 @@
 // Service Worker: يخزّن كل ملفات التطبيق ليعمل بدون إنترنت (cache-first بنسخة ثابتة).
 // CACHE_VERSION وقائمة الملفات يكتبهما سكربت البناء scripts/build-web.mjs.
-const CACHE_VERSION = '377205c35eec';
+const CACHE_VERSION = '6bc214a44b1a';
 const CACHE = 'grades-' + CACHE_VERSION;
 const PRECACHE = ["./","./app.css","./app.js","./changelog.js","./cloud.js","./config.js","./fonts/IBM-PLEX-LICENSE.txt","./fonts/cairo-arabic-400-normal.woff2","./fonts/cairo-arabic-600-normal.woff2","./fonts/cairo-arabic-800-normal.woff2","./fonts/cairo-latin-400-normal.woff2","./fonts/cairo-latin-600-normal.woff2","./fonts/cairo-latin-800-normal.woff2","./fonts/ibm-plex-arabic-400.ttf","./fonts/ibm-plex-arabic-600.ttf","./fonts/ibm-plex-arabic-700.ttf","./grades-core.js","./i18n-en.js","./i18n.js","./icons/apple-touch-icon.png","./icons/favicon.svg","./icons/icon-192.png","./icons/icon-512.png","./icons/maskable-512.png","./importers.js","./index.html","./lesson-plans.js","./live.js","./manifest.webmanifest","./platform.js","./reminders.js","./reports.js","./school.js","./store.js","./transfer.js","./ui.js","./vendor/fflate.min.js","./vendor/jsQR.js","./vendor/jszip.min.js","./vendor/pdfjs/pdf.min.mjs","./vendor/pdfjs/pdf.worker.min.mjs","./vendor/qrcode.js","./vendor/tesseract/LICENSE.txt","./vendor/tesseract/core/tesseract-core-lstm.wasm.js","./vendor/tesseract/core/tesseract-core-simd-lstm.wasm.js","./vendor/tesseract/lang/ara.traineddata.gz","./vendor/tesseract/tesseract.min.js","./vendor/tesseract/worker.min.js","./view.css","./view.html","./view.js","./view.webmanifest","./xlsx-export.js"];
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
-    // cache: 'reload' حتى لا نأخذ نسخة قديمة من ذاكرة المتصفح
+    // المكتبات والخطوط لا تتغيّر بين الإصدارات (~١٣ ميجا): نأخذها من النسخة السابقة بدل تنزيلها من جديد.
+    // (إن حدّثت مكتبة في vendor/ فغيّر اسم ملفها حتى تُنزَّل.) الباقي: cache 'reload' حتى لا نأخذ نسخة قديمة.
     await Promise.all(PRECACHE.map(async (url) => {
       try {
+        if (/(^|\/)(vendor|fonts)\//.test(url)) {
+          const old = await caches.match(url, { ignoreSearch: true });
+          if (old) { await cache.put(url, old); return; }
+        }
         const res = await fetch(new Request(url, { cache: 'reload' }));
         if (res.ok) await cache.put(url, res);
       } catch { /* يُجلب لاحقًا عند الطلب */ }
     }));
-    // أول تثبيت: نتفعّل مباشرة. التحديثات تنتظر موافقة المعلم (رسالة skip-waiting)
-    if (!self.registration.active) await self.skipWaiting();
+    // نتفعّل مباشرة دائمًا — حتى لا يبقى جهاز (مثل كمبيوتر المدرسة المفتوح طول اليوم) على نسخة قديمة.
+    // الصفحة المفتوحة تكمل عملها، وتعيد التحميل بنفسها في لحظة آمنة (controllerchange).
+    await self.skipWaiting();
   })());
 });
 
