@@ -880,9 +880,10 @@ function setDeskPref(k, on) { try { localStorage.setItem(k, on ? '1' : '0'); } c
 function renderNav() {
   const cur = ROOTS.includes(route().name) ? route().name : (S.stack[0] || {}).name;
   const items = [['home', 'users', tr('الصفوف')], ...(C.role === 'head' && C.session ? [['dept', 'shield', tr('القسم')]] : []), ['reports', 'sheet', tr('التقارير')], ['live', 'monitor', REMOTE ? tr('عرض للطلاب') : IOS_WEB ? tr('الكمبيوتر') : tr('العرض')], ['tools', 'bolt', tr('الإدارة')], ['settings', 'gear', tr('الإعدادات')]];
-  const btns = items.filter(([n]) => !(DESK_WEB && WIDE.matches && n === 'live')).map(([n, ic, label]) => `<button type="button" class="tab" data-act="nav" data-to="${n}" ${cur === n ? 'aria-current="page"' : ''} title="${esc(label)}"><span class="tab-ico">${icon(ic)}</span><span class="tab-label">${label}</span></button>`).join('');
+  // رئيس القسم: بلا «الكمبيوتر/العرض» (يتابع من «القسم»)، والكمبيوتر بلا «العرض»
+  const btns = items.filter(([n]) => !(n === 'live' && ((DESK_WEB && WIDE.matches) || (C.role === 'head' && C.session)))).map(([n, ic, label]) => `<button type="button" class="tab" data-act="nav" data-to="${n}" ${cur === n ? 'aria-current="page"' : ''} title="${esc(label)}"><span class="tab-ico">${icon(ic)}</span><span class="tab-label">${label}</span></button>`).join('');
   document.getElementById('tabbar').innerHTML = btns;
-  document.getElementById('tabbar').classList.toggle('six', items.length > 5);
+  document.getElementById('tabbar').classList.toggle('six', (btns.match(/data-act="nav"/g) || []).length > 5);
   const mini = deskPref('gfu-rail');
   document.body.classList.toggle('rail-mini', mini);
   // الترتيب: الشعار (وزر إخفاء صغير) ← التنقل (+ لوحة الأدوات في شاشة الصف) ← تحت: حالة الحفظ والحساب ثم رقم الإصدار

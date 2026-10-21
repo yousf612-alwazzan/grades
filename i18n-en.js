@@ -1,6 +1,7 @@
 // ترجمة الواجهة للإنجليزية. المفتاح = النص العربي كما في الكود (و{} مكان كل قيمة متغيرة؛ {0} {1} لإعادة الترتيب).
 // لتعديل ترجمة: غيّر النص الإنجليزي فقط. نص بلا ترجمة يظهر بالعربية.
 export default {
+  "رئيس القسم: بدون زر «الكمبيوتر» في القائمة": "Head of department: no “Computer” button in the menu",
   "«القسم» لرئيس القسم: يتابع كل الشعب والمعلمين (المتصلون الآن، التوفر والبدلاء، التقارير)، وبيانات كل شعبة محفوظة للشعبة نفسها برمز المدرسة، وحسابات لمعلمي الأندرويد": "“Department” for the head: follows every section and teacher (online now, availability and cover, reports), each section's data is kept with the section via the school code, and Android teachers get accounts",
   "الآن": "Now",
   "قبل {} د": "{} min ago",
