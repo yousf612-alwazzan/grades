@@ -45,6 +45,14 @@ export async function checkSchoolCode(session, code) {
 export async function fetchMe(session) {
   try { const r = await api('/api/me', { token: session.token }); return r.status === 200 ? r.j : null; } catch { return null; }
 }
+/** رئيس القسم: حسابات المعلمين (اسم المستخدم، آخر دخول، موقوف؟) — null إن تعذّر */
+export async function headAccounts(session) {
+  try { const r = await api('/api/head/accounts', { token: session.token }); return r.status === 200 && Array.isArray(r.j.accounts) ? r.j.accounts : null; } catch { return null; }
+}
+/** رئيس القسم: إيقاف حساب معلم خرج من المدرسة (on=true) أو إعادة تفعيله */
+export async function headDisable(session, u, on) {
+  try { const r = await api('/api/head/disable', { method: 'POST', token: session.token, body: { u, on: !!on } }); return r.status === 200; } catch { return false; }
+}
 export const importKey = (raw, extractable = false) => crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, extractable, ['encrypt', 'decrypt']);
 
 export async function encryptDoc(key, k, obj) {
@@ -142,6 +150,7 @@ export async function signIn({ user, password, invite = '', remember = true }) {
       : await api('/api/login', { method: 'POST', body: { u, a: proof } });
   } catch { throw codeErr('offline'); }
   if (r.status === 429) throw codeErr('locked');
+  if (r.status === 403 && r.j.error === 'disabled') throw codeErr('disabled');
   if (r.status !== 200 || !r.j.token) throw codeErr(invite ? 'bad-invite' : 'wrong');
   const session = { u, token: r.j.token, eph: !remember, mustChange: !!r.j.mustChange, role: r.j.role === 'head' ? 'head' : 'teacher', t: Date.now() };
   if (remember) { try { localStorage.setItem('gfu-cloud-last', u); } catch { /* */ } }

@@ -1551,6 +1551,8 @@ body.cloud-on .appbar [data-save-state] { display: none; }
 .dept-sec.low .dept-bar i { background: var(--warning, #d97706); }
 
 /* القسم: تبويبات، المتصلون، التوفر والبدلاء — مناسبة للجوال والكمبيوتر */
+.acc-row.off strong { color: var(--muted); text-decoration: line-through; }
+.acc-row .acc-new { font-weight: 600; }
 .dept-tabs { display: flex; overflow-x: auto; }
 .dept-tabs button { flex: 1 0 auto; min-height: 44px; white-space: nowrap; }
 .dept-dotn { display: inline-grid; place-items: center; min-width: 20px; height: 20px; border-radius: 99px; background: var(--success); color: #fff; font-size: 12px; padding: 0 6px; }

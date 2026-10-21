@@ -591,7 +591,7 @@ function bindLoginForm(box, onDone = () => {}) {
       render();
     } catch (err) {
       const code = err && err.code;
-      fail(code === 'wrong' ? tr('اسم المستخدم أو كلمة السر غير صحيحة.') : code === 'locked' ? tr('محاولات كثيرة خاطئة — انتظر ١٠ دقائق ثم حاول.') : code === 'offline' ? tr('لا يوجد اتصال بالإنترنت.') : tr('تعذّر الدخول. حاول مرة ثانية.'));
+      fail(code === 'wrong' ? tr('اسم المستخدم أو كلمة السر غير صحيحة.') : code === 'locked' ? tr('محاولات كثيرة خاطئة — انتظر ١٠ دقائق ثم حاول.') : code === 'disabled' ? tr('هذا الحساب موقوف — كلّم رئيس القسم.') : code === 'offline' ? tr('لا يوجد اتصال بالإنترنت.') : tr('تعذّر الدخول. حاول مرة ثانية.'));
     }
   });
 }
@@ -1451,6 +1451,35 @@ async function setAway(name, away) {
 function freeTeachers(tt, day, p, away) {
   return Object.keys(tt.teachers).filter((n) => !away.includes(n) && !tt.teachers[n].some((x) => x.d === day && p >= x.p && p < x.p + x.n)).sort((a, b) => a.localeCompare(b, 'ar'));
 }
+// حسابات المعلمين (لرئيس القسم): من خرج من المدرسة يُوقف حسابه، وبياناته تبقى
+function sinceText(t) { const d = Math.floor((Date.now() - t) / 86400000); return d < 1 ? agoText(t) : d === 1 ? tr('أمس') : T`قبل ${ar(d)} يوم`; }
+const staffName = (u) => { const st = S.sdocs['dept:staff'] || {}; return st[u] && st[u].name ? st[u].name : ''; };
+function deptAccounts() {
+  if (!C.headAcc && !C.headAccBusy && C.session) {
+    C.headAccBusy = true;
+    cloud.headAccounts(C.session).then((a) => { C.headAcc = a || []; C.headAccErr = !a; }).finally(() => { C.headAccBusy = false; if (route().name === 'dept') render(); });
+  }
+  if (!C.headAcc) return T`<div class="section-title">حسابات المعلمين</div><p class="hint">جارٍ التحميل…</p>`;
+  if (C.headAccErr) return T`<div class="section-title">حسابات المعلمين</div><p class="hint">تعذّر تحميل الحسابات — تأكد من الاتصال بالإنترنت.</p>`;
+  const rows = [...C.headAcc].sort((a, b) => (staffName(a.u) || a.u).localeCompare(staffName(b.u) || b.u, 'ar')).map((a) => {
+    const nm = staffName(a.u);
+    const state = a.disabled ? T`<span class="badge warn">موقوف</span>` : a.lastLogin ? T`آخر دخول ${sinceText(a.lastLogin)}` : T`<span class="acc-new">ما دخل للحين</span>`;
+    const btn = a.role === 'head' ? T`<span class="badge">رئيس القسم</span>` : a.u === meU() ? '' : a.disabled
+      ? T`<button type="button" class="btn sm primary" data-act="acc-toggle" data-u="${esc(a.u)}" data-v="0">تفعيل</button>`
+      : T`<button type="button" class="btn sm" data-act="acc-toggle" data-u="${esc(a.u)}" data-v="1">إيقاف</button>`;
+    return T`<div class="list-item acc-row ${a.disabled ? 'off' : ''}" data-u="${esc(a.u)}"><span class="grow"><strong>${esc(nm || a.u)}</strong><small><span dir="ltr">${esc(a.u)}</span> · ${state}</small></span>${btn}</div>`;
+  }).join('');
+  return T`<div class="section-title">حسابات المعلمين</div><div class="list">${rows}</div><p class="hint">معلم خرج من المدرسة؟ اضغط «إيقاف»: ما يقدر يدخل بعدها، وشعبه ودرجاتها تبقى عندك في «القسم».</p>`;
+}
+async function toggleAccount(u, on) {
+  const nm = staffName(u) || u;
+  if (on && !(await confirmDialog({ title: T`إيقاف حساب ${nm}؟`, text: tr('ما يقدر يدخل التطبيق بعدها، ويخرج من كل أجهزته. شعبه ودرجاتها تبقى في «القسم» وتقدر تنقلها لمعلم ثاني، وتقدر تعيد تفعيل حسابه متى ما تبي.'), ok: tr('إيقاف'), danger: true }))) return;
+  if (!(await cloud.headDisable(C.session, u, on))) { toast(tr('تعذّر — تأكد من الاتصال بالإنترنت.'), { err: true }); return; }
+  const a = (C.headAcc || []).find((x) => x.u === u);
+  if (a) a.disabled = on;
+  toast(on ? T`أُوقف حساب ${nm}` : T`فُعّل حساب ${nm}`);
+  render();
+}
 function Dept() {
   if (C.role !== 'head' || !C.session) return Home();
   const head = appbar({ title: tr('القسم'), backBtn: false });
@@ -1505,7 +1534,7 @@ function Dept() {
       return T`<div class="dept-t card"><div class="row" style="gap:8px;align-items:center"><span class="dept-av">${icon('user')}${isOn ? '<i class="dot-on"></i>' : ''}</span><span class="grow"><strong>${esc(t)}</strong>${isAway ? T` <span class="badge warn">غير متوفر</span>` : ''}<small>${ar(o.list.length)} شعبة · رصد ${ar(avgP)}%${isOn ? T` · <span class="on-txt">متصل</span>` : ''}</small></span></div>
         <div class="dept-chips">${o.list.map((x) => T`<button type="button" class="dept-chip" data-act="dept-open" data-k="${x.k}"><span>${esc(x.label)}</span><b class="num">${ar(x.pr)}%</b></button>`).join('')}</div></div>`;
     }).join('');
-    body = cards ? T`<div class="dept-teachers">${cards}</div>` : T`<p class="hint">لا توجد بيانات بعد.</p>`;
+    body = T`${cards ? T`<div class="dept-teachers">${cards}</div>` : T`<p class="hint">لا توجد بيانات بعد.</p>`}${deptAccounts()}`;
   } else if (tab === 'sections') {
     body = [...new Set(secs.map((x) => x.g))].map((g) => T`<div class="section-title">الصف ${gradeName(g)}</div>
     <div class="dept-grid">${secs.filter((x) => x.g === g).map((x) => T`<button type="button" class="card dept-sec ${x.has ? (x.pr < 20 ? 'low' : '') : 'empty'}" data-act="dept-sec" data-k="${x.k}">
@@ -2854,7 +2883,7 @@ function Settings() {
 
     <div class="section-title">بياناتي</div>
     <div class="card stack">
-      <div class="field"><label for="s-teacher">اسم المعلم</label><input id="s-teacher" class="input" data-setting="teacher" value="${esc(st.teacher)}" placeholder="مثل: يوسف أحمد" autocomplete="name"></div>
+      <div class="field"><label for="s-teacher">اسم المعلم</label><input id="s-teacher" class="input" data-setting="teacher" value="${esc(st.teacher)}" placeholder="اكتب اسمك" autocomplete="name"></div>
       <div class="field"><label for="s-subject">المادة (المجال الدراسي)</label><input id="s-subject" class="input" data-setting="subject" value="${esc(st.subject)}" placeholder="مثل: الحاسوب"></div>
       <div class="field"><label for="s-year">العام الدراسي</label><input id="s-year" class="input" data-setting="year" value="${esc(st.year)}" placeholder="مثل: 2026 / 2027"></div>
       <p class="hint">تظهر في رأس الكشوف والتقارير وبطاقة الطالب.</p>
@@ -3918,7 +3947,8 @@ document.addEventListener('click', async (e) => {
     case 'school-code': if (C.session) openSchoolCodeSheet(); break;
     case 'dept-open': await deptOpen(el.dataset.k); break;
     case 'dept-sec': deptSecSheet(el.dataset.k); break;
-    case 'dept-tab': S.ui.deptTab = el.dataset.v; render(); break;
+    case 'dept-tab': S.ui.deptTab = el.dataset.v; if (el.dataset.v === 'teachers') C.headAcc = null; render(); break;
+    case 'acc-toggle': await toggleAccount(el.dataset.u, el.dataset.v === '1'); break;
     case 'dept-away': await setAway(el.dataset.n, el.dataset.v === '1'); break;
     case 'dept-report': await deptReport(); break;
     case 'dept-sec-report': await deptSectionReport(); break;
