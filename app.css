@@ -1575,3 +1575,10 @@ body.cloud-on .appbar [data-save-state] { display: none; }
 .tabbar.six .tab-label { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .tabbar.six { flex-wrap: nowrap; }
 .tabbar.six { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+
+/* الحجز والنقل */
+.sec-row.taken { opacity: .7; }
+.taken-by { color: var(--warning, #b45309); font-weight: 800; }
+.dot-wait { width: 10px; height: 10px; border-radius: 50%; background: var(--warning, #d97706); flex: none; }
+.dept-log span b { font-weight: 800; }
+.dept-log small { display: block; color: var(--muted); font-size: 12.5px; }

@@ -18,6 +18,7 @@ import {
 } from './grades-core.js';
 import * as localStore from './store.js';
 import { buildTransfer, transferFileName, parseTransfer, applyTransfer, moveStudents } from './transfer.js';
+import { parseTransfer as parseXfer } from './transfer.js';
 import { platform } from './platform.js';
 import { ar, esc, icon, toast, openSheet, closeTopSheet, hasSheet, confirmDialog, keypad, students, cells, names as namesWord } from './ui.js';
 import { T, tr, trCrit, lang, rememberLang, translateStatic } from './i18n.js';
@@ -178,16 +179,47 @@ async function setSchoolCode(code) {
   if (C.session && C.session.eph) return; // كمبيوتر مشترك: في الذاكرة فقط
   await localStore.setMeta('schoolCode', code).catch(() => {});
 }
+// مستندات مشتركة أخرى (مشفّرة برمز المدرسة): dept:avail التوفر، dept:staff المعلمون، dept:log سجل النقل، xfer:8-4 طلاب منقولون للشعبة
+const meU = () => (C.session ? C.session.u : '');
+const meName = () => String(S.settings.teacher || meU()).slice(0, 80);
+const ownerOf = (k) => (S.share[k] && S.share[k].owner) || null;
+/** الشعبة محجوزة لمعلم آخر؟ (يرجع اسمه) */
+function reservedBy(k) { const o = ownerOf(k); return o && o.u && o.u !== meU() ? (o.name || o.u) : ''; }
+function savePend() { if (!(C.session && C.session.eph)) localStore.setMeta('sharePend', S.pend).catch(() => {}); }
+function saveSdocs() { if (!(C.session && C.session.eph)) localStore.setMeta('sdocsCache', S.sdocs).catch(() => {}); }
+function sdocTouch(k, v) { S.sdocs[k] = v; saveSdocs(); if (C.share) C.share.touch(k); }
+function logEntry(e) {
+  const log = { ...(S.sdocs['dept:log'] || {}) };
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  log[id] = { ...e, by: { u: meU(), name: meName() }, at: Date.now() };
+  const ids = Object.keys(log).sort((x, y) => (log[x].at || 0) - (log[y].at || 0));
+  for (const old of ids.slice(0, Math.max(0, ids.length - 300))) delete log[old];
+  sdocTouch('dept:log', log);
+}
+function registerStaff() {
+  if (!C.share || !C.session) return;
+  const st = S.sdocs['dept:staff'] || {};
+  const cur = st[meU()];
+  if (cur && cur.name === meName() && (cur.role || 'teacher') === C.role) return;
+  sdocTouch('dept:staff', { ...st, [meU()]: { name: meName(), role: C.role, at: Date.now() } });
+}
+function shareDocOf(k) {
+  const sh = S.share[k];
+  if (!sh) return null;
+  return { label: sh.label, names: sh.names.slice(), data: JSON.parse(JSON.stringify(sh.data)), owner: sh.owner || null, ...(sh.moved ? { moved: sh.moved } : {}) };
+}
 const shareHost = {
-  keys: () => [...shareOwn().keys(), ...(S.deptAvail ? ['dept:avail'] : [])],
+  keys: () => [...new Set([...shareOwn().keys(), ...Object.keys(S.pend || {}), ...Object.keys(S.sdocs || {}), ...(S.deptAvail ? ['dept:avail'] : [])])],
   get(k) {
     if (k === 'dept:avail') return S.deptAvail ? JSON.parse(JSON.stringify(S.deptAvail)) : null;
+    if (!k.startsWith('sec:')) return S.sdocs[k] ? JSON.parse(JSON.stringify(S.sdocs[k])) : null;
     const c = shareOwn().get(k);
-    if (!c || !S.grades[c.id]) return null;
+    if (!c || !S.grades[c.id]) return S.pend && S.pend[k] ? shareDocOf(k) : null; // نُقلت أو حُرّرت: نرسل الحالة الجديدة مرة
     const prev = S.share[k];
-    // صاحب الشعبة: المعلم الذي يرصدها (رئيس القسم يعدّل بلا أن يصبح صاحبها)
-    const owner = C.role === 'head' ? (prev && prev.owner) || null : { u: C.session ? C.session.u : '', name: String(S.settings.teacher || '').slice(0, 80) };
-    return { label: c.label, names: c.names.slice(), data: JSON.parse(JSON.stringify(S.grades[c.id])), owner };
+    // صاحب الشعبة: أول معلم يأخذها (محجوزة له). رئيس القسم يعدّل بلا أن يصبح صاحبها، ولا يأخذها معلم آخر
+    const mine = { u: meU(), name: meName() };
+    const owner = C.role === 'head' ? (prev && prev.owner) || null : (!prev || !prev.owner || !prev.owner.u || prev.owner.u === meU() ? mine : prev.owner);
+    return { label: c.label, names: c.names.slice(), data: JSON.parse(JSON.stringify(S.grades[c.id])), owner, ...(prev && prev.moved ? { moved: prev.moved } : {}) };
   },
   async apply(k, v, meta = {}) {
     if (k === 'dept:avail') {
@@ -195,12 +227,38 @@ const shareHost = {
       if (route().name === 'dept') softRender();
       return;
     }
+    if (!k.startsWith('sec:')) {
+      if (v && typeof v === 'object') { S.sdocs[k] = v; saveSdocs(); }
+      if (k.startsWith('xfer:')) await processInbox(k);
+      if (route().name === 'dept') softRender();
+      return;
+    }
     if (!v || typeof v !== 'object' || !Array.isArray(v.names)) return;
-    S.share[k] = { label: String(v.label || '').slice(0, 100), names: v.names.slice(0, MAX_STUDENTS).map((x) => String(x ?? '').slice(0, 120)), data: localStore.sanitizeClassData(v.data), owner: v.owner && typeof v.owner === 'object' ? { u: String(v.owner.u || '').slice(0, 40), name: String(v.owner.name || '').slice(0, 80) } : null, by: meta.by || '' };
+    const clip = (o) => (o && typeof o === 'object' ? { u: String(o.u || '').slice(0, 40), name: String(o.name || '').slice(0, 80) } : null);
+    S.share[k] = { label: String(v.label || '').slice(0, 100), names: v.names.slice(0, MAX_STUDENTS).map((x) => String(x ?? '').slice(0, 120)), data: localStore.sanitizeClassData(v.data), owner: clip(v.owner), moved: v.moved && typeof v.moved === 'object' ? { from: clip(v.moved.from), to: clip(v.moved.to), at: Number(v.moved.at) || 0 } : null, by: meta.by || '' };
     saveShareCache();
-    const c = shareOwn().get(k);
-    if (c) {
-      const sh = S.share[k];
+    const sh = S.share[k];
+    if (S.pend && S.pend[k] && sh.owner && sh.owner.u !== meU()) { delete S.pend[k]; savePend(); } // وصلت حالتنا (أو أخذها غيرنا)
+    let c = shareOwn().get(k);
+    // نُقل الصف مني لمعلم آخر (من جهاز ثاني لي): يُزال من صفوفي هنا أيضًا
+    if (c && C.role !== 'head' && sh.owner && sh.owner.u !== meU() && sh.moved && sh.moved.from && sh.moved.from.u === meU()) {
+      S.classes = S.classes.filter((x) => x !== c);
+      delete S.grades[c.id];
+      await localStore.saveClasses(S.classes); await localStore.deleteGrades(c.id); cloudTouch('classes');
+      toast(T`نُقل «${c.label}» إلى ${sh.owner.name || sh.owner.u}`);
+      c = null;
+    }
+    // استلمت صفًا منقولًا لي: يُضاف لصفوفي تلقائيًا بكل بياناته
+    if (!c && C.role !== 'head' && sh.owner && sh.owner.u === meU() && sh.moved && sh.moved.to && sh.moved.to.u === meU()) {
+      const id = uid();
+      S.classes.push({ id, label: sh.label || sectionLabel(...k.slice(4).split('-')), names: sh.names.slice() });
+      S.grades[id] = localStore.sanitizeClassData(sh.data);
+      await localStore.saveClasses(S.classes); await localStore.saveGrades(id, S.grades[id]); cloudTouch('classes'); cloudTouch('g:' + id);
+      toast(T`استلمت «${sh.label}» من ${(sh.moved.from && (sh.moved.from.name || sh.moved.from.u)) || ''} ✓`, { ms: 6000 });
+      if (S.pend && S.pend[k]) { delete S.pend[k]; savePend(); }
+      c = shareOwn().get(k);
+      await processInbox('xfer:' + k.slice(4));
+    } else if (c) {
       if (JSON.stringify(c.names) !== JSON.stringify(sh.names)) { c.names = sh.names.slice(); await localStore.saveClasses(S.classes); cloudTouch('classes'); }
       S.grades[c.id] = localStore.sanitizeClassData(sh.data);
       await localStore.saveGrades(c.id, S.grades[c.id]);
@@ -253,8 +311,108 @@ function saveShareCache() {
   clearTimeout(shareCacheTimer);
   shareCacheTimer = setTimeout(() => { localStore.setMeta('shareCache', S.share).catch(() => {}); }, 400);
 }
+// ===== صندوق الوارد: طلاب منقولون لشعبتي (يصلون تلقائيًا بدرجاتهم) =====
+async function processInbox(k) {
+  if (!k.startsWith('xfer:') || C.role === 'head') return;
+  const sec = 'sec:' + k.slice(5);
+  const c = shareOwn().get(sec);
+  const o = ownerOf(sec);
+  if (!c || (o && o.u && o.u !== meU())) return; // الشعبة ليست لي
+  const box = S.sdocs[k] || {};
+  const ids = Object.keys(box).filter((id) => box[id] && box[id].t);
+  if (!ids.length) return;
+  let added = 0; const from = new Set();
+  for (const id of ids.sort((x, y) => (box[x].at || 0) - (box[y].at || 0))) {
+    let t; try { t = parseXfer(box[id].t); } catch { continue; }
+    const r = applyTransfer({ names: c.names, data: dataOf(c.id) }, t);
+    c.names = r.names; S.grades[c.id] = r.data; added += r.added;
+    if (box[id].from) from.add(box[id].from.name || box[id].from.u);
+  }
+  const rest = { ...box }; for (const id of ids) delete rest[id];
+  sdocTouch(k, rest);
+  await saveClassesNow(); await store.saveGrades(c.id, S.grades[c.id]);
+  liveResync(c.id);
+  if (added) toast(T`وصل ${students(added)} منقولين إلى «${c.label}» من ${[...from].join('، ')} ✓`, { ms: 7000 });
+  softRender();
+}
+// اختيار معلم (قائمة المعلمين المسجّلين في القسم)
+function pickStaff(title) {
+  return new Promise((resolve) => {
+    let res = null;
+    const st = S.sdocs['dept:staff'] || {};
+    const list = Object.entries(st).filter(([u]) => u !== meU()).map(([u, x]) => ({ u, name: (x && x.name) || u, role: x && x.role })).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+    const body = list.length ? list.map((x) => T`<button type="button" class="list-item" data-tu="${esc(x.u)}"><span class="ra-avatar">${icon('user')}</span><span class="grow"><strong>${esc(x.name)}</strong><small dir="ltr" style="text-align:start">${esc(x.u)}${x.role === 'head' ? ' · ' + tr('رئيس القسم') : ''}</small></span>${icon('fwd')}</button>`).join('')
+      : T`<p class="hint">لا يوجد معلمون بعد — يظهر المعلم هنا بعد أول دخول له وإدخال رمز المدرسة.</p>`;
+    const s2 = openSheet(T`<h2>${esc(title)}</h2><div class="list" style="max-height:60vh;overflow:auto">${body}</div>`, { label: title, onClose: () => resolve(res) });
+    s2.sheet.addEventListener('click', (e) => { const b2 = e.target.closest('[data-tu]'); if (!b2) return; const x = list.find((y) => y.u === b2.dataset.tu); res = x ? { u: x.u, name: x.name } : null; s2.close(); });
+  });
+}
+/** نقل صف كامل لمعلم آخر عبر الحساب (بلا ملفات): يصله فورًا بكل بياناته، ويُزال من صفوفي. رئيس القسم يقدر يعيد التوزيع. */
+async function moveClassTo(k, c) {
+  if (!C.share) { toast(tr('أدخل رمز المدرسة أولًا (الإعدادات ← رمز المدرسة).'), { err: true, ms: 6000 }); return; }
+  const label = c ? c.label : (S.share[k] && S.share[k].label) || '';
+  const to = await pickStaff(T`نقل «${label}» إلى…`);
+  if (!to) return;
+  const ok = await confirmDialog({ title: T`نقل «${label}» إلى ${to.name}؟`, text: c && C.role !== 'head' ? tr('تنتقل الشعبة بكل طلابها ودرجاتها وغيابها وملاحظاتها، وتُزال من صفوفك.') : tr('تصبح الشعبة عند هذا المعلم بكل بياناتها.'), ok: tr('نقل') });
+  if (!ok) return;
+  if (S.dirty.size) await flushSave();
+  const from = ownerOf(k) || (c && C.role !== 'head' ? { u: meU(), name: meName() } : null);
+  const base = c ? { label: c.label, names: c.names.slice(), data: JSON.parse(JSON.stringify(dataOf(c.id))) } : shareDocOf(k);
+  S.share[k] = { ...base, owner: { u: to.u, name: to.name }, moved: { from, to: { u: to.u, name: to.name }, at: Date.now() }, by: meU() };
+  S.pend[k] = true; savePend(); saveShareCache();
+  if (c && C.role !== 'head') {
+    S.classes = S.classes.filter((x) => x !== c);
+    delete S.grades[c.id];
+    await saveClassesNow(); await store.deleteGrades(c.id);
+    S.stack = [{ name: 'home', p: {} }];
+  }
+  C.share.touch(k);
+  logEntry({ type: 'class', label, from, to: { u: to.u, name: to.name } });
+  render();
+  toast(T`نُقل «${label}» إلى ${to.name} ✓`);
+}
+/** تحرير الحجز (حذف المعلم للصف من صفوفه، أو رئيس القسم): تصبح الشعبة متاحة لغيره. */
+function releaseSection(k, why = 'release') {
+  if (!C.share || !S.share[k]) return;
+  const o = ownerOf(k);
+  if (C.role !== 'head' && o && o.u !== meU()) return;
+  S.share[k] = { ...S.share[k], owner: null, moved: null };
+  S.pend[k] = true; savePend(); saveShareCache();
+  C.share.touch(k);
+  logEntry({ type: why, label: S.share[k].label, from: o || null });
+}
+/** نقل طلاب لشعبة أخرى عبر الحساب: يصلون لمعلمها تلقائيًا بدرجاتهم. */
+async function moveStudentsToSection(p) {
+  const c = cls(p.id);
+  if (!c || !C.share) return;
+  const idxs = [...p.sel].sort((a, b) => a - b);
+  if (!idxs.length) return;
+  const mineK = secKey(c);
+  const x = await deptPickSection(tr('إلى أي شعبة؟'), (y) => y.k !== mineK);
+  if (!x) return;
+  const who = x.who || tr('بدون معلم بعد');
+  const ok = await confirmDialog({ title: T`نقل ${students(idxs.length)} إلى «${x.label}»؟`, text: T`يصلون لمعلم الشعبة (${who}) تلقائيًا بكل درجاتهم وغيابهم وملاحظاتهم، ويُحذفون من «${c.label}».`, ok: tr('نقل') });
+  if (!ok) return;
+  if (S.dirty.size) await flushSave();
+  const t = buildTransfer({ classLabel: c.label, names: c.names, data: dataOf(c.id), idxs, settings: S.settings });
+  const k = 'xfer:' + x.k.slice(4);
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  sdocTouch(k, { ...(S.sdocs[k] || {}), [id]: { id, from: { u: meU(), name: meName(), sec: c.label }, at: Date.now(), t } });
+  const keep = c.names.map((_, i) => i).filter((i) => !p.sel.has(i));
+  c.names = keep.map((i) => c.names[i]);
+  S.grades[c.id] = remapData(dataOf(c.id), keep);
+  await saveClassesNow(); await store.saveGrades(c.id, S.grades[c.id]);
+  liveResync(c.id);
+  logEntry({ type: 'students', label: c.label, toSec: x.label, n: idxs.length, names: [] });
+  p.sel = new Set();
+  // إن كانت الشعبة الهدف عندي أنا: تصل فورًا
+  if (shareOwn().get(x.k)) await processInbox(k);
+  back();
+  toast(T`نُقل ${students(idxs.length)} إلى «${x.label}» ✓`);
+}
 function shareTouchClass(id) { const c = cls(id); const k = c && secKey(c); if (k && C.share) C.share.touch(k); }
-function shareTouchAll() { if (C.share) for (const k of shareOwn().keys()) C.share.touch(k); }
+function shareTouchAll() { registerStaff(); shareTouchAllSecs(); }
+function shareTouchAllSecs() { if (C.share) for (const k of shareOwn().keys()) C.share.touch(k); }
 async function startShare() {
   if (!C.session || C.share || C.shareStarting || !S.meta.schoolCode) return;
   C.shareStarting = true; // مرة واحدة فقط (قد تُطلب من أكثر من مكان في نفس اللحظة)
@@ -265,8 +423,12 @@ async function startShareNow() {
   try { key = await cloud.deriveSchoolKey(S.meta.schoolCode); } catch { return; }
   if (!C.session || C.share) return;
   if (!S.share || !Object.keys(S.share).length) S.share = (C.session.eph ? null : S.meta.shareCache) || {};
+  if (!S.sdocs || !Object.keys(S.sdocs).length) S.sdocs = (C.session.eph ? null : S.meta.sdocsCache) || {};
+  if (!S.pend || !Object.keys(S.pend).length) S.pend = (C.session.eph ? null : S.meta.sharePend) || {};
   C.share = new cloud.CloudSync(C.session, key, shareHost, cloud.SHARED_PATHS);
   await C.share.start();
+  registerStaff();
+  for (const k of Object.keys(S.sdocs)) if (k.startsWith('xfer:')) await processInbox(k);
   softRender();
 }
 function stopShare() { if (C.share) { C.share.stop(); C.share = null; } }
@@ -562,8 +724,8 @@ function School(p) {
   const g = p.grade;
   p.pick ||= new Set();
   const rows = sortedSections(r.grades[g]).map((x) => {
-    const lab = sectionLabel(g, x); const has = mine.has(lab); const on = has || p.pick.has(x);
-    return T`<label class="list-item sec-row ${has ? 'mine' : ''}"><input type="checkbox" class="check" data-sec="${x}" ${on ? 'checked' : ''} ${has ? 'disabled' : ''}><span class="grow"><strong>الشعبة ${ar(x)}</strong><small>${students(r.grades[g][x].length)}${has ? T` · مضافة عندك` : ''}</small></span></label>`;
+    const lab = sectionLabel(g, x); const has = mine.has(lab); const taken = !has && C.role !== 'head' ? reservedBy(`sec:${g}-${x}`) : ''; const on = has || p.pick.has(x);
+    return T`<label class="list-item sec-row ${has ? 'mine' : ''} ${taken ? 'taken' : ''}"><input type="checkbox" class="check" data-sec="${x}" ${on && !taken ? 'checked' : ''} ${has || taken ? 'disabled' : ''}><span class="grow"><strong>الشعبة ${ar(x)}</strong><small>${students(r.grades[g][x].length)}${has ? T` · مضافة عندك` : ''}${taken ? T` · <b class="taken-by">محجوزة لـ ${esc(taken)}</b>` : ''}</small></span></label>`;
   }).join('');
   const n = p.pick.size;
   return T`${head(T`الصف ${gradeName(g)}`)}<div class="wrap stack school-secs">
@@ -582,6 +744,7 @@ async function saveSchoolPick(p) {
     if (!p.pick.has(x)) continue;
     const label = sectionLabel(p.grade, x);
     if (mine.has(label)) continue;
+    if (C.role !== 'head' && reservedBy(`sec:${p.grade}-${x}`)) continue; // محجوزة لمعلم آخر
     const id = uid();
     const prev = S.share && S.share['sec:' + sectionOf(label)];
     if (prev) found++;
@@ -658,6 +821,8 @@ const S = {
   grades: {},
   meta: {},
   share: {},          // بيانات الشعب المشتركة (مفكوكة برمز المدرسة) — للقسم ولمعلم جديد للشعبة
+  sdocs: {},          // مستندات القسم المشتركة: المعلمون، سجل النقل، الطلاب المنقولون لكل شعبة
+  pend: {},           // شعب نُقلت/حُرّرت من هذا الجهاز (تُرسل حالتها مرة)
   stack: [],          // [{name, p}]
   ui: { tab: {}, search: '', missingOnly: false, filter: 'all', fscope: 'week', selected: null, undo: null, sideHidden: deskPref('gfu-side') },
   saving: false,
@@ -1208,7 +1373,7 @@ function Reports() {
 }
 
 // ===================== القسم (رئيس القسم): كل الشعب وكل المعلمين =====================
-const DEPT_TABS = [['now', 'الآن'], ['teachers', 'المعلمون'], ['sections', 'الشعب'], ['reports', 'التقارير']];
+const DEPT_TABS = [['now', 'الآن'], ['teachers', 'المعلمون'], ['sections', 'الشعب'], ['log', 'السجل'], ['reports', 'التقارير']];
 const KIND_TEXT = { absent: 'يرصد الغياب', grades: 'يرصد الدرجات', star: 'يضع نجوم التميّز', notes: 'يكتب ملاحظات' };
 const SCREEN_TEXT = { home: 'في صفحة الصفوف', reports: 'في التقارير', settings: 'في الإعدادات', tools: 'في الإدارة', live: 'في العرض', dept: 'في صفحة القسم', schedule: 'في جدول الحصص', school: 'يضيف صفوفًا' };
 const todayKey = () => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
@@ -1305,9 +1470,26 @@ function Dept() {
     body = cards ? T`<div class="dept-teachers">${cards}</div>` : T`<p class="hint">لا توجد بيانات بعد.</p>`;
   } else if (tab === 'sections') {
     body = [...new Set(secs.map((x) => x.g))].map((g) => T`<div class="section-title">الصف ${gradeName(g)}</div>
-    <div class="dept-grid">${secs.filter((x) => x.g === g).map((x) => T`<button type="button" class="card dept-sec ${x.has ? (x.pr < 20 ? 'low' : '') : 'empty'}" data-act="dept-open" data-k="${x.k}">
+    <div class="dept-grid">${secs.filter((x) => x.g === g).map((x) => T`<button type="button" class="card dept-sec ${x.has ? (x.pr < 20 ? 'low' : '') : 'empty'}" data-act="dept-sec" data-k="${x.k}">
       <strong>${esc(x.label)}</strong><small>${x.who ? esc(x.who) : (x.has ? tr('بدون معلم') : tr('لا توجد بيانات بعد'))}</small>
       <span class="dept-bar"><i style="width:${x.pr}%"></i></span><span class="dept-meta num">${students(x.n)} · ${ar(x.pr)}%</span></button>`).join('')}</div>`).join('') || T`<p class="hint">لا توجد شعب بعد.</p>`;
+  } else if (tab === 'log') {
+    const who = (o) => (o ? esc(o.name || o.u) : tr('بدون معلم'));
+    const log = S.sdocs['dept:log'] || {};
+    const entries = Object.values(log).filter((e) => e && e.at).sort((a, b) => b.at - a.at).slice(0, 100).map((e) => {
+      const what = e.type === 'class' ? T`نقل «<b>${esc(e.label)}</b>» من ${who(e.from)} إلى ${who(e.to)}`
+        : e.type === 'students' ? T`نقل ${students(e.n || 0)} من «<b>${esc(e.label)}</b>» إلى «<b>${esc(e.toSec || '')}</b>»`
+        : e.type === 'free' ? T`تحرير «<b>${esc(e.label)}</b>» (كانت لـ ${who(e.from)})`
+        : T`${who(e.from)} أزال «<b>${esc(e.label)}</b>» من صفوفه — صارت متاحة`;
+      return T`<div class="list-item dept-log"><span class="grow"><span>${what}</span><small>${e.by ? T`بواسطة ${esc(e.by.name || e.by.u)} · ` : ''}${agoText(e.at)}</small></span></div>`;
+    }).join('');
+    const waiting = Object.entries(S.sdocs).filter(([k, v]) => k.startsWith('xfer:') && v && Object.keys(v).length).map(([k, v]) => {
+      const n = Object.values(v).reduce((a, x) => a + ((x && x.t && x.t.students) ? x.t.students.length : 0), 0);
+      const [g, x] = k.slice(5).split('-');
+      return T`<div class="list-item"><span class="dot-wait"></span><span class="grow"><strong>${students(n)} بانتظار الاستلام في «${esc(sectionLabel(g, x))}»</strong><small>يصلون لمعلم الشعبة أول ما يفتح التطبيق</small></span></div>`;
+    }).join('');
+    body = T`${waiting ? T`<div class="section-title">بانتظار الاستلام</div><div class="list">${waiting}</div>` : ''}
+      <div class="section-title">سجل النقل والحجز</div><div class="list">${entries || T`<p class="hint" style="padding:8px 4px">لا توجد عمليات نقل بعد.</p>`}</div>`;
   } else {
     const item = (act, ic, t, sub) => `<button type="button" class="list-item" data-act="${act}">${icon(ic)}<span class="grow"><strong>${t}</strong><small>${sub}</small></span>${icon('fwd')}</button>`;
     body = T`<div class="list">
@@ -1326,15 +1508,29 @@ function Dept() {
   </div>`;
 }
 // اختيار شعبة (رئيس القسم) ثم نوع التقرير
-function deptPickSection(title) {
+function deptPickSection(title, filter = () => true) {
   return new Promise((resolve) => {
     let res = null;
-    const secs = deptSections().filter((x) => x.n);
+    const secs = deptSections().filter((x) => x.n && filter(x));
     const s = openSheet(T`<h2>${esc(title)}</h2><div class="list" style="max-height:60vh;overflow:auto">${secs.map((x) => T`<button type="button" class="list-item" data-pk="${x.k}"><span class="grow"><strong>${esc(x.label)}</strong><small>${x.who ? esc(x.who) + ' · ' : ''}${students(x.n)} · ${ar(x.pr)}%</small></span>${icon('fwd')}</button>`).join('')}</div>`, { label: title, onClose: () => resolve(res) });
     s.sheet.addEventListener('click', (e) => { const b = e.target.closest('[data-pk]'); if (!b) return; res = secs.find((x) => x.k === b.dataset.pk) || null; s.close(); });
   });
 }
 const virtualClass = (x) => ({ id: x.k, label: x.label, names: x.names.slice(), data: x.data ? localStore.sanitizeClassData(x.data) : emptyClassData() });
+// رئيس القسم: خيارات الشعبة
+function deptSecSheet(k) {
+  const x = deptSections().find((y) => y.k === k);
+  if (!x) return;
+  const item = (act, ic, t, sub, extra = '') => `<button type="button" class="list-item" data-act="${act}" data-k="${k}" ${extra}>${icon(ic)}<span class="grow"><strong>${t}</strong><small>${sub}</small></span></button>`;
+  const sh = openSheet(T`<h2>${esc(x.label)}</h2><p class="hint">${x.who ? T`محجوزة لـ <b>${esc(x.who)}</b>` : tr('غير محجوزة — متاحة لأي معلم')} · ${students(x.n)} · رصد ${ar(x.pr)}%</p>
+    <div class="list">
+      ${item('dept-open', 'users', tr('افتح الشعبة'), tr('اعرض الدرجات وعدّلها'))}
+      ${x.has ? item('dept-assign', 'send', x.who ? tr('انقلها لمعلم آخر') : tr('أسندها لمعلم'), tr('تصله فورًا بكل بياناتها')) : ''}
+      ${x.who ? item('dept-release', 'x', tr('حرّر الحجز'), tr('تصبح متاحة لأي معلم يختارها')) : ''}
+    </div>
+    <div class="actions"><button type="button" class="btn" data-x>إغلاق</button></div>`, { label: x.label });
+  sh.sheet.addEventListener('click', (e) => { if (e.target.closest('[data-act]') || e.target.closest('[data-x]')) setTimeout(() => sh.close(), 0); });
+}
 async function deptSectionReport() {
   const x = await deptPickSection(tr('تقرير أي شعبة؟'));
   if (!x) return;
@@ -1472,7 +1668,9 @@ function ClassScreen(p) {
   // الكمبيوتر: عنوان درس الأسبوع (من خطة المنهج) يظهر تلقائيًا تحت اسم الصف — للعرض فقط
   // الكمبيوتر: تحت اسم الصف «باقي X من Y» (بدل عدد الطلاب)، وعنوان الدرس في وسط الرأس
   const sub = wide && n ? `<span id="week-status" class="hdr-status">${statusNow}</span>` : students(n);
-  return `<div class="cls-head">${appbar({ title: c.label, sub, save: true, actions: wide ? hdr : menuBtn })}${n && !wide ? weekbar : ''}</div>${body}`;
+  const taken = C.role !== 'head' && secKey(c) ? reservedBy(secKey(c)) : '';
+  const takenHTML = taken ? T`<div class="wrap" style="padding-bottom:0"><div class="alert warn" data-testid="reserved">${icon('warn')}<div class="grow"><strong>هذه الشعبة محجوزة لـ ${esc(taken)}</strong><p>بياناتها عنده. أزلها من صفوفك إن لم تكن تدرّسها.</p><button type="button" class="btn sm" data-act="delete-class-id" data-id="${c.id}">${icon('trash')} أزلها من صفوفي</button></div></div></div>` : '';
+  return `<div class="cls-head">${appbar({ title: c.label, sub, save: true, actions: wide ? hdr : menuBtn })}${n && !wide ? weekbar : ''}</div>${takenHTML}${body}`;
 }
 afterRender.class = (p) => {
   if (!p.painted) {
@@ -2249,10 +2447,13 @@ async function deleteClass(id, { skipConfirm = false } = {}) {
   const pos = S.classes.indexOf(c);
   const data = dataOf(id);
   const sched = Array.isArray(S.settings.schedule) ? S.settings.schedule.slice() : [];
+  const relK = secKey(c);
+  const relDoc = relK && C.share ? (S.share[relK] || { label: c.label, names: c.names.slice(), data: JSON.parse(JSON.stringify(dataOf(id))), owner: { u: meU(), name: meName() } }) : null;
   S.classes.splice(pos, 1);
   delete S.grades[id];
   await saveClassesNow();
   await store.deleteGrades(id);
+  if (relDoc && C.role !== 'head' && !shareOwn().get(relK)) { S.share[relK] = relDoc; releaseSection(relK); }
   if (sched.some((x) => x && x.classId === id)) { S.settings.schedule = sched.filter((x) => !x || x.classId !== id); await saveSettingsNow(); syncReminders().catch(() => {}); }
   S.stack = [{ name: 'home', p: {} }];
   history.replaceState({ depth: 1 }, '');
@@ -2434,7 +2635,8 @@ function TransferOut(p) {
       <span><button type="button" class="btn sm ghost" data-act="sel-all" data-v="1">تحديد الكل</button><button type="button" class="btn sm ghost" data-act="sel-all" data-v="0">إلغاء الكل</button></span></div>
     <div class="list">${list.map(({ nm, i }) => `<label class="pick"><input type="checkbox" data-sel="${i}" ${p.sel.has(i) ? 'checked' : ''}><span class="stu-num num">${ar(i + 1)}</span><span class="grow">${esc(nm)}</span>${studentHasGrades(d, i) ? tr('<span class="meta">له درجات</span>') : ''}</label>`).join('') || tr('<p class="hint" style="padding:16px">لا نتائج</p>')}</div>
     <div class="card stack" style="position:sticky;bottom:calc(var(--safe-b) + 8px);box-shadow:var(--shadow-lg)">
-      <button type="button" class="btn primary block" data-act="transfer-file" ${k ? '' : 'disabled'}>${icon('send')} حفظ ملف النقل وإرساله لمعلم آخر</button>
+      ${C.share ? T`<button type="button" class="btn primary block" data-act="transfer-cloud" ${k ? '' : 'disabled'}>${icon('send')} نقل لشعبة أخرى — يصل لمعلمها فورًا</button>` : ''}
+      <button type="button" class="btn ${C.share ? '' : 'primary'} block" data-act="transfer-file" ${k ? '' : 'disabled'}>${icon('download')} حفظ ملف النقل وإرساله لمعلم آخر</button>
       <button type="button" class="btn block" data-act="transfer-move" ${k && S.classes.length > 0 ? '' : 'disabled'}>${icon('move')} نقل إلى صف آخر عندي</button>
     </div>
   </div>`;
@@ -3623,6 +3825,10 @@ document.addEventListener('click', async (e) => {
     case 'delete-pick': { const c = await pickClass(tr('أي صف تريد حذفه؟')); if (c) deleteClass(c.id); break; }
     case 'handover-pick': { const c = await pickClass(tr('أي صف تريد تسليمه؟')); if (c) doHandover(c); break; }
     case 'handover': doHandover(cls(el.dataset.id)); break;
+    case 'move-class': { const c = cls(el.dataset.id); if (c && secKey(c)) await moveClassTo(secKey(c), c); break; }
+    case 'transfer-cloud': await moveStudentsToSection(p); break;
+    case 'dept-assign': await moveClassTo(el.dataset.k, shareOwn().get(el.dataset.k) || null); break;
+    case 'dept-release': { const ok = await confirmDialog({ title: tr('تحرير الشعبة؟'), text: tr('تصبح متاحة لأي معلم يختارها، وتبقى بياناتها كما هي.'), ok: tr('تحرير') }); if (ok) { releaseSection(el.dataset.k, 'free'); render(); } break; }
     case 'transfer-pick': { const c = await pickClass(tr('نقل طلاب من أي صف؟')); if (c) go('transferOut', { id: c.id }); break; }
     case 'report-grades': pickGradesReport(cls(el.dataset.id)); break;
     case 'report-attendance': printReport('attendance', cls(el.dataset.id)); break;
@@ -3673,6 +3879,7 @@ document.addEventListener('click', async (e) => {
     case 'side-toggle': S.ui.sideHidden = !S.ui.sideHidden; setDeskPref('gfu-side', S.ui.sideHidden); render(); break;
     case 'school-code': if (C.session) openSchoolCodeSheet(); break;
     case 'dept-open': await deptOpen(el.dataset.k); break;
+    case 'dept-sec': deptSecSheet(el.dataset.k); break;
     case 'dept-tab': S.ui.deptTab = el.dataset.v; render(); break;
     case 'dept-away': await setAway(el.dataset.n, el.dataset.v === '1'); break;
     case 'dept-report': await deptReport(); break;
@@ -3978,7 +4185,7 @@ function showClassMenu(p) {
       ${item('edit-class', 'users', tr('الطلاب'), tr('إضافة، تعديل الأسماء، حذف، ترتيب'))}
       ${item('export-xlsx', 'sheet', tr('تصدير Excel'), tr('كشف المتابعة الرسمي للطباعة'))}
       ${item('go-live', 'monitor', tr('عرض على الكمبيوتر'), tr('اعرض الدرجات على البروجكتر'))}
-      ${item('handover', 'send', tr('تسليم الصف لمعلم آخر'), tr('كل الطلاب مع الدرجات والغياب والملاحظات'))}
+      ${C.share && secKey(c) ? item('move-class', 'send', tr('نقل الصف لمعلم آخر'), tr('يصله فورًا بكل طلابه ودرجاته — بلا ملفات')) : item('handover', 'send', tr('تسليم الصف لمعلم آخر'), tr('كل الطلاب مع الدرجات والغياب والملاحظات'))}
       ${item('go', 'move', tr('نقل طلاب'), tr('طالب أو أكثر لمعلم آخر أو لصف آخر'), 'data-to="transferOut"')}
       ${item('go', 'inbox', tr('استقبال طلاب منقولين'), tr('من ملف أرسله معلم آخر'), 'data-to="transferIn"')}
     </div>

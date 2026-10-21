@@ -328,7 +328,9 @@ export class CloudSync {
         this.meta.docs[doc.k] = { v: doc.v, base: remote };
         if (!same(result, local)) await this.host.apply(doc.k, result, { by: doc.by || '' });
         else if (this.host.seen) await this.host.seen(doc.k, remote, { by: doc.by || '' });
-        if (same(result, remote)) this.dirty.delete(doc.k); else this.dirty.add(doc.k);
+        // نقارن بما عندنا الآن فعلًا (قد يغيّره التطبيق أثناء apply — مثل استلام طالب منقول) لا بنتيجة الدمج فقط
+        const now = this.host.keys().includes(doc.k) ? this.host.get(doc.k) : undefined;
+        if (now === undefined ? same(result, remote) : same(now, remote)) this.dirty.delete(doc.k); else this.dirty.add(doc.k);
       }
       this.meta.seq = Math.max(this.meta.seq, Number(r.j.seq) || 0);
       await this.saveMeta();
