@@ -1,6 +1,7 @@
 // ترجمة الواجهة للإنجليزية. المفتاح = النص العربي كما في الكود (و{} مكان كل قيمة متغيرة؛ {0} {1} لإعادة الترتيب).
 // لتعديل ترجمة: غيّر النص الإنجليزي فقط. نص بلا ترجمة يظهر بالعربية.
 export default {
+  "أوقات الحصص مربوطة بالصف لا بالمعلم: لو تغيّر معلم الشعبة يبقى الوقت والتنبيه صحيحين": "Period times are tied to the class, not the teacher: if a section changes teacher, the time and reminder stay correct",
   "الشامل، أو كل فترة بالتفصيل، أو الدرجات النهائية — PDF": "Full, each quarter in detail, or final grades — PDF",
   "مجموع كل أسبوع (١–١٠) والفترتان والبنائي والنهائي": "Each week's total (1–10), both quarters, formative and final",
   "الفترة الأولى بالتفصيل": "First quarter in detail",

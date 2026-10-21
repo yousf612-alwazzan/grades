@@ -34,26 +34,33 @@ function entry(x, c) {
   return { id: `tt${x.d}-${x.p}`, day: x.d, time: start, end, period: x.p, span: x.n, label: meeting ? tr(x.t) : c.label, classId: c ? c.id : null, kind: meeting ? 'meeting' : 'class' };
 }
 
-/** حصص صفوف المعلم من جدول المدرسة — تلقائيًا من الصفوف نفسها (الثامن / 4 ← وقت حصتها).
- *  صاحب أكثر الشعب المطابقة في الجدول هو المعلم: تُضاف مواعيده الأخرى أيضًا (الاجتماعات). */
+/** حصص صفوف المعلم من جدول المدرسة — مربوطة بالصف نفسه (الثامن / 4 ← وقت حصتها)، لا بالمعلم:
+ *  لو تغيّر معلم الشعبة يبقى الوقت صحيحًا. ويُضاف اجتماع القسم المشترك بين كل المعلمين (إن وُجد) لمن عنده حصص. */
 export function entriesFor(tt, classes) {
   if (!tt) return [];
   const byLabel = new Map(classes.map((c) => [c.label, c]));
   const out = [];
-  const score = new Map();
-  for (const [name, list] of Object.entries(tt.teachers)) {
+  const seen = new Set();
+  for (const list of Object.values(tt.teachers)) {
     for (const x of list) {
       if (!(x.g && x.s)) continue;
       const c = byLabel.get(sectionLabel(x.g, x.s));
-      if (!c) continue;
+      const k = `${x.d}-${x.p}-${x.g}-${x.s}`;
+      if (!c || seen.has(k)) continue;
+      seen.add(k);
       out.push(entry(x, c));
-      score.set(name, (score.get(name) || 0) + 1);
     }
   }
-  let best = '';
-  for (const [n, k] of score) if (!best || k > score.get(best)) best = n;
-  if (best) for (const x of tt.teachers[best]) if (!(x.g && x.s)) out.push(entry(x, null));
+  if (out.length) for (const x of sharedMeetings(tt)) out.push(entry(x, null));
   return out;
+}
+
+// مواعيد عامة (بلا صف) موجودة عند كل المعلمين في الجدول — مثل اجتماع القسم الأسبوعي
+function sharedMeetings(tt) {
+  const lists = Object.values(tt.teachers).filter((l) => l.some((x) => x.g && x.s));
+  if (!lists.length) return [];
+  const key = (x) => `${x.d}-${x.p}-${x.n}-${x.t}`;
+  return lists[0].filter((x) => !(x.g && x.s) && lists.every((l) => l.some((y) => !(y.g && y.s) && key(y) === key(x))));
 }
 
 /** صفوف المعلم غير الموجودة في جدول المدرسة (لا يُعرف وقتها). */
