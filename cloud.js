@@ -136,6 +136,12 @@ export async function fetchRoster(session) {
     return r.status === 200 ? r.j : null;
   } catch { return null; }
 }
+export async function fetchTimetable(session) {
+  try {
+    const r = await api('/api/timetable', { token: session.token });
+    return r.status === 200 ? r.j : null;
+  } catch { return null; }
+}
 export function lastUser() { try { return localStorage.getItem('gfu-cloud-last') || ''; } catch { return ''; } }
 
 /** تغيير كلمة السر و/أو اسم المستخدم: يعيد تشفير كل المستندات بالمفتاح الجديد ويرسلها مرة واحدة.

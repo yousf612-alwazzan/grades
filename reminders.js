@@ -60,19 +60,31 @@ export function nextOccurrence(day, time, now = new Date()) {
 }
 
 /** إشعارات أندرويد (صيغة إضافة LocalNotifications). */
+// حصة/حصتان: «الحصة ٣» أو «الحصتان ٣–٤»
+export function periodText(s) {
+  if (!s.period) return '';
+  return s.span === 2 ? T`الحصتان ${ar(s.period)}–${ar(s.period + 1)}` : T`الحصة ${ar(s.period)}`;
+}
+// عنوان المدخل: صف المعلم، أو عنوان جاهز (من جدول المدرسة: «الثامن / 4»، «اجتماع»)
+function entryLabel(s, byId) {
+  const c = s.classId ? byId.get(s.classId) : null;
+  return c ? c.label : (typeof s.label === 'string' && s.label ? s.label : '');
+}
+
 export function planNotifications(schedule, classes, minutesBefore) {
   const byId = new Map(classes.map((c) => [c.id, c]));
-  return schedule.filter((s) => byId.has(s.classId)).map((s, i) => {
-    const c = byId.get(s.classId);
+  return schedule.filter((s) => entryLabel(s, byId)).map((s, i) => {
+    const label = entryLabel(s, byId);
     const r = reminderSlot(s.day, s.time, minutesBefore);
-    const per = s.period ? T` · الحصة ${ar(s.period)}` : '';
+    const per = s.period ? ' · ' + periodText(s) : '';
+    const open = s.classId && byId.has(s.classId);
     return {
       id: ID_BASE + i,
-      title: T`حصة «${c.label}» بعد ${minutesText(minutesBefore)}`,
-      body: T`${tr(DAYS[s.day])} ${ar(s.time)}${per} — اضغط لفتح الصف`,
+      title: s.kind === 'meeting' ? T`«${label}» بعد ${minutesText(minutesBefore)}` : T`حصة «${label}» بعد ${minutesText(minutesBefore)}`,
+      body: open ? T`${tr(DAYS[s.day])} ${ar(s.time)}${per} — اضغط لفتح الصف` : T`${tr(DAYS[s.day])} ${ar(s.time)}${per}`,
       channelId: 'class_reminders',
       schedule: { on: { weekday: r.day + 1, hour: r.hour, minute: r.minute }, allowWhileIdle: true },
-      extra: { kind: 'class-reminder', classId: c.id },
+      extra: { kind: 'class-reminder', classId: open ? s.classId : '' },
       smallIcon: 'ic_stat_share',
     };
   });
@@ -101,11 +113,13 @@ export function buildICS(schedule, classes, minutesBefore, now = new Date()) {
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//grades-followup//class-reminders//AR', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
     'X-WR-CALNAME:' + icsEsc(tr('جدول الحصص'))];
   for (const s of schedule) {
-    const c = byId.get(s.classId);
-    if (!c) continue;
+    const label = entryLabel(s, byId);
+    if (!label) continue;
     const start = nextOccurrence(s.day, s.time, now);
-    const end = new Date(start.getTime() + LESSON_MINUTES * 60000);
-    const title = s.period ? T`حصة ${c.label} (الحصة ${ar(s.period)})` : T`حصة ${c.label}`;
+    let end = new Date(start.getTime() + LESSON_MINUTES * 60000);
+    if (TIME_RE.test(s.end || '')) { const [h, m] = s.end.split(':').map(Number); const e = new Date(start); e.setHours(h, m, 0, 0); if (e > start) end = e; }
+    const name = s.kind === 'meeting' ? label : T`حصة ${label}`;
+    const title = s.period ? `${name} (${periodText(s)})` : name;
     lines.push('BEGIN:VEVENT', `UID:${s.id}@grades-followup`, `DTSTAMP:${utc}`, `DTSTART:${icsDate(start)}`, `DTEND:${icsDate(end)}`,
       `RRULE:FREQ=WEEKLY;BYDAY=${BYDAY[s.day]}`, 'SUMMARY:' + icsEsc(title),
       'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + icsEsc(title), `TRIGGER:-PT${Math.max(0, minutesBefore | 0)}M`, 'END:VALARM', 'END:VEVENT');

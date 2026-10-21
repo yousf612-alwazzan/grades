@@ -6,7 +6,8 @@ import { CHANGELOG } from './changelog.js';
 import { PLAN_NAME, planFor, gradeOf } from './lesson-plans.js';
 import * as cloud from './cloud.js';
 import { sanitizeRoster, gradeName, sectionLabel, sortedSections, sortedGrades } from './school.js';
-import { DAYS, SCHOOL_DAYS, REMIND_CHOICES, sanitizeSchedule, sortSchedule, nextOccurrence, buildICS, syncNativeReminders, minutesText } from './reminders.js';
+import { DAYS, SCHOOL_DAYS, REMIND_CHOICES, sanitizeSchedule, sortSchedule, nextOccurrence, buildICS, syncNativeReminders, minutesText, periodText } from './reminders.js';
+import { sanitizeTimetable, entriesFor, unmatchedClasses } from './timetable.js';
 import {
   WEEKS, ITEMS, MAX_STUDENTS, parseScore, fmt, emptyClassData, getItems, setItem, getFin, setFin,
   getWeekMeta, setWeekMeta, weekTotal, periodScore, formative, finalTotal, studentSummary,
@@ -204,6 +205,7 @@ async function startCloud(session, key) {
   if (session.mustChange && !C.loading && !hasSheet()) openAccountSheet(true);
   try { await startP; } finally { if (C.loading) { C.loading = false; render(); } }
   loadSchoolRoster().catch(() => {});
+  loadTimetable().catch(() => {});
   if (session.mustChange && C.sync && !hasSheet() && !document.querySelector('[data-acform]')) openAccountSheet(true);
 }
 function cloudLeftMs() { return C.session && DESK_WEB ? Math.max(0, (Number(C.session.t) || Date.now()) + DESK_SESSION_MS - Date.now()) : Infinity; }
@@ -328,6 +330,43 @@ async function loadBundledRoster() {
     if (route().name === 'school') softRender();
   } catch { /* بلا قوائم مضمّنة */ }
 }
+// ===================== جدول حصص المدرسة =====================
+// تلقائي بالكامل: كل صف عند المعلم (الثامن / 4) يأخذ وقت حصته من الجدول، ويصله تنبيه قبلها — بلا اختيار اسم.
+async function setTimetable(t) {
+  S.meta.timetable = t;
+  await store.setMeta('timetable', t).catch(() => {});
+}
+async function loadTimetable() {
+  if (!C.session) return null;
+  const raw = await cloud.fetchTimetable(C.session);
+  const t = sanitizeTimetable(raw);
+  if (!t) return null;
+  await setTimetable(t);
+  softRender();
+  return t;
+}
+async function loadBundledTimetable() {
+  if (!platform.isNative || REMOTE) return;
+  try {
+    const res = await fetch('school-timetable.json', { cache: 'no-store' });
+    if (!res.ok) return;
+    const t = sanitizeTimetable(await res.json());
+    if (!t) return;
+    const cur = S.meta.timetable;
+    if (cur && (Number(cur.at) || 0) >= t.at) return;
+    await setTimetable(t);
+    syncReminders().catch(() => {});
+    softRender();
+  } catch { /* بلا جدول مضمّن */ }
+}
+function ttList() { return S.settings.ttAuto !== false ? entriesFor(S.meta.timetable, S.classes) : []; }
+// كل الحصص: المضافة يدويًا + جدول المدرسة (اليدوي يغلب إن تطابق اليوم والوقت)
+function allEntries() {
+  const manual = scheduleList();
+  const taken = new Set(manual.map((x) => x.day + '@' + x.time));
+  return sortSchedule([...manual, ...ttList().filter((x) => !taken.has(x.day + '@' + x.time))]);
+}
+const entryLabel = (e) => (e.classId && cls(e.classId) ? cls(e.classId).label : e.label || '');
 async function importSchoolFile() {
   const file = await platform.pickFile('.json,application/json');
   if (!file) return;
@@ -524,7 +563,7 @@ function paintSave(el) {
   el.className = 'save-state' + (st === 'saved' ? ' ok' : '');
   el.innerHTML = st === 'saving' ? tr('جارٍ الحفظ…') : st === 'error' ? T`${icon('warn')} لم يُحفظ` : st === 'saved' ? T`${icon('check')} محفوظ` : '';
 }
-async function saveClassesNow() { noteChange(); await store.saveClasses(S.classes); autoPlans(); }
+async function saveClassesNow() { noteChange(); await store.saveClasses(S.classes); autoPlans(); if (S.meta.timetable) syncReminders().catch(() => {}); }
 
 // ===== خطة توزيع المنهج: عنوان الدرس لكل أسبوع حسب الصف =====
 // تملأ الأسابيع الفارغة فقط (أو كلها عند overwrite). ترجع عدد الأسابيع التي عُبّئت.
@@ -758,6 +797,10 @@ function Home() {
   if (platform.isNative && (!st.teacher || !st.subject)) { // أندرويد فقط — الآيفون والكمبيوتر لا يُسألان
     alerts.push(T`<div class="alert info">${icon('info')}<div class="grow"><strong>أضف اسمك والمادة</strong><p>تظهر في كشف الإكسل وبطاقة الطالب.</p><button type="button" class="btn sm soft" data-act="nav" data-to="settings">إضافة الآن</button></div></div>`);
   }
+  if (!REMOTE && !platform.isNative && platform.isIOS && ttList().length && !S.meta.ttCalDone) {
+    // آيفون: التنبيه عن طريق تقويم الجوال (لا إشعارات من المتصفح والتطبيق مغلق)
+    alerts.push(T`<div class="alert info" data-testid="tt-cal">${icon('bell')}<div class="grow"><strong>حصصك جاهزة من جدول المدرسة</strong><p>أضفها لتقويم جوالك مرة واحدة، ويصلك تنبيه قبل كل حصة كل أسبوع.</p><div class="row" style="gap:8px"><button type="button" class="btn sm primary" data-act="slot-ics">${icon('calendar')} أضفها للتقويم</button><button type="button" class="btn sm ghost" data-act="go" data-to="schedule">اعرض حصصي</button></div></div></div>`);
+  }
   const last = S.meta.lastBackupAt ? new Date(S.meta.lastBackupAt) : null;
   const days = last ? (Date.now() - last.getTime()) / 86400000 : Infinity;
   const pending = !!S.meta.changedSinceBackup && hasAnyGrades();
@@ -811,7 +854,8 @@ function remindMinutes() { const n = Number(S.settings.remindBefore); return REM
 function scheduleList() { return sanitizeSchedule(S.settings.schedule).filter((s) => cls(s.classId)); }
 
 function Schedule() {
-  const list = scheduleList();
+  const list = allEntries();
+  const tt = S.meta.timetable;
   const mins = remindMinutes();
   const on = S.settings.remindersOn !== false;
   const st = S.ui.remState;
@@ -824,15 +868,30 @@ function Schedule() {
   // الحصة القادمة
   let next = null;
   for (const s of list) { const at = nextOccurrence(s.day, s.time); if (!next || at < next.at) next = { s, at }; }
-  const nextHTML = next ? T`<div class="next-lesson"><small>الحصة القادمة</small><strong>${esc(cls(next.s.classId).label)}</strong><span>${tr(DAYS[next.s.day])} · ${ar(next.s.time)}${next.s.period ? T` · الحصة ${ar(next.s.period)}` : ''}</span></div>` : '';
+  const nextHTML = next ? T`<div class="next-lesson"><small>${next.s.kind === 'meeting' ? tr('الموعد القادم') : tr('الحصة القادمة')}</small><strong>${esc(entryLabel(next.s))}</strong><span>${tr(DAYS[next.s.day])} · ${ar(next.s.time)}${next.s.period ? ' · ' + periodText(next.s) : ''}</span></div>` : '';
   // الحصص حسب اليوم
   const days = [...new Set(list.map((s) => s.day))].sort((a, b) => ((a + 7) % 7) - ((b + 7) % 7));
-  const groups = days.map((d) => T`<div class="section-title">${tr(DAYS[d])}</div><div class="list">${list.filter((s) => s.day === d).map((s) => T`<div class="list-item slot"><span class="slot-time num">${ar(s.time)}</span><span class="grow"><strong>${esc(cls(s.classId).label)}</strong>${s.period ? T`<small>الحصة ${ar(s.period)}</small>` : ''}</span><button type="button" class="icon-btn" data-act="slot-del" data-sid="${s.id}" aria-label="حذف الحصة">${icon('trash')}</button></div>`).join('')}</div>`).join('');
+  const groups = days.map((d) => T`<div class="section-title">${tr(DAYS[d])}</div><div class="list">${list.filter((s) => s.day === d).map((s) => {
+    const fromTt = s.id.startsWith('tt');
+    const sub = s.period ? periodText(s) : '';
+    const open = s.classId && cls(s.classId);
+    const main = T`<span class="slot-time num">${ar(s.time)}${s.end ? T`<small>${ar(s.end)}</small>` : ''}</span><span class="grow"><strong>${esc(entryLabel(s))}</strong>${sub ? `<small>${sub}</small>` : ''}</span>`;
+    return fromTt
+      ? (open ? T`<button type="button" class="list-item slot tt" data-act="open-class" data-id="${s.classId}">${main}${icon('fwd')}</button>` : T`<div class="list-item slot tt ${s.kind === 'meeting' ? 'meet' : ''}">${main}</div>`)
+      : T`<div class="list-item slot">${main}<button type="button" class="icon-btn" data-act="slot-del" data-sid="${s.id}" aria-label="حذف الحصة">${icon('trash')}</button></div>`;
+  }).join('')}</div>`).join('');
+  // جدول المدرسة: أوقات حصص الصفوف تلقائيًا (ومفتاح لإيقافه)
+  const off = tt ? unmatchedClasses(tt, S.classes) : [];
+  const ttCard = !tt ? '' : T`<div class="card tt-card">
+      <label class="list-item" style="padding:0;min-height:48px">${icon('calendar')}<span class="grow"><strong>أوقات الحصص من جدول المدرسة</strong><small>كل صف تضيفه يأخذ وقت حصته تلقائيًا</small></span><input type="checkbox" class="switch" data-setting-bool="ttAuto" ${S.settings.ttAuto !== false ? 'checked' : ''}></label>
+      ${S.settings.ttAuto !== false && off.length ? T`<p class="hint" style="margin:8px 0 0">${icon('info')} صفوف ليست في جدول المدرسة: ${off.map((c) => esc(c.label)).join('، ')} — أضف وقتها بنفسك من «إضافة حصة».</p>` : ''}
+    </div>`;
   const minSeg = `<div class="seg" role="group" aria-label="${tr('قبل الحصة بـ')}">${REMIND_CHOICES.map((n) => `<button type="button" data-act="remind-min" data-v="${n}" aria-pressed="${n === mins}">${minutesText(n)}</button>`).join('')}</div>`;
   const icsBtn = list.length ? T`<button type="button" class="btn ${platform.isNative ? '' : 'primary'} block" data-act="slot-ics">${icon('calendar')} أضف الجدول لتقويم الجوال</button>` : '';
   return T`${appbar({ title: tr('جدول الحصص والتذكير') })}
   <div class="wrap stack">
-    ${!S.classes.length ? T`<div class="empty card"><h2>أضف صفًا أولًا</h2><p>بعدها تقدر تضيف أوقات حصصه هنا.</p><button type="button" class="btn primary" data-act="new-class">${icon('plus')} إضافة صف</button></div>` : T`
+    ${ttCard}
+    ${!S.classes.length && !list.length ? T`<div class="empty card"><h2>أضف صفًا أولًا</h2><p>بعدها تقدر تضيف أوقات حصصه هنا.</p><button type="button" class="btn primary" data-act="new-class">${icon('plus')} إضافة صف</button></div>` : T`
     <div class="card stack">
       ${platform.isNative ? T`<label class="list-item" style="padding:0;min-height:48px"><span class="grow"><strong>تذكير قبل الحصة</strong><small>إشعار على الجوال حتى لو التطبيق مغلق</small></span><input type="checkbox" class="switch" data-setting-bool="remindersOn" ${on ? 'checked' : ''}></label>` : T`<div class="alert info">${icon('info')}<div class="grow"><strong>التنبيه عن طريق تقويم الجوال</strong><p style="margin:0">بعد إضافة حصصك اضغط «أضف الجدول لتقويم الجوال» ثم «إضافة الكل» — يصلك تنبيه قبل كل حصة كل أسبوع، حتى بدون إنترنت.</p></div></div>`}
       <div class="field"><span class="label">التنبيه قبل الحصة بـ</span>${minSeg}</div>
@@ -840,7 +899,7 @@ function Schedule() {
     </div>
     ${nextHTML}
     ${list.length ? groups : T`<p class="hint" style="text-align:center;padding:12px 0">لا توجد حصص بعد. أضف أوقات حصص صفوفك ليصلك تنبيه قبل كل حصة.</p>`}
-    <button type="button" class="btn primary lg block" data-act="slot-add">${icon('plus')} إضافة حصة</button>
+    ${S.classes.length ? T`<button type="button" class="btn ${ttList().length ? '' : 'primary'} lg block" data-act="slot-add">${icon('plus')} إضافة حصة</button>` : ''}
     ${icsBtn}
     <p class="hint">${icon('shield')} الجدول والتنبيهات على جهازك فقط — لا شيء يُرسل لأي مكان.</p>`}
   </div>`;
@@ -888,7 +947,7 @@ function openSlotSheet() {
 async function syncReminders() {
   if (!platform.isNative || REMOTE) return null;
   const r = await syncNativeReminders(platform.plugin('LocalNotifications'), {
-    schedule: scheduleList(), classes: S.classes, minutesBefore: remindMinutes(), enabled: S.settings.remindersOn !== false,
+    schedule: allEntries(), classes: S.classes, minutesBefore: remindMinutes(), enabled: S.settings.remindersOn !== false,
   });
   S.ui.remState = r;
   return r;
@@ -896,7 +955,8 @@ async function syncReminders() {
 
 // ملف التقويم (آيفون/المتصفح، وأندرويد كخيار إضافي)
 async function exportScheduleICS() {
-  const text = buildICS(scheduleList(), S.classes, remindMinutes());
+  const text = buildICS(allEntries(), S.classes, remindMinutes());
+  S.meta.ttCalDone = true; store.setMeta('ttCalDone', true).catch(() => {});
   const blob = new Blob([text], { type: 'text/calendar;charset=utf-8' });
   const name = tr('جدول-الحصص') + '.ics';
   if (platform.isIOS && !platform.isNative) {
@@ -976,7 +1036,7 @@ function Reports() {
     <button type="button" class="pick-btn" data-act="report-class-pick" aria-haspopup="dialog"><span class="pick-ico">${icon('users')}</span><span class="grow"><small>الصف</small><strong>${esc(c.label)}</strong><span class="pick-meta">${students(n)} · رصد ${ar(Math.round(pr.ratio * 100))}%</span></span><span class="pick-chev" aria-hidden="true">تغيير</span></button>
     <p class="hint">التقارير تُطبع أو تُحفظ PDF من نافذة الطباعة.</p>
     <div class="report-grid">
-      ${card('report-grades', 'sheet', tr('كشف الدرجات'), tr('الأسابيع والفترتان والنهائي — PDF منسّق للطباعة'))}
+      ${card('report-grades', 'sheet', tr('كشف الدرجات'), tr('الشامل، أو كل فترة بالتفصيل، أو الدرجات النهائية — PDF'))}
       ${card('report-attendance', 'calendar', tr('كشف الحضور والغياب'), tr('غياب كل طالب في كل أسبوع — PDF'))}
       ${card('export-xlsx', 'download', tr('كشف Excel الرسمي'), tr('ملف xlsx بأوراق المتابعة والطباعة والرصد'))}
       ${card('report-student', 'users', tr('تقرير طالب'), tr('درجات طالب واحد مع ملاحظاته — PDF'))}
@@ -1123,6 +1183,7 @@ function deskSide(c, d, inner) {
     <div class="side-sum" id="side-sum" aria-label="ملخص الصف">${sideSumHTML(c, d)}</div>
     <div class="side-card side-acts">
       ${REMOTE ? act('present', 'monitor', tr('اعرض للطلاب وارصد')) : DESK_WEB ? '' : act('go-live', 'monitor', tr('عرض على الكمبيوتر'))}
+      ${act('add-student', 'plus', tr('طالب جديد'))}
       ${act('edit-class', 'users', tr('الطلاب'))}
       ${act('export-xlsx', 'sheet', tr('تصدير Excel'))}
       ${act('go', 'send', tr('نقل طلاب'), 'data-to="transferOut"')}
@@ -1683,6 +1744,7 @@ function studentCardBody(c, i, { compact: small = false, week = null } = {}) {
     </div>
     <button type="button" class="btn primary block" data-act="share-student" data-id="${c.id}" data-idx="${i}">${icon('share')} مشاركة البطاقة</button>
     <button type="button" class="btn block" data-act="print-student" data-id="${c.id}" data-idx="${i}">${icon('sheet')} طباعة تقرير الطالب (PDF)</button>
+    ${REMOTE ? '' : T`<button type="button" class="btn danger-ghost block" data-act="del-student" data-id="${c.id}" data-idx="${i}">${icon('trash')} حذف الطالب (خرج من المدرسة)</button>`}
     ${small ? T`<button type="button" class="btn ghost block" data-act="close-aside">إغلاق البطاقة</button>` : ''}
   </div>`;
 }
@@ -1755,6 +1817,60 @@ function addNamesToDraft(p, raw) {
   if (res.overLimit) parts.push(T`${ar(res.overLimit)} فوق الحد (${ar(MAX_STUDENTS)})`);
   toast(res.names.length || res.dup || res.overLimit ? parts.join(' · ') : tr('لم نجد أسماء صالحة'), { err: !res.names.length && !res.dup });
   return res;
+}
+
+// ===== طالب جديد من خارج المدرسة / طالب خرج من المدرسة =====
+function openAddStudent(c) {
+  if (!c) return;
+  if (c.names.length >= MAX_STUDENTS) { toast(T`الحد الأقصى ${ar(MAX_STUDENTS)} طالبًا`, { err: true }); return; }
+  const sh = openSheet(T`<h2>${icon('plus')} طالب جديد في ${esc(c.label)}</h2>
+    <form class="stack" data-ns autocomplete="off">
+      <div class="field"><label for="ns-name">اسم الطالب</label><input id="ns-name" class="input" maxlength="120" required></div>
+      <p class="hint">ينضاف آخر القائمة برقم ${ar(c.names.length + 1)}، ودرجاته تبدأ من الأسبوع الحالي.</p>
+      <p class="field-error" role="alert" hidden></p>
+      <div class="actions"><button type="button" class="btn" data-x>إلغاء</button><button type="submit" class="btn primary">إضافة الطالب</button></div>
+    </form>`, { label: tr('طالب جديد') });
+  const f = sh.sheet.querySelector('[data-ns]');
+  const inp = f.querySelector('#ns-name');
+  setTimeout(() => inp.focus(), 60);
+  sh.sheet.querySelector('[data-x]').addEventListener('click', () => sh.close());
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = inp.value.replace(/\s+/g, ' ').trim();
+    const err = f.querySelector('.field-error');
+    if (!name) { err.textContent = tr('اكتب اسم الطالب'); err.hidden = false; return; }
+    if (c.names.some((x) => nameKey(x) === nameKey(name)) && !f.dataset.dupOk) { err.textContent = tr('هذا الاسم موجود في الصف. اضغط «إضافة الطالب» مرة ثانية إن كان طالبًا آخر.'); err.hidden = false; f.dataset.dupOk = '1'; return; }
+    c.names.push(name);
+    await saveClassesNow();
+    liveResync(c.id);
+    sh.close();
+    S.ui.search = '';
+    render();
+    toast(T`أُضيف «${name}» ✓`, { action: { label: tr('تراجع'), fn: async () => {
+      const k = c.names.lastIndexOf(name);
+      if (k !== c.names.length - 1 || studentHasGrades(dataOf(c.id), k)) return;
+      c.names.pop(); await saveClassesNow(); liveResync(c.id); render();
+    } } });
+  });
+}
+async function deleteStudent(c, i) {
+  if (!c || !(i >= 0 && i < c.names.length)) return;
+  const name = c.names[i];
+  const ok = await confirmDialog({ title: T`حذف «${name}» نهائيًا؟`, text: tr('يُحذف من الصف مع كل درجاته وغيابه وملاحظاته (طالب خرج من المدرسة). إن كان منتقلًا لمعلم آخر في المدرسة فاستعمل «نقل طلاب» حتى تنتقل درجاته معه.'), ok: tr('حذف الطالب'), danger: true });
+  if (!ok) return;
+  const before = { names: c.names.slice(), data: JSON.parse(JSON.stringify(dataOf(c.id))) };
+  const keep = c.names.map((_, k) => k).filter((k) => k !== i);
+  c.names = keep.map((k) => before.names[k]);
+  S.grades[c.id] = remapData(before.data, keep);
+  S.ui.selected = null;
+  await saveClassesNow();
+  await store.saveGrades(c.id, S.grades[c.id]);
+  liveResync(c.id);
+  if (route().name === 'student') back(); else render();
+  toast(T`حُذف «${name}»`, { ms: 8000, action: { label: tr('تراجع'), fn: async () => {
+    c.names = before.names; S.grades[c.id] = before.data;
+    await saveClassesNow(); await store.saveGrades(c.id, S.grades[c.id]); liveResync(c.id); render();
+  } } });
 }
 
 async function saveEditor(p) {
@@ -2352,13 +2468,29 @@ async function doHandover(c) {
 // =====================================================================
 // التقارير: نطبع تقريرًا منسّقًا (أو نحفظه PDF من نافذة الطباعة)
 // =====================================================================
-async function printReport(kind, c, idx) {
+// كشف الدرجات: يختار المعلم نوعه
+function pickGradesReport(c) {
+  const opt = (part, t, sub) => `<button type="button" class="list-item" data-part="${part}"><span class="grow"><strong>${t}</strong><small>${sub}</small></span>${icon('fwd')}</button>`;
+  const sh = openSheet(T`<h2>${icon('sheet')} كشف الدرجات — ${esc(c.label)}</h2><div class="list">
+    ${opt('all', tr('الكشف الشامل'), tr('مجموع كل أسبوع (١–١٠) والفترتان والبنائي والنهائي'))}
+    ${opt('p1', tr('الفترة الأولى بالتفصيل'), tr('الأسابيع ١–٥: السلوك والأدوات والتطبيق والمشاركة'))}
+    ${opt('p2', tr('الفترة الثانية بالتفصيل'), tr('الأسابيع ٦–١٠: السلوك والأدوات والتطبيق والمشاركة'))}
+    ${opt('final', tr('رصد الدرجات النهائية'), tr('الفترتان والبنائي والمشاريع والاختبار والمجموع'))}
+  </div>`, { label: tr('كشف الدرجات') });
+  sh.sheet.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-part]');
+    if (!b) return;
+    sh.close();
+    printReport('grades', c, null, b.dataset.part);
+  });
+}
+async function printReport(kind, c, idx, part = 'all') {
   if (!c) return;
   if (S.dirty.size) await flushSave();
   let R;
   try { R = await import('./reports.js'); } catch { toast(tr('تعذّر تجهيز التقرير'), { err: true }); return; }
   const args = { classLabel: c.label, names: c.names, data: dataOf(c.id), settings: S.settings, idx };
-  const html = kind === 'attendance' ? R.attendanceReportHTML(args) : kind === 'student' ? R.studentReportHTML(args) : R.gradesReportHTML({ ...args, part: 'all' });
+  const html = kind === 'attendance' ? R.attendanceReportHTML(args) : kind === 'student' ? R.studentReportHTML(args) : R.gradesReportHTML({ ...args, part });
   let css = document.getElementById('report-css');
   if (!css) { css = document.createElement('style'); css.id = 'report-css'; document.head.appendChild(css); }
   css.textContent = R.REPORT_CSS;
@@ -3137,7 +3269,7 @@ document.addEventListener('click', async (e) => {
     case 'handover-pick': { const c = await pickClass(tr('أي صف تريد تسليمه؟')); if (c) doHandover(c); break; }
     case 'handover': doHandover(cls(el.dataset.id)); break;
     case 'transfer-pick': { const c = await pickClass(tr('نقل طلاب من أي صف؟')); if (c) go('transferOut', { id: c.id }); break; }
-    case 'report-grades': printReport('grades', cls(el.dataset.id)); break;
+    case 'report-grades': pickGradesReport(cls(el.dataset.id)); break;
     case 'report-attendance': printReport('attendance', cls(el.dataset.id)); break;
     case 'report-student': {
       const c = cls(el.dataset.id);
@@ -3157,6 +3289,8 @@ document.addEventListener('click', async (e) => {
       break;
     }
     case 'edit-class': e.stopPropagation(); go('editor', { id: el.dataset.id }); break;
+    case 'add-student': e.stopPropagation(); openAddStudent(cls(el.dataset.id)); break;
+    case 'del-student': deleteStudent(cls(el.dataset.id), Number(el.dataset.idx)); break;
     case 'tab': {
       S.ui.undo = null;
       p.tab = el.dataset.tab === 'fin' ? 'fin' : +el.dataset.tab;
@@ -3303,7 +3437,7 @@ document.addEventListener('click', async (e) => {
     }
     case 'remind-min': S.settings.remindBefore = String(Number(el.dataset.v) || 10); await saveSettingsNow(); await syncReminders(); render(); break;
     case 'rem-retry': await syncReminders(); render(); break;
-    case 'slot-ics': exportScheduleICS(); break;
+    case 'slot-ics': exportScheduleICS(); render(); break;
     case 'set-lang': {
       const v = el.dataset.v === 'en' ? 'en' : 'ar';
       if (v === lang()) break;
@@ -3477,6 +3611,7 @@ function showClassMenu(p) {
   const item = (act, ic, t, sub, extra = '') => `<button type="button" class="list-item" data-act="${act}" data-id="${c.id}" ${extra}>${icon(ic)}<span class="grow"><strong>${t}</strong><small>${sub}</small></span></button>`;
   const s = openSheet(T`<h2>${esc(c.label)}</h2>
     <div class="list">
+      ${item('add-student', 'plus', tr('إضافة طالب جديد'), tr('طالب جاء من مدرسة ثانية — ينضاف آخر القائمة'))}
       ${item('edit-class', 'users', tr('الطلاب'), tr('إضافة، تعديل الأسماء، حذف، ترتيب'))}
       ${item('export-xlsx', 'sheet', tr('تصدير Excel'), tr('كشف المتابعة الرسمي للطباعة'))}
       ${item('go-live', 'monitor', tr('عرض على الكمبيوتر'), tr('اعرض الدرجات على البروجكتر'))}
@@ -3599,7 +3734,7 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', async (e) => {
   const t = e.target;
   const r = route();
-  if (t.matches('[data-setting-bool]')) { S.settings[t.dataset.settingBool] = t.checked; await saveSettingsNow(); if (t.dataset.settingBool === 'remindersOn') { await syncReminders(); render(); } return; }
+  if (t.matches('[data-setting-bool]')) { S.settings[t.dataset.settingBool] = t.checked; await saveSettingsNow(); if (t.dataset.settingBool === 'remindersOn' || t.dataset.settingBool === 'ttAuto') { await syncReminders(); render(); } return; }
   if (t.matches('[data-week-select]') && r.name === 'class') { S.ui.undo = null; r.p.tab = t.value === 'fin' ? 'fin' : +t.value; S.ui.tab[r.p.id] = r.p.tab; S.ui.search = ''; r.p.painted = true; render(); return; }
   if (t.matches('[data-sec]')) { const x = t.dataset.sec; r.p.pick ||= new Set(); if (t.checked) r.p.pick.add(x); else r.p.pick.delete(x); render(); return; }
   if (t.matches('[data-sel]')) { const i = +t.dataset.sel; if (t.checked) r.p.sel.add(i); else r.p.sel.delete(i); render(); return; }
@@ -3778,6 +3913,7 @@ async function boot() {
   autoPlans();
   restoreLive();
   loadBundledRoster();
+  loadBundledTimetable();
   if (cloudSession) setTimeout(() => startCloud(cloudSession), 0); // بعد أول رسم للشاشة
   else if (CLOUD_ON && new URLSearchParams(location.search).has('login')) {
     // من صفحة العرض («تسجيل الدخول بحسابي»): نفتح نافذة الدخول مباشرة بلا جولة

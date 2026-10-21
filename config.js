@@ -4,8 +4,8 @@
 
 export const CONFIG = {
   appName: 'متابعة الدرجات',
-  version: '2.23.7',
-  releaseDate: '2026-10-20',
+  version: '2.24.0',
+  releaseDate: '2026-10-21',
 
   // قواعد الدرجات
   weeks: 10,
@@ -41,6 +41,9 @@ export const CONFIG = {
   saveDebounceMs: 200,
   undoDeleteMs: 10000,
 
+  // أوقات حصص المرحلة المتوسطة [بداية، نهاية] — يُبنى عليها تذكير الحصص من جدول المدرسة
+  bells: [['07:40', '08:25'], ['08:30', '09:15'], ['09:30', '10:15'], ['10:20', '11:05'], ['11:10', '11:55'], ['12:05', '12:50'], ['12:55', '13:40']],
+
   // المادة الافتراضية للجميع إن كانت فارغة (يقدر المعلم يغيّرها من الإعدادات)
   defaultSubject: { ar: 'الحاسوب', en: 'Computer' },
   defaultSettings: {
@@ -48,6 +51,8 @@ export const CONFIG = {
     theme: 'auto', textScale: 'normal', lang: 'ar',
     // تذكير الحصص: الجدول الأسبوعي، والتنبيه قبل الحصة بكم دقيقة، وتشغيل/إيقاف التذكير
     schedule: [], remindBefore: '10', remindersOn: true,
+    // أوقات حصص الصفوف تلقائيًا من «جدول المدرسة» (كل صف يأخذ وقت حصته)
+    ttAuto: true,
     inputMode: 'chips', autoAdvance: true, haptics: true,
     turnUrl: '', turnUser: '', turnPass: '',
     viewUrl: '', tourDone: false,

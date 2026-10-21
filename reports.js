@@ -64,13 +64,29 @@ function footerBlock(date) {
 function weekHead(w, data, extra = '', short = false) {
   const raw = getWeekMeta(data, w).date;
   const d = short ? shortDate(raw) : weekDate(raw);
-  return T`<th class="wk"${extra}><span class="wk-n">الأسبوع ${ar(w)}</span>${d ? `<span class="wk-d">${d}</span>` : ''}</th>`;
+  return T`<th class="wk"${extra}><span class="wk-n"><span class="wk-l">الأسبوع </span>${ar(w)}</span>${d ? `<span class="wk-d">${d}</span>` : ''}</th>`;
 }
 
 const cleanNames = names => (Array.isArray(names) ? names : []);
 const n0 = names => Math.min(cleanNames(names).length, CONFIG.maxStudents);
 const nameCell = name => `<td class="name">${esc(name)}</td>`;
-const numCell = (v, cls = '') => `<td class="${('num ' + cls).trim()}">${fmt(v)}</td>`;
+// الفارغ (لم يُرصد) رمادي خفيف حتى لا يزاحم الدرجات؛ max: الدرجة أقل من النصف تُميَّز بلون
+const numCell = (v, cls = '', max = 0) => {
+  const nil = typeof v !== 'number';
+  const low = !nil && max && v < max / 2;
+  return `<td class="${['num', cls, nil ? 'nil' : '', low ? 'low' : ''].filter(Boolean).join(' ')}">${fmt(v)}</td>`;
+};
+// أسبوع لم يبدأ بعد (لا درجات ولا غياب لأحد ولا تاريخ): أعمدته فارغة تمامًا
+function weekStarted(data, w, n) {
+  if (getWeekMeta(data, w).date) return true;
+  for (let i = 0; i < n; i++) if (isAbsent(data, w, i) || getItems(data, w, i).some((v) => v !== null)) return true;
+  return false;
+}
+const avg = (xs) => { const v = xs.filter((x) => typeof x === 'number'); return v.length ? Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10 : null; };
+// شريط ملخص الصف أعلى الصفحة الأولى
+function summaryStrip(items) {
+  return `<div class="r-sum">${items.filter(Boolean).map(([k, v, cls]) => `<div class="r-sum-i ${cls || ''}"><span class="r-sum-v">${v}</span><span class="r-sum-k">${k}</span></div>`).join('')}</div>`;
+}
 
 const PARTS = {
   p1: { title: tr('الفترة الأولى'), weeks: [1, HALF] },
@@ -101,30 +117,47 @@ export function gradesReportHTML({ classLabel = '', names = [], data, settings =
       const s = studentSummary(data, i);
       const cells = ws.map(w => {
         if (isAbsent(data, w, i)) return T`<td class="abs" colspan="${ITEMS}">غائب</td><td class="num tot abs-t">${ABS}</td>`;
-        return getItems(data, w, i).map(v => numCell(v)).join('') + numCell(s.weeks[w - 1], 'tot');
+        return getItems(data, w, i).map(v => numCell(v, '', ITEM_MAX)).join('') + numCell(s.weeks[w - 1], 'tot', WEEK_MAX);
       }).join('');
-      rows.push(`<tr><td class="num m">${ar(i + 1)}</td>${nameCell(names[i])}${cells}${numCell(P === 'p1' ? s.p1 : s.p2, 'strong')}</tr>`);
+      rows.push(`<tr><td class="num m">${ar(i + 1)}</td>${nameCell(names[i])}${cells}${numCell(P === 'p1' ? s.p1 : s.p2, 'strong', WEEK_MAX)}</tr>`);
     }
   } else if (P === 'final') {
     head = T`<tr><th class="col-m">م</th><th class="col-name">اسم الطالب</th><th>الفترة الأولى ${of(WEEK_MAX)}</th><th>الفترة الثانية ${of(WEEK_MAX)}</th><th>التقويم البنائي ${of(FORMATIVE_MAX)}</th>${finHeads}<th>المجموع ${of(TOTAL_MAX)}</th></tr>`;
     for (let i = 0; i < n; i++) {
       const s = studentSummary(data, i);
-      rows.push(`<tr><td class="num m">${ar(i + 1)}</td>${nameCell(names[i])}${numCell(s.p1)}${numCell(s.p2)}${numCell(s.formative, 'tot')}${s.fin.map(v => numCell(v)).join('')}${numCell(s.total, 'strong')}</tr>`);
+      rows.push(`<tr><td class="num m">${ar(i + 1)}</td>${nameCell(names[i])}${numCell(s.p1, '', WEEK_MAX)}${numCell(s.p2, '', WEEK_MAX)}${numCell(s.formative, 'tot', FORMATIVE_MAX)}${s.fin.map((v, k) => numCell(v, '', FIN_MAX[k])).join('')}${numCell(s.total, 'strong', TOTAL_MAX)}</tr>`);
     }
   } else {
     const ws = []; for (let w = 1; w <= WEEKS; w++) ws.push(w);
-    head = T`<tr><th class="col-m">م</th><th class="col-name">اسم الطالب</th>${ws.map(w => weekHead(w, data, '', true)).join('')}<th>الفترة الأولى ${of(WEEK_MAX)}</th><th>الفترة الثانية ${of(WEEK_MAX)}</th><th>التقويم البنائي ${of(FORMATIVE_MAX)}</th>${finHeads}<th>المجموع ${of(TOTAL_MAX)}</th></tr>`;
+    const live = ws.map((w) => weekStarted(data, w, n));
+    head = T`<tr><th class="col-m">م</th><th class="col-name">اسم الطالب</th>${ws.map(w => weekHead(w, data, live[w - 1] ? '' : ' data-future="1"', true)).join('')}<th>الفترة الأولى ${of(WEEK_MAX)}</th><th>الفترة الثانية ${of(WEEK_MAX)}</th><th>التقويم البنائي ${of(FORMATIVE_MAX)}</th>${finHeads}<th>المجموع ${of(TOTAL_MAX)}</th></tr>`;
     for (let i = 0; i < n; i++) {
       const s = studentSummary(data, i);
-      const wk = ws.map(w => (isAbsent(data, w, i) ? `<td class="num abs-t">${ABS}</td>` : numCell(s.weeks[w - 1]))).join('');
-      rows.push(`<tr><td class="num m">${ar(i + 1)}</td>${nameCell(names[i])}${wk}${numCell(s.p1, 'tot')}${numCell(s.p2, 'tot')}${numCell(s.formative, 'tot')}${s.fin.map(v => numCell(v)).join('')}${numCell(s.total, 'strong')}</tr>`);
+      const wk = ws.map(w => (!live[w - 1] ? '<td class="num future"></td>' : isAbsent(data, w, i) ? `<td class="num abs-t">${ABS}</td>` : numCell(s.weeks[w - 1], '', WEEK_MAX))).join('');
+      rows.push(`<tr><td class="num m">${ar(i + 1)}</td>${nameCell(names[i])}${wk}${numCell(s.p1, 'tot', WEEK_MAX)}${numCell(s.p2, 'tot', WEEK_MAX)}${numCell(s.formative, 'tot', FORMATIVE_MAX)}${s.fin.map((v, k) => numCell(v, '', FIN_MAX[k])).join('')}${numCell(s.total, 'strong', TOTAL_MAX)}</tr>`);
     }
   }
   if (!rows.length) rows.push(T`<tr><td class="empty" colspan="99">لا يوجد طلاب في هذا الصف</td></tr>`);
   const note = P === 'p1' || P === 'p2' || P === 'all'
-    ? T`<p class="r-legend">«${ABS}» = غائب في ذلك الأسبوع (درجاته أصفار) · «${DASH}» = لم تُرصد بعد · مجموع الأسبوع من ${ar(WEEK_MAX)}</p>` : '';
+    ? T`<p class="r-legend">«${ABS}» = غائب في ذلك الأسبوع (درجاته أصفار) · «${DASH}» = لم تُرصد بعد · <span class="lg-low">ملوّن</span> = أقل من نصف الدرجة · مجموع الأسبوع من ${ar(WEEK_MAX)}</p>`
+    : T`<p class="r-legend">«${DASH}» = لم تُرصد بعد · <span class="lg-low">ملوّن</span> = أقل من نصف الدرجة</p>`;
+  // ملخص الصف: عدد الطلاب، الأسابيع المرصودة، المتوسطات، ومن هم دون النصف
+  const sums = []; for (let i = 0; i < n; i++) sums.push(studentSummary(data, i));
+  const [rw0, rw1] = PARTS[P].weeks || [1, WEEKS];
+  let recorded = 0; for (let w = rw0; w <= rw1; w++) if (weekStarted(data, w, n)) recorded++;
+  const fmtAvg = (v, m) => (v == null ? DASH : T`${fmt(v)} <small>من ${ar(m)}</small>`);
+  const lowN = (k, m) => sums.filter((x) => typeof x[k] === 'number' && x[k] < m / 2).length;
+  const strip = n ? summaryStrip([
+    [tr('عدد الطلاب'), ar(n)],
+    P === 'final' ? null : [tr('الأسابيع المرصودة'), T`${ar(recorded)} <small>من ${ar(rw1 - rw0 + 1)}</small>`],
+    P === 'p2' ? null : [tr('متوسط الفترة الأولى'), fmtAvg(avg(sums.map((x) => x.p1)), WEEK_MAX)],
+    P === 'p1' ? null : [tr('متوسط الفترة الثانية'), fmtAvg(avg(sums.map((x) => x.p2)), WEEK_MAX)],
+    P === 'all' || P === 'final' ? [tr('متوسط المجموع'), fmtAvg(avg(sums.map((x) => x.total)), TOTAL_MAX)] : null,
+    P === 'p2' ? [tr('دون النصف'), ar(lowN('p2', WEEK_MAX)), 'warn'] : P === 'p1' ? [tr('دون النصف'), ar(lowN('p1', WEEK_MAX)), 'warn'] : [tr('دون النصف في المجموع'), ar(lowN('total', TOTAL_MAX)), 'warn'],
+  ]) : '';
   return `<div class="report report-grades report-${P}" dir="rtl" lang="ar">
 ${headerBlock({ title: T`كشف درجات الصف ${classLabel}`.trim(), subtitle: sub, classLabel, settings })}
+${strip}
 <table class="r-table"><thead>${head}</thead><tbody>${rows.join('')}</tbody></table>
 ${note}
 ${footerBlock(date)}
@@ -138,29 +171,40 @@ export function attendanceReportHTML({ classLabel = '', names = [], data, settin
   data = data || { weeks: {}, fin: {}, t: 0 };
   const sum = attendanceSummary(data, n);
   const ws = []; for (let w = 1; w <= WEEKS; w++) ws.push(w);
-  const head = T`<tr><th class="col-m">م</th><th class="col-name">اسم الطالب</th>${ws.map(w => weekHead(w, data)).join('')}<th>عدد أسابيع الغياب</th><th>نسبة الحضور</th></tr>`;
+  const live = ws.map((w) => weekStarted(data, w, n));
+  const head = T`<tr><th class="col-m">م</th><th class="col-name">اسم الطالب</th>${ws.map(w => weekHead(w, data, live[w - 1] ? '' : ' data-future="1"')).join('')}<th>عدد أسابيع الغياب</th><th>نسبة الحضور</th></tr>`;
   const perWeek = ws.map(() => 0);
   const rows = [];
   for (let i = 0; i < n; i++) {
     const cells = ws.map((w, k) => {
       const st = attendanceStatus(data, w, i);
       if (st === 'absent') { perWeek[k]++; return `<td class="att abs-t">${ABS}</td>`; }
-      return st === 'present' ? `<td class="att ok">${PRESENT}</td>` : '<td class="att"></td>';
+      return st === 'present' ? `<td class="att ok">${PRESENT}</td>` : `<td class="att${live[k] ? '' : ' future'}"></td>`;
     }).join('');
     const { count, present } = sum[i];
     const rec = count + present;
     const pct = rec ? T`${ar(Math.round((present / rec) * 100))}%` : DASH;
-    rows.push(`<tr><td class="num m">${ar(i + 1)}</td>${nameCell(names[i])}${cells}<td class="num tot">${ar(count)}</td><td class="num">${pct}</td></tr>`);
+    rows.push(`<tr><td class="num m">${ar(i + 1)}</td>${nameCell(names[i])}${cells}<td class="num tot${count >= 2 ? ' low' : ''}">${ar(count)}</td><td class="num${rec ? '' : ' nil'}">${pct}</td></tr>`);
   }
   if (!rows.length) rows.push(T`<tr><td class="empty" colspan="99">لا يوجد طلاب في هذا الصف</td></tr>`);
   else {
     const total = perWeek.reduce((a, b) => a + b, 0);
     rows.push(T`<tr class="sum-row"><td class="num m"></td><td class="name">عدد الغائبين</td>${perWeek.map(c => `<td class="num">${ar(c)}</td>`).join('')}<td class="num tot">${ar(total)}</td><td></td></tr>`);
   }
+  let absTotal = 0; let absStudents = 0; let many = 0;
+  for (let i = 0; i < n; i++) { absTotal += sum[i].count; if (sum[i].count) absStudents++; if (sum[i].count >= 2) many++; }
+  const strip = n ? summaryStrip([
+    [tr('عدد الطلاب'), ar(n)],
+    [tr('الأسابيع المرصودة'), T`${ar(live.filter(Boolean).length)} <small>من ${ar(WEEKS)}</small>`],
+    [tr('مرات الغياب'), ar(absTotal)],
+    [tr('طلاب غابوا'), ar(absStudents)],
+    [tr('غابوا أسبوعين أو أكثر'), ar(many), 'warn'],
+  ]) : '';
   return T`<div class="report report-attendance" dir="rtl" lang="ar">
 ${headerBlock({ title: tr('كشف الحضور والغياب'), subtitle: classLabel ? T`الصف ${classLabel}` : '', classLabel, settings })}
+${strip}
 <table class="r-table"><thead>${head}</thead><tbody>${rows.join('')}</tbody></table>
-<p class="r-legend">«${PRESENT}» = حاضر · «${ABS}» = غائب · خانة فارغة = لم يُرصد الأسبوع بعد</p>
+<p class="r-legend">«${PRESENT}» = حاضر · «${ABS}» = غائب · خانة فارغة = لم يُرصد الأسبوع بعد · <span class="lg-low">ملوّن</span> = غاب أسبوعين أو أكثر</p>
 ${footerBlock(date)}
 </div>`;
 }
@@ -179,7 +223,7 @@ export function studentReportHTML({ classLabel = '', names = [], data, settings 
     if (absent) absN++;
     const items = absent
       ? T`<td class="abs" colspan="${ITEMS}">غائب</td><td class="num tot abs-t">${ABS}</td>`
-      : getItems(data, w, idx).map(v => numCell(v)).join('') + numCell(s.weeks[w - 1], 'tot');
+      : getItems(data, w, idx).map(v => numCell(v, '', ITEM_MAX)).join('') + numCell(s.weeks[w - 1], 'tot', WEEK_MAX);
     wrows.push(`<tr><td class="num">${ar(w)}</td><td class="num">${weekDate(m.date) || DASH}</td><td class="lesson">${m.lesson ? esc(m.lesson) : DASH}</td>${items}</tr>`);
   }
   const fins = CONFIG.finals.map((f, i) => `<tr><th>${esc(f.label)}</th><td class="num">${fmt(s.fin[i])} ${of(f.max)}</td></tr>`).join('');
@@ -216,7 +260,7 @@ export function reportTitle(kind, classLabel = '') {
 
 export const REPORT_CSS = `
 #print-root { display: none; }
-@page { size: A4 landscape; margin: 10mm; }
+@page { size: A4 landscape; margin: 9mm 9mm 11mm; @bottom-center { content: "صفحة " counter(page) " من " counter(pages); font: 8pt 'Cairo', sans-serif; color: #555; } }
 @media print {
   html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; height: auto !important; overflow: visible !important; }
   body > *:not(#print-root) { display: none !important; }
@@ -238,10 +282,20 @@ export const REPORT_CSS = `
 .report .r-table { width: 100%; border-collapse: collapse; table-layout: auto; font-size: 9pt; }
 .report .r-table thead { display: table-header-group; }
 .report .r-table tr { break-inside: avoid; page-break-inside: avoid; }
-.report .r-table th, .report .r-table td { border: 0.6pt solid #000; padding: 0.6mm 1mm; text-align: center; vertical-align: middle; }
-.report .r-table th { background: #e6e6e6; font-weight: 700; font-size: 8.5pt; line-height: 1.25; }
-.report .r-table td.name { text-align: start; font-weight: 600; padding-inline-start: 2mm; line-height: 1.2; }
-.report .r-table td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.report .r-table th, .report .r-table td { border: 0.6pt solid #555; padding: 0.9mm 1mm; text-align: center; vertical-align: middle; }
+.report .r-table th { background: #dfe5ee; color: #0b1f3a; font-weight: 800; font-size: 8.5pt; line-height: 1.25; border-color: #444; }
+.report .r-table td.name { text-align: start; font-weight: 700; padding-inline-start: 2mm; line-height: 1.25; font-size: 9.5pt; white-space: nowrap; }
+.report .r-table td.num { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 9.5pt; font-weight: 600; }
+.report .r-table td.nil { color: #9a9a9a; font-weight: 400; }
+.report .r-table td.low { background: #fde3e3 !important; color: #a1121b; font-weight: 800; }
+.report .r-table td.future, .report .r-table th[data-future] { background: #f6f6f6 !important; color: #999; }
+.report .lg-low { background: #fde3e3; color: #a1121b; font-weight: 800; padding: 0 1.5mm; border-radius: 1mm; }
+.report .r-sum { display: flex; gap: 2.5mm; margin: 0 0 3mm; }
+.report .r-sum-i { flex: 1; border: 0.6pt solid #9aa8bb; border-radius: 2mm; padding: 1.5mm 2mm; text-align: center; background: #f4f7fb; }
+.report .r-sum-i.warn { border-color: #e5a3a7; background: #fdf1f1; }
+.report .r-sum-v { display: block; font-size: 13pt; font-weight: 800; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.report .r-sum-v small { font-size: 8pt; font-weight: 600; color: #555; }
+.report .r-sum-k { display: block; font-size: 8pt; color: #333; font-weight: 600; }
 .report .r-table td.m { width: 7mm; }
 .report .r-table td.tot { background: #f2f2f2; font-weight: 700; }
 .report .r-table td.strong { font-weight: 800; background: #e6e6e6; }
@@ -250,10 +304,10 @@ export const REPORT_CSS = `
 .report .r-table td.att { min-width: 9mm; font-size: 10pt; }
 .report .r-table td.att.ok { font-family: 'Segoe UI Symbol', 'DejaVu Sans', 'Cairo', sans-serif; }
 .report .r-table td.empty { padding: 6mm; color: #333; }
-.report .r-table tbody tr:nth-child(even) td:not(.tot):not(.strong):not(.abs) { background: #fafafa; }
+.report .r-table tbody tr:nth-child(even) td:not(.tot):not(.strong):not(.abs):not(.low):not(.future) { background: #f5f7fa; }
 .report .r-table .sum-row td { font-weight: 800; background: #e6e6e6; border-top: 1.2pt solid #000; }
 .report .col-m { width: 7mm; }
-.report .col-name { min-width: 42mm; }
+.report .col-name { min-width: 46mm; }
 .report.report-all .col-name, .report.report-p1 .col-name, .report.report-p2 .col-name { min-width: 36mm; }
 .report.report-all .r-table th { font-size: 8pt; }
 .report th.wk .wk-n { display: block; }
@@ -283,4 +337,16 @@ export const REPORT_CSS = `
 .report .notes li { border-bottom: 0.5pt dotted #777; padding: 1mm 0; break-inside: avoid; overflow-wrap: anywhere; }
 .report .note-d { font-weight: 700; margin-inline-end: 1.5mm; white-space: nowrap; }
 .report .muted { color: #444; font-size: 9pt; }
+/* طباعة طولية (مثل الجوال): ترويسات مختصرة وخط أصغر حتى يبقى الجدول واضحًا في عرض الصفحة */
+@media print and (orientation: portrait) {
+  .report { font-size: 9pt; }
+  .report .r-head { grid-template-columns: 1fr 1.6fr 1fr; gap: 3mm; }
+  .report .r-title h1 { font-size: 13pt; }
+  .report .r-table th, .report .r-table td { padding: 0.6mm 0.4mm; }
+  .report .r-table td.num, .report .r-table td.name { font-size: 8.5pt; }
+  .report .r-table th { font-size: 7.5pt; }
+  .report .wk-l, .report .wk-d, .report .max { display: none; }
+  .report .col-name { min-width: 34mm; }
+  .report .r-sum-v { font-size: 11pt; }
+}
 `;
