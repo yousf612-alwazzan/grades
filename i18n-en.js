@@ -1,6 +1,9 @@
 // ترجمة الواجهة للإنجليزية. المفتاح = النص العربي كما في الكود (و{} مكان كل قيمة متغيرة؛ {0} {1} لإعادة الترتيب).
 // لتعديل ترجمة: غيّر النص الإنجليزي فقط. نص بلا ترجمة يظهر بالعربية.
 export default {
+  "({} جديد)": "({} new)",
+  "لا توجد تنبيهات — كل شي تمام.": "No alerts — all good.",
+  "التنبيهات صارت في جرس أعلى الصفحة الرئيسية (مع اليوم والوقت)، والصفحة للصفوف فقط": "Alerts now live in a bell at the top of the home page (with day and time), keeping the page for your classes only",
   "إصلاحات صغيرة: «أهلًا أ.» بلا تكرار لو كتب المعلم «أ.» في اسمه، وتبويبات «القسم» في سطر واحد على الجوال": "Small fixes: no repeated title in the greeting if the teacher typed it in their name, and the Department tabs fit on one line on phones",
   "نُقل «{}» إلى": "“{}” moved to",
   "استلمت «{}» من {} ✓": "You received “{}” from {} ✓",

@@ -1110,36 +1110,78 @@ const ART_USERS = `<svg class="art" viewBox="0 0 200 150" aria-hidden="true">
 // =====================================================================
 // الشاشة ١ — الرئيسية
 // =====================================================================
-function Home() {
+// ===================== التنبيهات (الجرس في رأس الرئيسية) =====================
+// كل ما كان يظهر فوق الصفوف صار في نافذة الجرس، مع وقت ظهوره أول مرة، ورقم على الجرس للجديد منها
+function homeAlerts() {
   const st = S.settings;
   const alerts = [];
   if (!REMOTE && platform.isIOS && !platform.isStandalone) {
-    alerts.push(T`<div class="alert warn">${icon('warn')}<div class="grow"><strong>ثبّت التطبيق على الشاشة الرئيسية</strong><p>في وضع المتصفح قد يمسح آيفون البيانات. أضِفه للشاشة الرئيسية لحماية أفضل.</p><button type="button" class="btn sm soft" data-act="go" data-to="guide">اعرض الطريقة</button></div></div>`);
+    alerts.push(['install-ios', T`<div class="alert warn">${icon('warn')}<div class="grow"><strong>ثبّت التطبيق على الشاشة الرئيسية</strong><p>في وضع المتصفح قد يمسح آيفون البيانات. أضِفه للشاشة الرئيسية لحماية أفضل.</p><button type="button" class="btn sm soft" data-act="go" data-to="guide">اعرض الطريقة</button></div></div>`]);
   }
   if (platform.isNative && (!st.teacher || !st.subject)) { // أندرويد فقط — الآيفون والكمبيوتر لا يُسألان
-    alerts.push(T`<div class="alert info">${icon('info')}<div class="grow"><strong>أضف اسمك والمادة</strong><p>تظهر في كشف الإكسل وبطاقة الطالب.</p><button type="button" class="btn sm soft" data-act="nav" data-to="settings">إضافة الآن</button></div></div>`);
+    alerts.push(['name-subject', T`<div class="alert info">${icon('info')}<div class="grow"><strong>أضف اسمك والمادة</strong><p>تظهر في كشف الإكسل وبطاقة الطالب.</p><button type="button" class="btn sm soft" data-act="nav" data-to="settings">إضافة الآن</button></div></div>`]);
   }
   if (!REMOTE && !platform.isNative && platform.isIOS && ttList().length && !S.meta.ttCalDone) {
     // آيفون: التنبيه عن طريق تقويم الجوال (لا إشعارات من المتصفح والتطبيق مغلق)
-    alerts.push(T`<div class="alert info" data-testid="tt-cal">${icon('bell')}<div class="grow"><strong>حصصك جاهزة من جدول المدرسة</strong><p>أضفها لتقويم جوالك مرة واحدة، ويصلك تنبيه قبل كل حصة كل أسبوع.</p><div class="row" style="gap:8px"><button type="button" class="btn sm primary" data-act="slot-ics">${icon('calendar')} أضفها للتقويم</button><button type="button" class="btn sm ghost" data-act="go" data-to="schedule">اعرض حصصي</button></div></div></div>`);
+    alerts.push(['tt-cal', T`<div class="alert info" data-testid="tt-cal">${icon('bell')}<div class="grow"><strong>حصصك جاهزة من جدول المدرسة</strong><p>أضفها لتقويم جوالك مرة واحدة، ويصلك تنبيه قبل كل حصة كل أسبوع.</p><div class="row" style="gap:8px"><button type="button" class="btn sm primary" data-act="slot-ics">${icon('calendar')} أضفها للتقويم</button><button type="button" class="btn sm ghost" data-act="go" data-to="schedule">اعرض حصصي</button></div></div></div>`]);
   }
   if (C.session && !S.meta.schoolCode && !REMOTE) {
-    alerts.push(T`<div class="alert info" data-testid="school-code-nudge">${icon('lock')}<div class="grow"><strong>أدخل رمز المدرسة</strong><p>مرة واحدة: تُحفظ بيانات شعبك للشعبة نفسها، فلو تغيّر المعلم لا تضيع، ويتابعها رئيس القسم.</p><button type="button" class="btn sm primary" data-act="school-code">${icon('lock')} رمز المدرسة</button></div></div>`);
+    alerts.push(['school-code-nudge', T`<div class="alert info" data-testid="school-code-nudge">${icon('lock')}<div class="grow"><strong>أدخل رمز المدرسة</strong><p>مرة واحدة: تُحفظ بيانات شعبك للشعبة نفسها، فلو تغيّر المعلم لا تضيع، ويتابعها رئيس القسم.</p><button type="button" class="btn sm primary" data-act="school-code">${icon('lock')} رمز المدرسة</button></div></div>`]);
   }
   if (NATIVE_GATE && !C.session && S.meta.noAccount) {
-    alerts.push(T`<div class="alert info" data-testid="login-nudge">${icon('user')}<div class="grow"><strong>سجّل الدخول بحسابك</strong><p>تُحفظ درجاتك مشفّرة في حسابك، وتبقى لو ضاع الجوال أو تغيّر معلم الشعبة.</p><button type="button" class="btn sm primary" data-act="cloud-login">${icon('user')} تسجيل الدخول</button></div></div>`);
+    alerts.push(['login-nudge', T`<div class="alert info" data-testid="login-nudge">${icon('user')}<div class="grow"><strong>سجّل الدخول بحسابك</strong><p>تُحفظ درجاتك مشفّرة في حسابك، وتبقى لو ضاع الجوال أو تغيّر معلم الشعبة.</p><button type="button" class="btn sm primary" data-act="cloud-login">${icon('user')} تسجيل الدخول</button></div></div>`]);
   }
   const last = S.meta.lastBackupAt ? new Date(S.meta.lastBackupAt) : null;
   const days = last ? (Date.now() - last.getTime()) / 86400000 : Infinity;
   const pending = !!S.meta.changedSinceBackup && hasAnyGrades();
   if (REMOTE) { /* النسخ الاحتياطي من الجوال */ } else if (hasAnyGrades() && days > CONFIG.backupReminderDays) {
-    alerts.push(T`<div class="alert warn" data-testid="backup-reminder">${icon('shield')}<div class="grow"><strong>احفظ نسخة احتياطية</strong><p>${last ? T`آخر نسخة قبل ${ar(Math.floor(days))} يومًا.` : tr('لم تحفظ أي نسخة بعد.')} احفظها في «الملفات» أو أرسلها لنفسك.</p><button type="button" class="btn sm soft" data-act="backup">احفظ نسخة الآن</button></div></div>`);
+    alerts.push(['backup-reminder', T`<div class="alert warn" data-testid="backup-reminder">${icon('shield')}<div class="grow"><strong>احفظ نسخة احتياطية</strong><p>${last ? T`آخر نسخة قبل ${ar(Math.floor(days))} يومًا.` : tr('لم تحفظ أي نسخة بعد.')} احفظها في «الملفات» أو أرسلها لنفسك.</p><button type="button" class="btn sm soft" data-act="backup">احفظ نسخة الآن</button></div></div>`]);
   } else if (pending) {
-    alerts.push(T`<div class="alert info" data-testid="backup-nudge">${icon('shield')}<div class="grow"><strong>عندك درجات جديدة بدون نسخة احتياطية</strong><p>ضغطة واحدة تحفظها في iCloud Drive أو ترسلها لنفسك، فلا تضيع لو ضاع الجوال.</p><button type="button" class="btn sm soft" data-act="backup">${icon('download')} احفظ نسخة الآن</button></div></div>`);
+    alerts.push(['backup-nudge', T`<div class="alert info" data-testid="backup-nudge">${icon('shield')}<div class="grow"><strong>عندك درجات جديدة بدون نسخة احتياطية</strong><p>ضغطة واحدة تحفظها في iCloud Drive أو ترسلها لنفسك، فلا تضيع لو ضاع الجوال.</p><button type="button" class="btn sm soft" data-act="backup">${icon('download')} احفظ نسخة الآن</button></div></div>`]);
   }
 
+  if (CLOUD_ON && !C.session && !S.classes.length && !C.loading) {
+    alerts.push(['cloud-invite', T`<div class="alert info cloud-invite">${icon('cloud')}<div class="grow"><strong>عندك حساب؟</strong><p>سجّل الدخول وتظهر صفوفك ودرجاتك هنا، وأي تعديل يوصل لجوالك تلقائيًا.</p><button type="button" class="btn sm primary" data-act="cloud-login">${icon('user')} تسجيل الدخول</button></div></div>`]);
+  }
   const backupOk = last && !pending && hasAnyGrades()
     ? T`<p class="hint" data-testid="backup-ok" style="color:var(--success);font-weight:700">${icon('checkCircle')} نسختك الاحتياطية محدّثة (${days < 1 ? tr('اليوم') : T`قبل ${ar(Math.floor(days))} يوم`})</p>` : '';
+  // وقت ظهور كل تنبيه أول مرة (يُنسى إذا اختفى التنبيه، فيُعدّ جديدًا لو رجع)
+  const at = { ...(S.meta.notifAt || {}) };
+  const seen = { ...(S.meta.notifSeen || {}) };
+  const ids = new Set(alerts.map(([id]) => id));
+  let changed = false;
+  for (const id of ids) if (!at[id]) { at[id] = Date.now(); changed = true; }
+  for (const id of Object.keys(at)) if (!ids.has(id)) { delete at[id]; delete seen[id]; changed = true; }
+  if (changed && !REMOTE) { S.meta.notifAt = at; S.meta.notifSeen = seen; store.setMeta('notifAt', at).catch(() => {}); store.setMeta('notifSeen', seen).catch(() => {}); }
+  return { list: alerts.map(([id, html]) => ({ id, html, at: at[id] || Date.now() })).sort((x, y) => y.at - x.at), backupOk, unread: alerts.filter(([id]) => !seen[id]).length };
+}
+function notifTime(t) {
+  const d = new Date(t);
+  const L = lang() === 'en' ? 'en-GB' : 'ar-KW-u-nu-latn';
+  try { return d.toLocaleDateString(L, { weekday: 'long', day: 'numeric', month: 'numeric', year: 'numeric' }) + ' · ' + d.toLocaleTimeString(L, { hour: 'numeric', minute: '2-digit' }); } catch { return d.toLocaleString(); }
+}
+function bellBtn() {
+  if (REMOTE) return '';
+  const h = homeAlerts(); const n = h.unread;
+  return T`<button type="button" class="icon-btn bell-btn" data-alerts="${h.list.map((x) => x.id).join(' ')}" data-act="notif" aria-label="التنبيهات${n ? T` (${ar(n)} جديد)` : ''}" title="${tr('التنبيهات')}">${icon('bell')}${n ? `<b class="bell-n num" data-bell-n>${ar(n)}</b>` : ''}</button>`;
+}
+function openNotif() {
+  const a = homeAlerts();
+  const items = a.list.map((x) => `<div class="notif-item" data-notif="${x.id}"><div class="notif-time num">${icon('calendar')} ${esc(notifTime(x.at))}</div>${x.html}</div>`).join('');
+  const sh = openSheet(T`<h2>${icon('bell')} التنبيهات</h2>
+    ${a.backupOk}
+    ${items || T`<div class="notif-empty">${icon('checkCircle')}<p>لا توجد تنبيهات — كل شي تمام.</p></div>`}
+    <div class="actions"><button type="button" class="btn" data-x>إغلاق</button></div>`, { label: tr('التنبيهات') });
+  // كل التنبيهات الظاهرة صارت «مقروءة»
+  const seen = { ...(S.meta.notifSeen || {}) };
+  for (const x of a.list) seen[x.id] = Date.now();
+  S.meta.notifSeen = seen; store.setMeta('notifSeen', seen).catch(() => {});
+  document.querySelectorAll('[data-bell-n]').forEach((el) => el.remove());
+  sh.sheet.addEventListener('click', (e) => { if (e.target.closest('[data-act]') || e.target.closest('[data-x]')) setTimeout(() => sh.close(), 0); });
+}
+
+function Home() {
+  const st = S.settings;
   const tName = String(st.teacher || '').replace(/^\s*(أ\.|أ\s|الأستاذ|استاذ|أستاذ)\s*/, '').trim(); // بلا «أ.» مكرر لو كتبها المعلم
   const helloTitle = tName ? T`أهلًا أ. ${tName}` : tr('أهلًا بك');
   const helloSub = `${st.subject ? esc(st.subject) + ' · ' : ''}${S.classes.length === 1 ? tr('صف واحد') : S.classes.length === 2 ? tr('صفّان') : S.classes.length ? T`${ar(S.classes.length)} صفوف` : tr('لنبدأ')}`;
@@ -1147,9 +1189,6 @@ function Home() {
   const addBtn = loginBtn; // «أضف صف» صارت بطاقة بين الصفوف، وحالة الحساب في الرأس (save)
   if (C.loading) {
     return T`${appbar({ title: helloTitle, sub: '', backBtn: false })}<div class="wrap"><div class="live-wait card"><span class="spinner-lg" aria-hidden="true"></span><h3>جارٍ تحميل درجاتك من حسابك…</h3></div></div>`;
-  }
-  if (CLOUD_ON && !C.session && !S.classes.length) {
-    alerts.push(T`<div class="alert info cloud-invite">${icon('cloud')}<div class="grow"><strong>عندك حساب؟</strong><p>سجّل الدخول وتظهر صفوفك ودرجاتك هنا، وأي تعديل يوصل لجوالك تلقائيًا.</p><button type="button" class="btn sm primary" data-act="cloud-login">${icon('user')} تسجيل الدخول</button></div></div>`);
   }
 
   let body;
@@ -1166,10 +1205,8 @@ function Home() {
     body = `<div class="home-grid stack">${S.classes.map(classCard).join('')}${REMOTE && false ? '' : T`<button type="button" class="card add-card" data-act="new-class">${icon('plus')}<span>أضف صفًا</span></button>`}</div>`;
   }
 
-  return T`${appbar({ title: helloTitle, sub: helloSub, backBtn: false, save: true, actions: addBtn })}
+  return T`${appbar({ title: helloTitle, sub: helloSub, backBtn: false, save: true, actions: addBtn + bellBtn() })}
   <div class="wrap stack home-wrap">
-    ${backupOk}
-    ${alerts.join('')}
     ${body}
     <p class="hint version-line num" data-testid="app-version">${platform.isNative || REMOTE ? T`الإصدار ${ar(CONFIG.version)}` : T`<button type="button" class="ver-check" data-act="update-check">${icon('refresh')} الإصدار ${ar(CONFIG.version)} · ابحث عن تحديث</button>`}</p>
   </div>`;
@@ -3887,6 +3924,7 @@ document.addEventListener('click', async (e) => {
     case 'dept-sec-report': await deptSectionReport(); break;
     case 'dept-sec-excel': { const x = await deptPickSection(tr('كشف أي شعبة؟')); if (x) await exportXlsxFor(virtualClass(x)); break; }
     case 'no-account': S.meta.noAccount = true; await store.setMeta('noAccount', true).catch(() => {}); S.stack = [{ name: 'home', p: {} }]; render(); break;
+    case 'notif': openNotif(); break;
     case 'host-full': hostCmd('full'); break;
     case 'host-disconnect': hostCmd('disconnect'); break;
     case 'rail-toggle': setDeskPref('gfu-rail', !deskPref('gfu-rail')); renderNav(); break;
