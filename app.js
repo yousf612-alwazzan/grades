@@ -1140,7 +1140,8 @@ function Home() {
 
   const backupOk = last && !pending && hasAnyGrades()
     ? T`<p class="hint" data-testid="backup-ok" style="color:var(--success);font-weight:700">${icon('checkCircle')} نسختك الاحتياطية محدّثة (${days < 1 ? tr('اليوم') : T`قبل ${ar(Math.floor(days))} يوم`})</p>` : '';
-  const helloTitle = st.teacher ? T`أهلًا أ. ${st.teacher}` : tr('أهلًا بك');
+  const tName = String(st.teacher || '').replace(/^\s*(أ\.|أ\s|الأستاذ|استاذ|أستاذ)\s*/, '').trim(); // بلا «أ.» مكرر لو كتبها المعلم
+  const helloTitle = tName ? T`أهلًا أ. ${tName}` : tr('أهلًا بك');
   const helloSub = `${st.subject ? esc(st.subject) + ' · ' : ''}${S.classes.length === 1 ? tr('صف واحد') : S.classes.length === 2 ? tr('صفّان') : S.classes.length ? T`${ar(S.classes.length)} صفوف` : tr('لنبدأ')}`;
   const loginBtn = CLOUD_ON && !C.session && !WIDE.matches ? T`<button type="button" class="btn sm soft" data-act="cloud-login">${icon('user')} دخول</button>` : '';
   const addBtn = loginBtn; // «أضف صف» صارت بطاقة بين الصفوف، وحالة الحساب في الرأس (save)

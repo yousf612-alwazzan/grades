@@ -1582,3 +1582,7 @@ body.cloud-on .appbar [data-save-state] { display: none; }
 .dot-wait { width: 10px; height: 10px; border-radius: 50%; background: var(--warning, #d97706); flex: none; }
 .dept-log span b { font-weight: 800; }
 .dept-log small { display: block; color: var(--muted); font-size: 12.5px; }
+/* تبويبات «القسم» في سطر واحد دائمًا (الجوال: أصغر وتتمرّر عند الضيق) */
+.seg.dept-tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.seg.dept-tabs::-webkit-scrollbar { display: none; }
+@media (max-width: 600px) { .seg.dept-tabs button { flex: 1 0 auto; padding-inline: 10px; font-size: 14px; min-width: 0; } }

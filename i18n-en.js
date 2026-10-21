@@ -1,6 +1,7 @@
 // ترجمة الواجهة للإنجليزية. المفتاح = النص العربي كما في الكود (و{} مكان كل قيمة متغيرة؛ {0} {1} لإعادة الترتيب).
 // لتعديل ترجمة: غيّر النص الإنجليزي فقط. نص بلا ترجمة يظهر بالعربية.
 export default {
+  "إصلاحات صغيرة: «أهلًا أ.» بلا تكرار لو كتب المعلم «أ.» في اسمه، وتبويبات «القسم» في سطر واحد على الجوال": "Small fixes: no repeated title in the greeting if the teacher typed it in their name, and the Department tabs fit on one line on phones",
   "نُقل «{}» إلى": "“{}” moved to",
   "استلمت «{}» من {} ✓": "You received “{}” from {} ✓",
   "وصل {} منقولين إلى «{}» من {} ✓": "{} transferred students arrived in “{}” from {} ✓",
