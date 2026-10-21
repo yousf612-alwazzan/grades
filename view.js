@@ -10,6 +10,8 @@ import { signIn, USER_RE, normUser, CLOUD } from './cloud.js';
 
 const params = new URLSearchParams(location.search);
 const E2E = params.has('e2e');
+// صفحة الكمبيوتر فُتحت من جوال (اختصار قديم أو رابط): ننقله لواجهة الجوال وشاشة دخولها
+if (!E2E && window.top === window && /iPad|iPhone|iPod|Android|Mobi|Windows Phone|Opera Mini|IEMobile/i.test(navigator.userAgent || '') || (!E2E && window.top === window && navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) location.replace('./');
 // رقم النسخة ظاهر في صفحة الربط حتى يعرف المعلم أن الصفحة محدّثة
 function paintVerNote() { const el = document.getElementById('ver-note'); if (el) el.textContent = T`نسخة صفحة العرض ${toArabicDigits(CONFIG.version)} — إن لم تظهر الميزات الجديدة اضغط Ctrl+Shift+R مرة واحدة`; }
 paintVerNote();

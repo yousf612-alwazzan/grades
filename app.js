@@ -120,8 +120,10 @@ function pickTeacher(st) {
 // أندرويد (تطبيق أصلي) لا يستعمل الحسابات: يبقى على الربط المباشر كما هو.
 const CLOUD_ON = !REMOTE && !platform.isNative && !!cloud.CLOUD;
 // الآيفون: الدخول إجباري ويبقى محفوظًا. الكمبيوتر: جلسة مؤقتة (لا يُحفظ شيء) تنتهي تلقائيًا بعد ساعة ونصف.
-const IOS_WEB = CLOUD_ON && platform.isIOS && !(typeof window !== 'undefined' && window.__gfuNoGate);
-const DESK_WEB = CLOUD_ON && !platform.isIOS;
+// IOS_WEB = الموقع على أي جوال (آيفون، أو أندرويد من المتصفح): شاشة دخول الجوال، والدخول يبقى محفوظًا
+const IOS_WEB = CLOUD_ON && platform.isPhone && !(typeof window !== 'undefined' && window.__gfuNoGate);
+// DESK_WEB = كمبيوتر فقط: صفحة الربط (QR) وجلسة مؤقتة
+const DESK_WEB = CLOUD_ON && !platform.isPhone;
 const DESK_SESSION_MS = 90 * 60 * 1000;
 // الكمبيوتر بلا حساب = صفحة الربط (QR). البقاء هنا للتطوير والاختبارات فقط (gfu-dev-stay)
 const DEV_STAY = (() => { try { return localStorage.getItem('gfu-dev-stay') === '1'; } catch { return false; } })();
@@ -3634,7 +3636,19 @@ function rerenderList() {
   if (!box || !c) return render();
   const active = document.activeElement && document.activeElement.matches('[data-search]');
   const pos = active ? document.activeElement.selectionStart : null;
+  // نحفظ مكان التمرير (الصفحة وجدول الطلاب) ونرجعه بعد إعادة الرسم — حتى لا تقفز الصفحة لأعلى عند نجمة/غياب/درجة
+  const keyOf = (el) => `${el.tagName}#${el.id}.${el.className}`;
+  const scrollers = [...box.querySelectorAll('*')].filter((el) => el.scrollTop || el.scrollLeft).map((el) => [keyOf(el), el.scrollTop, el.scrollLeft]);
+  const winY = window.scrollY;
   box.innerHTML = r.p.tab === 'fin' ? finTab(c, dataOf(c.id)) : weekTab(c, dataOf(c.id), r.p.tab);
+  if (scrollers.length) {
+    const all = [...box.querySelectorAll('*')];
+    for (const [key, top, left] of scrollers) {
+      const el = all.find((x) => keyOf(x) === key);
+      if (el) { el.scrollTop = top; el.scrollLeft = left; }
+    }
+  }
+  if (window.scrollY !== winY) window.scrollTo(0, winY);
   if (active) { const s = box.querySelector('[data-search]'); s.focus(); try { s.setSelectionRange(pos, pos); } catch { /* */ } }
   // الكمبيوتر: حالة الأسبوع في الرأس (خارج منطقة الجدول التي أُعيد رسمها)
   const hs = WIDE.matches && document.querySelector('.hdr-status');

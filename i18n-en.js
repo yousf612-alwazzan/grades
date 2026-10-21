@@ -1,6 +1,8 @@
 // ترجمة الواجهة للإنجليزية. المفتاح = النص العربي كما في الكود (و{} مكان كل قيمة متغيرة؛ {0} {1} لإعادة الترتيب).
 // لتعديل ترجمة: غيّر النص الإنجليزي فقط. نص بلا ترجمة يظهر بالعربية.
 export default {
+  "الجوال يفتح دائمًا على شاشة دخول الجوال (آيفون أو أندرويد من المتصفح) — لا تظهر صفحة الكمبيوتر ورمز QR في الجوال، والضغط على نجمة أو غياب أو درجة لطالب في آخر القائمة ما يرجّع الصفحة لأعلى": "Phones always open on the phone login screen (iPhone, or Android in the browser) — the computer page and QR code never show on a phone, and tapping star, absent or a grade for a student at the end of the list no longer jumps the page to the top",
+  "الجوال يفتح دائمًا على شاشة دخول الجوال (آيفون أو أندرويد من المتصفح) — لا تظهر صفحة الكمبيوتر ورمز QR في الجوال": "Phones always open on the phone login screen (iPhone, or Android in the browser) — the computer page and QR code never show on a phone",
   "أوقات الحصص مربوطة بالصف لا بالمعلم: لو تغيّر معلم الشعبة يبقى الوقت والتنبيه صحيحين": "Period times are tied to the class, not the teacher: if a section changes teacher, the time and reminder stay correct",
   "الشامل، أو كل فترة بالتفصيل، أو الدرجات النهائية — PDF": "Full, each quarter in detail, or final grades — PDF",
   "مجموع كل أسبوع (١–١٠) والفترتان والبنائي والنهائي": "Each week's total (1–10), both quarters, formative and final",

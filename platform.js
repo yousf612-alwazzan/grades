@@ -8,6 +8,8 @@ const P = (name) => (isNative && Cap.Plugins ? Cap.Plugins[name] : null);
 const ua = navigator.userAgent || '';
 const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isAndroid = /Android/i.test(ua);
+// جوال (أي متصفح على آيفون/أندرويد/جوال آخر): يأخذ واجهة الجوال دائمًا — لا صفحة الكمبيوتر (QR)
+const isPhone = isIOS || isAndroid || /Mobi|iPhone|iPod|Windows Phone|Opera Mini|IEMobile/i.test(ua);
 const isStandalone = isNative || window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
 function blobToBase64(blob) {
@@ -56,7 +58,7 @@ let backHandler = null;
 let lastFileInput = null;
 
 export const platform = {
-  isNative, isIOS, isAndroid, isStandalone,
+  isNative, isIOS, isAndroid, isPhone, isStandalone,
   plugin: (name) => P(name),
 
   // حفظ ملف: أندرويد = حفظ في المستندات ثم قائمة المشاركة؛ الويب = مشاركة الملف إن أمكن وإلا تنزيل
