@@ -1551,6 +1551,7 @@ body.cloud-on .appbar [data-save-state] { display: none; }
 .dept-sec.low .dept-bar i { background: var(--warning, #d97706); }
 
 /* القسم: تبويبات، المتصلون، التوفر والبدلاء — مناسبة للجوال والكمبيوتر */
+.reset-pass { font-size: 2.4rem; font-weight: 800; letter-spacing: .15em; text-align: center; margin: 12px 0; user-select: all; }
 .acc-row.off strong { color: var(--muted); text-decoration: line-through; }
 .acc-row .acc-new { font-weight: 600; }
 .dept-tabs { display: flex; overflow-x: auto; }

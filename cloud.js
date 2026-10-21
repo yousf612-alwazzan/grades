@@ -53,6 +53,16 @@ export async function headAccounts(session) {
 export async function headDisable(session, u, on) {
   try { const r = await api('/api/head/disable', { method: 'POST', token: session.token, body: { u, on: !!on } }); return r.status === 200; } catch { return false; }
 }
+/** رئيس القسم: يختار «مسؤول كلمات السر» (معلم واحد، أو '' لا أحد) */
+export async function headSetResetter(session, u) {
+  try { const r = await api('/api/head/resetter', { method: 'POST', token: session.token, body: { u } }); return r.status === 200; } catch { return false; }
+}
+/** «مسؤول كلمات السر»: كلمة سر جديدة لمعلم نسيها. يُحسب «إثباتها» هنا، ورمز المدرسة يُشفَّر بمفتاح المعلم الجديد. */
+export async function resetPassword(session, u, password, schoolCode) {
+  const { proof, rawKey } = await deriveKeys(u, password);
+  const school = schoolCode ? await encryptDoc(await importKey(rawKey), 'school', { code: normSchoolCode(schoolCode) }) : '';
+  try { const r = await api('/api/reset', { method: 'POST', token: session.token, body: { u, a: proof, school } }); return r.status === 200 ? 'ok' : r.status === 403 ? 'forbidden' : 'failed'; } catch { return 'offline'; }
+}
 export const importKey = (raw, extractable = false) => crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, extractable, ['encrypt', 'decrypt']);
 
 export async function encryptDoc(key, k, obj) {
@@ -326,6 +336,13 @@ export class CloudSync {
       try { r = await api(this.paths.docs + '?since=' + this.meta.seq, { token: this.s.token }); } catch { this.setState('offline'); return; }
       if (r.status === 401) { this.authLost(); return; }
       if (r.status !== 200) { this.setState('offline'); return; }
+      if (!this.paths.shared && typeof r.j.seq === 'number' && r.j.seq < this.meta.seq) {
+        // الحساب أُعيد إنشاؤه (إعادة كلمة السر): نبدأ من الصفر ونرفع كل ما على هذا الجهاز من جديد
+        this.meta = { seq: 0, docs: {} };
+        for (const k of this.host.keys()) this.dirty.add(k);
+        try { r = await api(this.paths.docs + '?since=0', { token: this.s.token }); } catch { this.setState('offline'); return; }
+        if (r.status !== 200) { this.setState('offline'); return; }
+      }
       for (const doc of r.j.docs || []) {
         const known = this.meta.docs[doc.k] || { v: 0, base: undefined };
         if (doc.v <= known.v) continue;

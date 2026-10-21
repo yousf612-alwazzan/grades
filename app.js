@@ -500,7 +500,12 @@ async function startCloud(session, key) {
     loadMeta: async () => (session.eph ? C.memMeta : await localStore.getMeta('cloudSync')),
     saveMeta: async (m) => { if (session.eph) C.memMeta = JSON.parse(JSON.stringify(m)); else await localStore.setMeta('cloudSync', JSON.parse(JSON.stringify(m))); },
     onState: (s) => { C.state = s; paintCloud(); },
-    onAuthLost: () => { cloud.clearSession(); C.sync = null; toast(tr('انتهت جلسة الحساب — سجّل الدخول من جديد. درجاتك على هذا الجهاز لم تتأثر.'), { err: true, ms: 8000 }); },
+    onAuthLost: () => {
+      // الجلسة انتهت (كلمة سر جديدة أو إيقاف): نرجع لشاشة الدخول — الدرجات على الجهاز تبقى وترتفع بعد الدخول
+      cloud.clearSession(); C.sync = null; stopShare();
+      if (document.querySelector('[data-acform]')) closeTopSheet();
+      if (C.session === session && !session.eph) { C.session = null; C.state = 'off'; C.resetter = false; render(); }
+      toast(tr('انتهت جلسة الحساب — سجّل الدخول من جديد. درجاتك على هذا الجهاز لم تتأثر.'), { err: true, ms: 8000 }); },
   });
   C.state = 'idle'; paintCloud();
   C.loading = session.eph;
@@ -511,7 +516,11 @@ async function startCloud(session, key) {
   try { await startP; } finally { if (C.loading) { C.loading = false; render(); } }
   loadSchoolRoster().catch(() => {});
   loadTimetable().catch(() => {});
-  cloud.fetchMe(session).then((me) => { if (me && me.role && me.role !== C.role) { C.role = me.role; render(); } }).catch(() => {});
+  cloud.fetchMe(session).then((me) => {
+    if (!me) return;
+    const rs = !!me.resetter;
+    if ((me.role && me.role !== C.role) || rs !== !!C.resetter) { if (me.role) C.role = me.role; C.resetter = rs; render(); }
+  }).catch(() => {});
   startShare().catch(() => {});
   if (session.mustChange && C.sync && !hasSheet() && !document.querySelector('[data-acform]')) openAccountSheet(true);
 }
@@ -1467,9 +1476,51 @@ function deptAccounts() {
     const btn = a.role === 'head' ? T`<span class="badge">رئيس القسم</span>` : a.u === meU() ? '' : a.disabled
       ? T`<button type="button" class="btn sm primary" data-act="acc-toggle" data-u="${esc(a.u)}" data-v="0">تفعيل</button>`
       : T`<button type="button" class="btn sm" data-act="acc-toggle" data-u="${esc(a.u)}" data-v="1">إيقاف</button>`;
-    return T`<div class="list-item acc-row ${a.disabled ? 'off' : ''}" data-u="${esc(a.u)}"><span class="grow"><strong>${esc(nm || a.u)}</strong><small><span dir="ltr">${esc(a.u)}</span> · ${state}</small></span>${btn}</div>`;
+    return T`<div class="list-item acc-row ${a.disabled ? 'off' : ''}" data-u="${esc(a.u)}"><span class="grow"><strong>${esc(nm || a.u)}</strong>${a.resetter ? T` <span class="badge">كلمات السر</span>` : ''}<small><span dir="ltr">${esc(a.u)}</span> · ${state}</small></span>${btn}</div>`;
   }).join('');
-  return T`<div class="section-title">حسابات المعلمين</div><div class="list">${rows}</div><p class="hint">معلم خرج من المدرسة؟ اضغط «إيقاف»: ما يقدر يدخل بعدها، وشعبه ودرجاتها تبقى عندك في «القسم».</p>`;
+  const rs = C.headAcc.find((a) => a.resetter);
+  const resetBox = T`<div class="section-title">مسؤول كلمات السر</div>
+    <div class="list"><button type="button" class="list-item" data-act="pick-resetter">${icon('lock')}<span class="grow"><strong>${rs ? esc(staffName(rs.u) || rs.u) : tr('لا أحد')}</strong><small>المعلم اللي يقدر يسوي كلمة سر جديدة لمعلم نساها</small></span>${icon('fwd')}</button></div>`;
+  return T`${resetBox}<div class="section-title">حسابات المعلمين</div><div class="list">${rows}</div><p class="hint">معلم خرج من المدرسة؟ اضغط «إيقاف»: ما يقدر يدخل بعدها، وشعبه ودرجاتها تبقى عندك في «القسم».</p>`;
+}
+/** رئيس القسم يختار «مسؤول كلمات السر» من المعلمين */
+function pickResetter() {
+  const list = (C.headAcc || []).filter((a) => a.role !== 'head' && !a.disabled).map((a) => ({ u: a.u, name: staffName(a.u) || a.u, on: !!a.resetter })).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+  const rows = list.map((x) => T`<button type="button" class="list-item ${x.on ? 'on' : ''}" data-ru="${esc(x.u)}"><span class="ra-avatar">${icon('user')}</span><span class="grow"><strong>${esc(x.name)}</strong><small dir="ltr" style="text-align:start">${esc(x.u)}</small></span>${x.on ? icon('check') : ''}</button>`).join('');
+  const s = openSheet(T`<h2>مسؤول كلمات السر</h2><p class="hint">اختر معلمًا واحدًا: يقدر يسوي كلمة سر جديدة لأي معلم نسى كلمة سره. أنت ما تحتاج تسويها.</p>
+    <div class="list" style="max-height:55vh;overflow:auto">${rows || T`<p class="hint">لا يوجد معلمون بعد.</p>`}</div>
+    ${list.some((x) => x.on) ? T`<button type="button" class="btn block" data-ru="">بدون مسؤول</button>` : ''}`, { label: tr('مسؤول كلمات السر') });
+  s.sheet.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-ru]');
+    if (!b) return;
+    const u = b.dataset.ru;
+    s.close();
+    if (!(await cloud.headSetResetter(C.session, u))) { toast(tr('تعذّر — تأكد من الاتصال بالإنترنت.'), { err: true }); return; }
+    for (const a of C.headAcc || []) a.resetter = a.u === u;
+    toast(u ? T`صار ${staffName(u) || u} مسؤول كلمات السر` : tr('ما في مسؤول كلمات سر'));
+    render();
+  });
+}
+/** «مسؤول كلمات السر»: يسوي كلمة سر جديدة لمعلم نساها */
+async function openResetSheet() {
+  const acc = await cloud.headAccounts(C.session);
+  if (!acc) { toast(tr('تعذّر — تأكد من الاتصال بالإنترنت.'), { err: true }); return; }
+  const list = acc.filter((a) => a.role !== 'head' && !a.disabled && a.u !== meU()).map((a) => ({ u: a.u, name: staffName(a.u) || a.u })).sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+  const rows = list.map((x) => T`<button type="button" class="list-item" data-rp="${esc(x.u)}"><span class="ra-avatar">${icon('user')}</span><span class="grow"><strong>${esc(x.name)}</strong><small dir="ltr" style="text-align:start">${esc(x.u)}</small></span>${icon('fwd')}</button>`).join('');
+  const s = openSheet(T`<h2>كلمة سر جديدة لمعلم</h2><p class="hint">اختر المعلم اللي نسى كلمة سره.</p><div class="list" style="max-height:60vh;overflow:auto">${rows || T`<p class="hint">لا يوجد معلمون بعد.</p>`}</div>`, { label: tr('كلمة سر جديدة لمعلم') });
+  s.sheet.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-rp]');
+    if (!b) return;
+    const x = list.find((y) => y.u === b.dataset.rp);
+    s.close();
+    if (!x) return;
+    const ok = await confirmDialog({ title: T`كلمة سر جديدة لـ ${x.name}؟`, text: tr('كلمة سره القديمة توقف ويطلع من أجهزته. درجاته باقية في جواله وفي «القسم»، وترجع لحسابه أول ما يدخل بكلمة السر الجديدة.'), ok: tr('سوِّ كلمة سر جديدة') });
+    if (!ok) return;
+    const pass = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
+    const r = await cloud.resetPassword(C.session, x.u, pass, S.meta.schoolCode || '');
+    if (r !== 'ok') { toast(r === 'offline' ? tr('تعذّر — تأكد من الاتصال بالإنترنت.') : tr('ما تقدر تسوي كلمة سر لهذا الحساب.'), { err: true }); return; }
+    openSheet(T`<h2>${icon('check')} كلمة السر الجديدة</h2><p>اسم المستخدم: <b dir="ltr">${esc(x.u)}</b></p><p class="reset-pass num" dir="ltr" data-testid="new-pass">${pass}</p><p class="hint">أعطها للمعلم. يدخل فيها من جديد، ويقدر يغيّرها من الإعدادات. هذي الكلمة ما تنحفظ عندك ولا تطلع مرة ثانية.</p>`, { label: tr('كلمة السر الجديدة') });
+  });
 }
 async function toggleAccount(u, on) {
   const nm = staffName(u) || u;
@@ -2874,6 +2925,7 @@ function Settings() {
       <div class="list-item">${icon('user')}<span class="grow"><strong dir="ltr" style="text-align:start">${esc(C.session.u)}</strong><small data-cloud-state>${tr(CLOUD_TEXT[C.state] || '')}</small></span>${icon('lock')}</div>
       <button type="button" class="list-item" data-act="school-code">${icon('lock')}<span class="grow"><strong>رمز المدرسة</strong><small>${S.meta.schoolCode ? tr('مفعّل ✓ — بيانات شعبك محفوظة للشعبة نفسها') : tr('غير مفعّل — اطلبه من مسؤول التطبيق')}</small></span>${C.role === 'head' ? T`<span class="badge">رئيس القسم</span>` : ''}${icon('fwd')}</button>
       <button type="button" class="list-item" data-act="cloud-account">${icon('edit')}<span class="grow"><strong>تغيير اسم المستخدم أو كلمة السر</strong></span>${icon('fwd')}</button>
+      ${C.resetter ? T`<button type="button" class="list-item" data-act="reset-pass">${icon('lock')}<span class="grow"><strong>كلمة سر جديدة لمعلم</strong><small>أنت مسؤول كلمات السر — لمعلم نسى كلمة سره</small></span>${icon('fwd')}</button>` : ''}
       <button type="button" class="list-item" data-act="cloud-sync">${icon('refresh')}<span class="grow"><strong>مزامنة الآن</strong><small>${C.session.eph ? tr('جلسة مؤقتة: لا يُحفظ شيء على هذا الجهاز') : tr('درجاتك على هذا الجهاز + نسخة مشفّرة في حسابك')}</small></span></button>
       <button type="button" class="list-item" data-act="cloud-logout">${icon('logout')}<span class="grow"><strong>خروج من الحساب</strong></span></button>
     </div>` : T`<div class="section-title">الحساب والمزامنة</div>
@@ -3949,6 +4001,8 @@ document.addEventListener('click', async (e) => {
     case 'dept-sec': deptSecSheet(el.dataset.k); break;
     case 'dept-tab': S.ui.deptTab = el.dataset.v; if (el.dataset.v === 'teachers') C.headAcc = null; render(); break;
     case 'acc-toggle': await toggleAccount(el.dataset.u, el.dataset.v === '1'); break;
+    case 'pick-resetter': pickResetter(); break;
+    case 'reset-pass': await openResetSheet(); break;
     case 'dept-away': await setAway(el.dataset.n, el.dataset.v === '1'); break;
     case 'dept-report': await deptReport(); break;
     case 'dept-sec-report': await deptSectionReport(); break;
