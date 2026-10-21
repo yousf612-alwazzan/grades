@@ -1,4 +1,6 @@
-// المزامنة السحابية المشفّرة (لنسخة الآيفون والموقع فقط — تطبيق أندرويد لا يستعملها).
+// المزامنة السحابية المشفّرة (الآيفون والموقع وتطبيق أندرويد بحساب المعلم).
+// + مخزن الشعب المشترك: بيانات كل شعبة مشفّرة بمفتاح من «رمز المدرسة» (لا من كلمة سر المعلم)، فتبقى للشعبة لو تغيّر معلمها،
+//   ويقرؤها رئيس القسم. الخادم لا يعرف الرمز ولا يرى إلا نصًا مشفّرًا.
 // كل مستند (الصفوف، الإعدادات، درجات كل صف) يُشفَّر على الجهاز بـ AES-GCM بمفتاح مشتق من كلمة سر المعلم
 // (PBKDF2) قبل إرساله؛ الخادم يخزّن نصًا مشفّرًا فقط ولا يعرف كلمة السر ولا أي اسم أو درجة.
 // المزامنة: كل تعديل يُرسل خلال أقل من ثانية، والأجهزة الأخرى تُبلَّغ فورًا (WebSocket) فتجلب الجديد.
@@ -22,6 +24,26 @@ export async function deriveKeys(user, password, iter = KDF_ITER) {
   const base = await crypto.subtle.importKey('raw', te.encode(String(password)), 'PBKDF2', false, ['deriveBits']);
   const bits = new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: te.encode('gfu-cloud-v1:' + normUser(user)), iterations: iter }, base, 512));
   return { proof: toB64u(bits.subarray(0, 32)), rawKey: bits.slice(32) };
+}
+/** «رمز المدرسة» ← مفتاح AES-GCM لبيانات الشعب المشتركة (نفس الاشتقاق في server/admin.mjs). */
+export const normSchoolCode = (c) => String(c || '').toUpperCase().replace(/[\s-]/g, '');
+export async function deriveSchoolKey(code) {
+  const base = await crypto.subtle.importKey('raw', te.encode(normSchoolCode(code)), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: te.encode('gfu-school-v1'), iterations: KDF_ITER }, base, 256);
+  return importKey(new Uint8Array(bits));
+}
+/** يتحقق من الرمز بفك «مستند التحقق» في الخادم. يرجع المفتاح، أو يرمي wrong/offline/none. */
+export async function checkSchoolCode(session, code) {
+  let r;
+  try { r = await api('/api/school/check', { token: session.token }); } catch { throw codeErr('offline'); }
+  if (r.status === 404) throw codeErr('none');
+  if (r.status !== 200) throw codeErr('offline');
+  const key = await deriveSchoolKey(code);
+  try { await decryptDoc(key, 'school:check', r.j.d); } catch { throw codeErr('wrong'); }
+  return key;
+}
+export async function fetchMe(session) {
+  try { const r = await api('/api/me', { token: session.token }); return r.status === 200 ? r.j : null; } catch { return null; }
 }
 export const importKey = (raw, extractable = false) => crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, extractable, ['encrypt', 'decrypt']);
 
@@ -121,7 +143,7 @@ export async function signIn({ user, password, invite = '', remember = true }) {
   } catch { throw codeErr('offline'); }
   if (r.status === 429) throw codeErr('locked');
   if (r.status !== 200 || !r.j.token) throw codeErr(invite ? 'bad-invite' : 'wrong');
-  const session = { u, token: r.j.token, eph: !remember, mustChange: !!r.j.mustChange, t: Date.now() };
+  const session = { u, token: r.j.token, eph: !remember, mustChange: !!r.j.mustChange, role: r.j.role === 'head' ? 'head' : 'teacher', t: Date.now() };
   if (remember) { try { localStorage.setItem('gfu-cloud-last', u); } catch { /* */ } }
   // المفتاح: في جلسة مؤقتة يبقى في هذا التبويب فقط؛ في الجوال يُحفظ في IndexedDB كمفتاح غير قابل للاستخراج
   if (!remember) session.k = toB64u(rawKey);
@@ -161,7 +183,7 @@ export async function changeAccount(sync, { user2, password }) {
   if (r.status === 401) throw codeErr('auth');
   if (r.status !== 200 || !r.j.token) throw codeErr('failed');
   sync.stop();
-  const session = { u: r.j.u, token: r.j.token, eph: !!s.eph, mustChange: false, t: s.t || Date.now() };
+  const session = { u: r.j.u, token: r.j.token, eph: !!s.eph, mustChange: false, role: s.role || 'teacher', t: s.t || Date.now() };
   if (s.eph) session.k = toB64u(rawKey);
   else { try { localStorage.setItem('gfu-cloud-last', r.j.u); } catch { /* */ } }
   writeSession(session);
@@ -170,9 +192,11 @@ export async function changeAccount(sync, { user2, password }) {
 
 // ---------- محرك المزامنة ----------
 // host: { keys(), get(k), apply(k, data), loadMeta(), saveMeta(m), onState(s), onAuthLost() }
+// paths: مستندات المعلم (الافتراضي) أو مخزن الشعب المشترك (SHARED_PATHS — لا حذف فيه)
+export const SHARED_PATHS = { docs: '/api/sdocs', doc: '/api/sdoc', ws: '/api/sws', shared: true };
 export class CloudSync {
-  constructor(session, key, host) {
-    this.s = session; this.key = key; this.host = host;
+  constructor(session, key, host, paths = { docs: '/api/docs', doc: '/api/doc', ws: '/api/ws' }) {
+    this.s = session; this.key = key; this.host = host; this.paths = paths;
     this.meta = { seq: 0, docs: {} }; // docs[k] = {v, base}
     this.dirty = new Set();
     this.state = 'idle';
@@ -210,10 +234,14 @@ export class CloudSync {
     if (this.stopped || typeof WebSocket !== 'function') return;
     try { if (this.ws) this.ws.close(); } catch { /* */ }
     let ws;
-    try { ws = new WebSocket(CLOUD.replace(/^http/, 'ws') + '/api/ws?t=' + encodeURIComponent(this.s.token)); } catch { return; }
+    try { ws = new WebSocket(CLOUD.replace(/^http/, 'ws') + this.paths.ws + '?t=' + encodeURIComponent(this.s.token)); } catch { return; }
     this.ws = ws;
-    ws.onopen = () => { this.wsTry = 0; };
-    ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } if (m && Number(m.seq) > this.meta.seq) this.pull(); };
+    ws.onopen = () => { this.wsTry = 0; try { this.host.onOpen && this.host.onOpen(); } catch { /* */ } };
+    ws.onmessage = (e) => {
+      let m; try { m = JSON.parse(e.data); } catch { return; }
+      if (m && m.presence && this.host.onMessage) { try { this.host.onMessage(m); } catch { /* */ } return; }
+      if (m && Number(m.seq) > this.meta.seq) this.pull();
+    };
     ws.onclose = () => {
       if (this.ws !== ws) return;
       this.ws = null;
@@ -254,9 +282,10 @@ export class CloudSync {
       const local = this.host.keys().includes(k) ? this.host.get(k) : null;
       const known = this.meta.docs[k] || { v: 0, base: undefined };
       if (known.v === 0 && local === null) { this.dirty.delete(k); return true; } // لم يُرفع أصلًا
+      if (local === null && this.paths.shared) { this.dirty.delete(k); return true; } // المخزن المشترك: حذف الصف من جهاز لا يحذف بيانات الشعبة
       let r;
       try {
-        r = await api('/api/doc', { method: 'PUT', token: this.s.token, body: { k, base: known.v, d: local === null ? null : await encryptDoc(this.key, k, local) } });
+        r = await api(this.paths.doc, { method: 'PUT', token: this.s.token, body: { k, base: known.v, d: local === null ? null : await encryptDoc(this.key, k, local) } });
       } catch { return false; }
       if (r.status === 401) { this.authLost(); return 'auth'; }
       if (r.status === 200) {
@@ -285,7 +314,7 @@ export class CloudSync {
     this.pulling = true;
     try {
       let r;
-      try { r = await api('/api/docs?since=' + this.meta.seq, { token: this.s.token }); } catch { this.setState('offline'); return; }
+      try { r = await api(this.paths.docs + '?since=' + this.meta.seq, { token: this.s.token }); } catch { this.setState('offline'); return; }
       if (r.status === 401) { this.authLost(); return; }
       if (r.status !== 200) { this.setState('offline'); return; }
       for (const doc of r.j.docs || []) {
@@ -297,7 +326,8 @@ export class CloudSync {
         const local = this.host.keys().includes(doc.k) ? this.host.get(doc.k) : null;
         const result = local === null || remote === null ? remote : mergeDoc(doc.k, known.base, local, remote);
         this.meta.docs[doc.k] = { v: doc.v, base: remote };
-        if (!same(result, local)) await this.host.apply(doc.k, result);
+        if (!same(result, local)) await this.host.apply(doc.k, result, { by: doc.by || '' });
+        else if (this.host.seen) await this.host.seen(doc.k, remote, { by: doc.by || '' });
         if (same(result, remote)) this.dirty.delete(doc.k); else this.dirty.add(doc.k);
       }
       this.meta.seq = Math.max(this.meta.seq, Number(r.j.seq) || 0);
@@ -322,6 +352,13 @@ export class CloudSync {
     }
     return false;
   }
+
+  /** رسالة صغيرة عبر الاتصال الفوري (الحضور) — مشفّرة بنفس المفتاح. */
+  async sendLive(k, obj) {
+    if (!this.ws || this.ws.readyState !== 1) return false;
+    try { this.ws.send(JSON.stringify({ p: await encryptDoc(this.key, k, obj) })); return true; } catch { return false; }
+  }
+  async openLive(k, s) { try { return await decryptDoc(this.key, k, s); } catch { return null; } }
 
   authLost() { this.stop(); this.setState('auth'); try { this.host.onAuthLost(); } catch { /* */ } }
 

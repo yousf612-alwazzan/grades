@@ -5,7 +5,7 @@ import CONFIG from './config.js';
 import { CHANGELOG } from './changelog.js';
 import { PLAN_NAME, planFor, gradeOf } from './lesson-plans.js';
 import * as cloud from './cloud.js';
-import { sanitizeRoster, gradeName, sectionLabel, sortedSections, sortedGrades } from './school.js';
+import { sanitizeRoster, gradeName, sectionLabel, sortedSections, sortedGrades, sectionOf, GRADE_NAMES } from './school.js';
 import { DAYS, SCHOOL_DAYS, REMIND_CHOICES, sanitizeSchedule, sortSchedule, nextOccurrence, buildICS, syncNativeReminders, minutesText, periodText } from './reminders.js';
 import { sanitizeTimetable, entriesFor, unmatchedClasses } from './timetable.js';
 import {
@@ -76,8 +76,8 @@ function remoteStore(base) {
 function syncingStore(base) {
   return {
     ...base,
-    async saveClasses(c) { await base.saveClasses(c); manageSend({ type: 'put-classes', classes: c }); cloudTouch('classes'); },
-    async saveGrades(id, d) { await base.saveGrades(id, d); manageSend({ type: 'put-grades', id, data: d }); cloudTouch('g:' + id); },
+    async saveClasses(c) { await base.saveClasses(c); manageSend({ type: 'put-classes', classes: c }); cloudTouch('classes'); shareTouchAll(); },
+    async saveGrades(id, d) { await base.saveGrades(id, d); manageSend({ type: 'put-grades', id, data: d }); cloudTouch('g:' + id); shareTouchClass(id); },
     async deleteGrades(id) { await base.deleteGrades(id); manageSend({ type: 'del-grades', id }); cloudTouch('g:' + id); },
     async saveSettings(st) { await base.saveSettings(st); manageSend({ type: 'put-settings', settings: pickTeacher(st) }); cloudTouch('settings'); },
     async replaceAll(x) { await base.replaceAll(x); cloudTouch('*'); },
@@ -116,12 +116,13 @@ function pickTeacher(st) {
   }
   return o;
 }
-// ===================== الحساب والمزامنة المشفّرة (آيفون والموقع فقط) =====================
-// أندرويد (تطبيق أصلي) لا يستعمل الحسابات: يبقى على الربط المباشر كما هو.
-const CLOUD_ON = !REMOTE && !platform.isNative && !!cloud.CLOUD;
+// ===================== الحساب والمزامنة المشفّرة (آيفون والموقع وأندرويد) =====================
+// أندرويد (تطبيق أصلي): حساب لكل معلم أيضًا (شاشة دخول يقدر يتخطاها)، ويبقى الربط المباشر بالكمبيوتر كما هو.
+const CLOUD_ON = !REMOTE && !!cloud.CLOUD;
+const NATIVE_GATE = CLOUD_ON && platform.isNative && !(typeof window !== 'undefined' && window.__gfuNoGate);
 // الآيفون: الدخول إجباري ويبقى محفوظًا. الكمبيوتر: جلسة مؤقتة (لا يُحفظ شيء) تنتهي تلقائيًا بعد ساعة ونصف.
 // IOS_WEB = الموقع على أي جوال (آيفون، أو أندرويد من المتصفح): شاشة دخول الجوال، والدخول يبقى محفوظًا
-const IOS_WEB = CLOUD_ON && platform.isPhone && !(typeof window !== 'undefined' && window.__gfuNoGate);
+const IOS_WEB = CLOUD_ON && !platform.isNative && platform.isPhone && !(typeof window !== 'undefined' && window.__gfuNoGate);
 // DESK_WEB = كمبيوتر فقط: صفحة الربط (QR) وجلسة مؤقتة
 const DESK_WEB = CLOUD_ON && !platform.isPhone;
 const DESK_SESSION_MS = 90 * 60 * 1000;
@@ -129,14 +130,15 @@ const DESK_SESSION_MS = 90 * 60 * 1000;
 const DEV_STAY = (() => { try { return localStorage.getItem('gfu-dev-stay') === '1'; } catch { return false; } })();
 const PC_HOME = 'view.html';
 function toPcHome() { if (DESK_WEB && !DEV_STAY) { location.replace(PC_HOME); return true; } return false; }
-const C = { session: null, sync: null, state: 'off', loading: false, memMeta: null };
+const C = { session: null, sync: null, state: 'off', loading: false, memMeta: null, share: null, role: 'teacher', shareMem: null };
 function cloudTouch(k) {
   if (!C.sync) return;
   if (k === '*') { for (const x of cloudKeys()) C.sync.touch(x); return; }
   C.sync.touch(k);
 }
-function cloudKeys() { return ['classes', 'settings', ...S.classes.map((c) => 'g:' + c.id)]; }
+function cloudKeys() { return ['classes', 'settings', ...(S.meta.schoolCode ? ['school'] : []), ...S.classes.map((c) => 'g:' + c.id)]; }
 function cloudGet(k) {
+  if (k === 'school') return S.meta.schoolCode ? { code: S.meta.schoolCode } : null;
   if (k === 'classes') return S.classes.map((c) => ({ id: c.id, label: c.label, names: c.names.slice() }));
   if (k === 'settings') return pickTeacher(S.settings);
   const id = k.slice(2);
@@ -153,6 +155,9 @@ async function cloudApply(k, data) {
     S.classes = clean;
     await localStore.saveClasses(S.classes);
     manageSend({ type: 'put-classes', classes: S.classes });
+  } else if (k === 'school') {
+    const code = data && typeof data.code === 'string' ? cloud.normSchoolCode(data.code).slice(0, 40) : '';
+    if (code && code !== S.meta.schoolCode) { await setSchoolCode(code); startShare().catch(() => {}); }
   } else if (k === 'settings') {
     if (data && typeof data === 'object') { Object.assign(S.settings, pickTeacher(data)); await localStore.saveSettings(S.settings); manageSend({ type: 'put-settings', settings: pickTeacher(S.settings) }); }
   } else if (k.startsWith('g:')) {
@@ -163,6 +168,141 @@ async function cloudApply(k, data) {
   noteChange();
   if (route().name !== 'live') softRender();
 }
+// ===================== بيانات الشعب المشتركة (رمز المدرسة) =====================
+// كل صف من صفوف المدرسة (الثامن / 4) له نسخة مشتركة مشفّرة برمز المدرسة: معلم جديد للشعبة يجدها كاملة،
+// ورئيس القسم يتابع كل الشعب ويعدّلها. الصف المحذوف من جهاز معلم لا يحذف بيانات الشعبة.
+const secKey = (c) => { const x = sectionOf(c && c.label); return x ? 'sec:' + x : null; };
+function shareOwn() { const m = new Map(); for (const c of S.classes) { const k = secKey(c); if (k && !m.has(k)) m.set(k, c); } return m; }
+async function setSchoolCode(code) {
+  S.meta.schoolCode = code;
+  if (C.session && C.session.eph) return; // كمبيوتر مشترك: في الذاكرة فقط
+  await localStore.setMeta('schoolCode', code).catch(() => {});
+}
+const shareHost = {
+  keys: () => [...shareOwn().keys(), ...(S.deptAvail ? ['dept:avail'] : [])],
+  get(k) {
+    if (k === 'dept:avail') return S.deptAvail ? JSON.parse(JSON.stringify(S.deptAvail)) : null;
+    const c = shareOwn().get(k);
+    if (!c || !S.grades[c.id]) return null;
+    const prev = S.share[k];
+    // صاحب الشعبة: المعلم الذي يرصدها (رئيس القسم يعدّل بلا أن يصبح صاحبها)
+    const owner = C.role === 'head' ? (prev && prev.owner) || null : { u: C.session ? C.session.u : '', name: String(S.settings.teacher || '').slice(0, 80) };
+    return { label: c.label, names: c.names.slice(), data: JSON.parse(JSON.stringify(S.grades[c.id])), owner };
+  },
+  async apply(k, v, meta = {}) {
+    if (k === 'dept:avail') {
+      if (v && typeof v === 'object' && Array.isArray(v.away)) S.deptAvail = { date: String(v.date || '').slice(0, 12), away: v.away.map((x) => String(x).slice(0, 80)).slice(0, 100) };
+      if (route().name === 'dept') softRender();
+      return;
+    }
+    if (!v || typeof v !== 'object' || !Array.isArray(v.names)) return;
+    S.share[k] = { label: String(v.label || '').slice(0, 100), names: v.names.slice(0, MAX_STUDENTS).map((x) => String(x ?? '').slice(0, 120)), data: localStore.sanitizeClassData(v.data), owner: v.owner && typeof v.owner === 'object' ? { u: String(v.owner.u || '').slice(0, 40), name: String(v.owner.name || '').slice(0, 80) } : null, by: meta.by || '' };
+    saveShareCache();
+    const c = shareOwn().get(k);
+    if (c) {
+      const sh = S.share[k];
+      if (JSON.stringify(c.names) !== JSON.stringify(sh.names)) { c.names = sh.names.slice(); await localStore.saveClasses(S.classes); cloudTouch('classes'); }
+      S.grades[c.id] = localStore.sanitizeClassData(sh.data);
+      await localStore.saveGrades(c.id, S.grades[c.id]);
+      cloudTouch('g:' + c.id);
+      manageSend({ type: 'put-grades', id: c.id, data: S.grades[c.id] });
+      noteChange();
+    }
+    if (route().name !== 'live') softRender();
+  },
+  seen(k, v, meta) { return shareHost.apply(k, v, meta); },
+  loadMeta: async () => (C.session && C.session.eph ? C.shareMem : await localStore.getMeta('shareSync')),
+  saveMeta: async (m) => { if (C.session && C.session.eph) C.shareMem = JSON.parse(JSON.stringify(m)); else await localStore.setMeta('shareSync', JSON.parse(JSON.stringify(m))); },
+  onState: () => {},
+  onAuthLost: () => {},
+  onOpen: () => sendPresence(true),
+  async onMessage(m) {
+    // من المتصل الآن (رئيس القسم يرى المعلمين وماذا يفعلون) — كل حالة مشفّرة برمز المدرسة
+    const out = [];
+    for (const x of (m.presence || []).slice(0, 200)) {
+      if (!x || !x.u || !x.p) continue;
+      const v = await C.share.openLive('presence', x.p);
+      if (v && typeof v === 'object') out.push({ u: String(x.u), t: Number(x.t) || 0, name: String(v.name || x.u).slice(0, 80), screen: String(v.screen || ''), cls: String(v.cls || '').slice(0, 100), w: v.w, kind: String(v.kind || ''), at: Number(v.at) || 0, role: v.role === 'head' ? 'head' : 'teacher' });
+    }
+    const by = new Map();
+    for (const x of out) { const cur = by.get(x.u); if (!cur || x.t > cur.t) by.set(x.u, x); }
+    C.presence = [...by.values()];
+    if (route().name === 'dept') softRender();
+  },
+};
+// ===== الحضور: أين المعلم الآن (الشاشة، الصف، الأسبوع، آخر نشاط) — يُرسل مشفّرًا عند كل تغيير وكل دقيقة =====
+let presenceTimer = 0;
+let presenceLast = '';
+function presenceState() {
+  const r = route();
+  const c = r.name === 'class' || r.name === 'student' ? cls(r.p.id) : null;
+  return { name: String(S.settings.teacher || (C.session && C.session.u) || '').slice(0, 80), role: C.role, screen: r.name, cls: c ? c.label : '', w: c ? r.p.tab ?? null : null, kind: C.lastKind && c && C.lastKind.cls === c.label ? C.lastKind.kind : '', at: C.lastKind ? C.lastKind.at : 0 };
+}
+function sendPresence(force = false) {
+  if (!C.share) return;
+  const st = presenceState();
+  const key = JSON.stringify(st);
+  if (!force && key === presenceLast) return;
+  clearTimeout(presenceTimer);
+  presenceTimer = setTimeout(async () => { if (await C.share.sendLive('presence', st)) presenceLast = key; }, force ? 0 : 400);
+}
+setInterval(() => sendPresence(true), 60 * 1000);
+let shareCacheTimer = 0;
+function saveShareCache() {
+  if (C.session && C.session.eph) return;
+  clearTimeout(shareCacheTimer);
+  shareCacheTimer = setTimeout(() => { localStore.setMeta('shareCache', S.share).catch(() => {}); }, 400);
+}
+function shareTouchClass(id) { const c = cls(id); const k = c && secKey(c); if (k && C.share) C.share.touch(k); }
+function shareTouchAll() { if (C.share) for (const k of shareOwn().keys()) C.share.touch(k); }
+async function startShare() {
+  if (!C.session || C.share || C.shareStarting || !S.meta.schoolCode) return;
+  C.shareStarting = true; // مرة واحدة فقط (قد تُطلب من أكثر من مكان في نفس اللحظة)
+  try { await startShareNow(); } finally { C.shareStarting = false; }
+}
+async function startShareNow() {
+  let key;
+  try { key = await cloud.deriveSchoolKey(S.meta.schoolCode); } catch { return; }
+  if (!C.session || C.share) return;
+  if (!S.share || !Object.keys(S.share).length) S.share = (C.session.eph ? null : S.meta.shareCache) || {};
+  C.share = new cloud.CloudSync(C.session, key, shareHost, cloud.SHARED_PATHS);
+  await C.share.start();
+  softRender();
+}
+function stopShare() { if (C.share) { C.share.stop(); C.share = null; } }
+function openSchoolCodeSheet() {
+  const sh = openSheet(T`<h2>${icon('lock')} رمز المدرسة</h2>
+    <p class="hint">اكتبه مرة واحدة فقط. بيانات كل شعبة تُحفظ مشفّرة بهذا الرمز، فلو تغيّر معلم الشعبة يجدها المعلم الجديد كاملة، ويتابعها رئيس القسم.</p>
+    <form class="stack" data-sc autocomplete="off">
+      <div class="field"><label for="sc-code">رمز المدرسة</label><input id="sc-code" class="input" dir="ltr" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX" required></div>
+      <p class="field-error" role="alert" hidden></p>
+      <div class="actions"><button type="button" class="btn" data-x>لاحقًا</button><button type="submit" class="btn primary">تفعيل</button></div>
+    </form>`, { label: tr('رمز المدرسة') });
+  const f = sh.sheet.querySelector('[data-sc]');
+  sh.sheet.querySelector('[data-x]').addEventListener('click', () => sh.close());
+  setTimeout(() => f.querySelector('#sc-code').focus(), 60);
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = f.querySelector('.field-error');
+    const btn = f.querySelector('[type="submit"]');
+    const code = cloud.normSchoolCode(f.querySelector('#sc-code').value);
+    btn.disabled = true;
+    try {
+      await cloud.checkSchoolCode(C.session, code);
+      await setSchoolCode(code);
+      cloudTouch('school');
+      sh.close();
+      await startShare();
+      toast(tr('تم ✓ بيانات شعبك محفوظة الآن للشعبة نفسها'));
+      render();
+    } catch (x) {
+      err.textContent = x && x.code === 'wrong' ? tr('الرمز غير صحيح — تأكد منه عند مسؤول التطبيق.') : x && x.code === 'none' ? tr('المسؤول لم يفعّل رمز المدرسة بعد.') : tr('لا يوجد اتصال بالإنترنت. حاول مرة ثانية.');
+      err.hidden = false;
+      btn.disabled = false;
+    }
+  });
+}
+
 const CLOUD_TEXT = { syncing: 'جارٍ المزامنة…', ok: 'محفوظ في حسابك', offline: 'بدون إنترنت — تتزامن لاحقًا', auth: 'انتهت الجلسة — سجّل الدخول', idle: 'جارٍ الاتصال…', off: '' };
 function cloudChip() {
   if (!C.session) return '';
@@ -183,6 +323,7 @@ function paintCloud() {
 }
 async function startCloud(session, key) {
   C.session = session;
+  C.role = session.role === 'head' ? 'head' : 'teacher';
   if (!key) {
     try {
       key = session.eph ? await cloud.importKey(Uint8Array.from(atob(String(session.k || '').replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((String(session.k || '').length + 3) % 4)), (c) => c.charCodeAt(0)))
@@ -208,6 +349,8 @@ async function startCloud(session, key) {
   try { await startP; } finally { if (C.loading) { C.loading = false; render(); } }
   loadSchoolRoster().catch(() => {});
   loadTimetable().catch(() => {});
+  cloud.fetchMe(session).then((me) => { if (me && me.role && me.role !== C.role) { C.role = me.role; render(); } }).catch(() => {});
+  startShare().catch(() => {});
   if (session.mustChange && C.sync && !hasSheet() && !document.querySelector('[data-acform]')) openAccountSheet(true);
 }
 function cloudLeftMs() { return C.session && DESK_WEB ? Math.max(0, (Number(C.session.t) || Date.now()) + DESK_SESSION_MS - Date.now()) : Infinity; }
@@ -229,6 +372,8 @@ async function cloudLogout(auto = false) {
   if (auto) {
     if (C.loggingOut) return;
     C.loggingOut = true;
+    try { if (C.share) await Promise.race([C.share.settle(5000), new Promise((r) => setTimeout(r, 6000))]); } catch { /* */ }
+    stopShare();
     try { if (C.sync) { await Promise.race([C.sync.settle(8000), new Promise((r) => setTimeout(r, 9000))]); await C.sync.logout(); } } catch { /* */ }
     cloud.clearSession();
     try { sessionStorage.setItem('gfu-cloud-ended', '1'); } catch { /* */ }
@@ -237,6 +382,8 @@ async function cloudLogout(auto = false) {
   }
   const ok = await confirmDialog({ title: tr('الخروج من الحساب؟'), text: eph ? tr('تُمسح درجاتك من هذا الكمبيوتر، وتبقى محفوظة في حسابك وجوالك.') : tr('تبقى درجاتك على هذا الجهاز، وتتوقف المزامنة حتى تسجّل الدخول مرة ثانية.'), ok: tr('خروج') });
   if (!ok) return;
+  if (C.share) { try { await C.share.flush(); } catch { /* */ } }
+  stopShare();
   if (C.sync) { await C.sync.flush(); await C.sync.logout(); }
   C.sync = null;
   cloud.clearSession();
@@ -301,6 +448,7 @@ function LoginGate() {
     <h1>متابعة الدرجات</h1>
     <p class="hint">سجّل دخولك بحسابك — درجاتك تُحفظ مشفّرة، وتظهر في الكمبيوتر تلقائيًا.</p>
     <div data-cl data-gate>${loginFormHTML()}</div>
+    ${NATIVE_GATE ? T`<button type="button" class="link-btn" data-act="no-account" style="margin-top:8px">متابعة بدون حساب (درجاتك على هذا الجوال فقط)</button>` : ''}
   </div></div>`;
 }
 
@@ -429,18 +577,21 @@ async function saveSchoolPick(p) {
   if (!r || !p.grade || !p.pick || !p.pick.size) return;
   const mine = new Set(S.classes.map((c) => c.label));
   let added = 0;
+  let found = 0;
   for (const x of sortedSections(r.grades[p.grade])) {
     if (!p.pick.has(x)) continue;
     const label = sectionLabel(p.grade, x);
     if (mine.has(label)) continue;
     const id = uid();
-    S.classes.push({ id, label, names: r.grades[p.grade][x].slice(0, MAX_STUDENTS) });
-    S.grades[id] = emptyClassData();
+    const prev = S.share && S.share['sec:' + sectionOf(label)];
+    if (prev) found++;
+    S.classes.push({ id, label, names: (prev ? prev.names : r.grades[p.grade][x]).slice(0, MAX_STUDENTS) });
+    S.grades[id] = prev ? localStore.sanitizeClassData(prev.data) : emptyClassData();
     await store.saveGrades(id, S.grades[id]);
     added++;
   }
   await saveClassesNow();
-  toast(T`أُضيفت ${ar(added)} شعبة إلى صفوفك ✓`);
+  toast(found ? T`أُضيفت ${ar(added)} شعبة إلى صفوفك ✓ — ومعها درجاتها السابقة (${ar(found)})` : T`أُضيفت ${ar(added)} شعبة إلى صفوفك ✓`);
   S.stack = [{ name: 'home', p: {} }];
   render({ scrollTop: true });
 }
@@ -506,6 +657,7 @@ const S = {
   settings: { ...CONFIG.defaultSettings },
   grades: {},
   meta: {},
+  share: {},          // بيانات الشعب المشتركة (مفكوكة برمز المدرسة) — للقسم ولمعلم جديد للشعبة
   stack: [],          // [{name, p}]
   ui: { tab: {}, search: '', missingOnly: false, filter: 'all', fscope: 'week', selected: null, undo: null, sideHidden: deskPref('gfu-side') },
   saving: false,
@@ -516,7 +668,7 @@ const cls = (id) => S.classes.find((c) => c.id === id);
 const dataOf = (id) => (S.grades[id] ||= emptyClassData());
 const uid = () => 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const route = () => S.stack[S.stack.length - 1] || { name: 'home', p: {} };
-const ROOTS = ['home', 'reports', 'live', 'tools', 'settings'];
+const ROOTS = ['home', 'dept', 'reports', 'live', 'tools', 'settings'];
 
 function hasAnyGrades() {
   return S.classes.some((c) => progress(dataOf(c.id), c.names.length).filled > 0);
@@ -684,7 +836,7 @@ const main = () => document.getElementById('main');
 
 function render({ scrollTop = false } = {}) {
   const r = route();
-  if (IOS_WEB && !C.session && r.name !== 'guide') {
+  if ((IOS_WEB || (NATIVE_GATE && !S.meta.noAccount)) && !C.session && r.name !== 'guide') {
     main().className = 'main no-tabbar gate-main';
     document.body.classList.add('no-tabbar');
     document.getElementById('tabbar').classList.add('hide');
@@ -693,7 +845,7 @@ function render({ scrollTop = false } = {}) {
     renderNav();
     return;
   }
-  const screens = { school: School, schedule: Schedule, home: Home, reports: Reports, tools: Tools, class: ClassScreen, student: StudentScreen, editor: Editor, settings: Settings, live: Live, transferOut: TransferOut, transferIn: TransferIn, guide: Guide };
+  const screens = { dept: Dept, school: School, schedule: Schedule, home: Home, reports: Reports, tools: Tools, class: ClassScreen, student: StudentScreen, editor: Editor, settings: Settings, live: Live, transferOut: TransferOut, transferIn: TransferIn, guide: Guide };
   const fn = screens[r.name] || Home;
   const isRoot = ROOTS.includes(r.name);
   main().className = 'main' + (isRoot ? '' : ' no-tabbar') + (r.name === 'class' && WIDE.matches && cls(r.p.id) && cls(r.p.id).names.length ? ' desk-class' : '');
@@ -705,6 +857,7 @@ function render({ scrollTop = false } = {}) {
   if (scrollTop) window.scrollTo(0, 0);
   const after = afterRender[r.name];
   if (after) after(r.p);
+  sendPresence();
 }
 const afterRender = {};
 
@@ -726,9 +879,10 @@ function setDeskPref(k, on) { try { localStorage.setItem(k, on ? '1' : '0'); } c
 
 function renderNav() {
   const cur = ROOTS.includes(route().name) ? route().name : (S.stack[0] || {}).name;
-  const items = [['home', 'users', tr('الصفوف')], ['reports', 'sheet', tr('التقارير')], ['live', 'monitor', REMOTE ? tr('عرض للطلاب') : IOS_WEB ? tr('الكمبيوتر') : tr('العرض')], ['tools', 'bolt', tr('الإدارة')], ['settings', 'gear', tr('الإعدادات')]];
+  const items = [['home', 'users', tr('الصفوف')], ...(C.role === 'head' && C.session ? [['dept', 'shield', tr('القسم')]] : []), ['reports', 'sheet', tr('التقارير')], ['live', 'monitor', REMOTE ? tr('عرض للطلاب') : IOS_WEB ? tr('الكمبيوتر') : tr('العرض')], ['tools', 'bolt', tr('الإدارة')], ['settings', 'gear', tr('الإعدادات')]];
   const btns = items.filter(([n]) => !(DESK_WEB && WIDE.matches && n === 'live')).map(([n, ic, label]) => `<button type="button" class="tab" data-act="nav" data-to="${n}" ${cur === n ? 'aria-current="page"' : ''} title="${esc(label)}"><span class="tab-ico">${icon(ic)}</span><span class="tab-label">${label}</span></button>`).join('');
   document.getElementById('tabbar').innerHTML = btns;
+  document.getElementById('tabbar').classList.toggle('six', items.length > 5);
   const mini = deskPref('gfu-rail');
   document.body.classList.toggle('rail-mini', mini);
   // الترتيب: الشعار (وزر إخفاء صغير) ← التنقل (+ لوحة الأدوات في شاشة الصف) ← تحت: حالة الحفظ والحساب ثم رقم الإصدار
@@ -802,6 +956,12 @@ function Home() {
   if (!REMOTE && !platform.isNative && platform.isIOS && ttList().length && !S.meta.ttCalDone) {
     // آيفون: التنبيه عن طريق تقويم الجوال (لا إشعارات من المتصفح والتطبيق مغلق)
     alerts.push(T`<div class="alert info" data-testid="tt-cal">${icon('bell')}<div class="grow"><strong>حصصك جاهزة من جدول المدرسة</strong><p>أضفها لتقويم جوالك مرة واحدة، ويصلك تنبيه قبل كل حصة كل أسبوع.</p><div class="row" style="gap:8px"><button type="button" class="btn sm primary" data-act="slot-ics">${icon('calendar')} أضفها للتقويم</button><button type="button" class="btn sm ghost" data-act="go" data-to="schedule">اعرض حصصي</button></div></div></div>`);
+  }
+  if (C.session && !S.meta.schoolCode && !REMOTE) {
+    alerts.push(T`<div class="alert info" data-testid="school-code-nudge">${icon('lock')}<div class="grow"><strong>أدخل رمز المدرسة</strong><p>مرة واحدة: تُحفظ بيانات شعبك للشعبة نفسها، فلو تغيّر المعلم لا تضيع، ويتابعها رئيس القسم.</p><button type="button" class="btn sm primary" data-act="school-code">${icon('lock')} رمز المدرسة</button></div></div>`);
+  }
+  if (NATIVE_GATE && !C.session && S.meta.noAccount) {
+    alerts.push(T`<div class="alert info" data-testid="login-nudge">${icon('user')}<div class="grow"><strong>سجّل الدخول بحسابك</strong><p>تُحفظ درجاتك مشفّرة في حسابك، وتبقى لو ضاع الجوال أو تغيّر معلم الشعبة.</p><button type="button" class="btn sm primary" data-act="cloud-login">${icon('user')} تسجيل الدخول</button></div></div>`);
   }
   const last = S.meta.lastBackupAt ? new Date(S.meta.lastBackupAt) : null;
   const days = last ? (Date.now() - last.getTime()) / 86400000 : Infinity;
@@ -1044,6 +1204,180 @@ function Reports() {
       ${card('report-student', 'users', tr('تقرير طالب'), tr('درجات طالب واحد مع ملاحظاته — PDF'))}
     </div>
   </div>`;
+}
+
+// ===================== القسم (رئيس القسم): كل الشعب وكل المعلمين =====================
+const DEPT_TABS = [['now', 'الآن'], ['teachers', 'المعلمون'], ['sections', 'الشعب'], ['reports', 'التقارير']];
+const KIND_TEXT = { absent: 'يرصد الغياب', grades: 'يرصد الدرجات', star: 'يضع نجوم التميّز', notes: 'يكتب ملاحظات' };
+const SCREEN_TEXT = { home: 'في صفحة الصفوف', reports: 'في التقارير', settings: 'في الإعدادات', tools: 'في الإدارة', live: 'في العرض', dept: 'في صفحة القسم', schedule: 'في جدول الحصص', school: 'يضيف صفوفًا' };
+const todayKey = () => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
+function agoText(t) {
+  const m = Math.max(0, Math.round((Date.now() - t) / 60000));
+  return m < 1 ? tr('الآن') : m < 60 ? T`قبل ${ar(m)} د` : T`قبل ${ar(Math.round(m / 60))} س`;
+}
+// كل الشعب المعروفة: المخزن المشترك + صفوف رئيس القسم + قائمة المدرسة
+function deptSections() {
+  const share = S.share || {};
+  const own = shareOwn();
+  const keys = new Set(Object.keys(share).filter((k) => k.startsWith('sec:')));
+  for (const k of own.keys()) keys.add(k);
+  const r = S.meta.schoolRoster;
+  if (r) for (const g of sortedGrades(r)) for (const x of sortedSections(r.grades[g])) keys.add(`sec:${g}-${x}`);
+  return [...keys].map((k) => {
+    const [g, x] = k.slice(4).split('-');
+    const sh = share[k];
+    const c = own.get(k);
+    const names = c ? c.names : sh ? sh.names : (r && r.grades[g] && r.grades[g][x]) || [];
+    const data = c ? dataOf(c.id) : sh ? sh.data : null;
+    const pr = data && names.length ? Math.round(progress(data, names.length).ratio * 100) : 0;
+    const owner = sh && sh.owner ? sh.owner : null;
+    return { k, g, x, label: sectionLabel(g, x), names, data, n: names.length, pr, who: owner ? (owner.name || owner.u) : '', ou: owner ? owner.u : '', has: !!(sh || c) };
+  }).sort((a, b) => Number(a.g) - Number(b.g) || Number(a.x) - Number(b.x));
+}
+// توفر المعلمين اليوم (يحدده رئيس القسم) — مستند مشترك مشفّر
+const awayToday = () => { const v = S.deptAvail; return v && v.date === todayKey() && Array.isArray(v.away) ? v.away : []; };
+async function setAway(name, away) {
+  const list = new Set(awayToday());
+  if (away) list.add(name); else list.delete(name);
+  S.deptAvail = { date: todayKey(), away: [...list].slice(0, 100) };
+  if (C.share) C.share.touch('dept:avail');
+  render();
+}
+// المعلمون الفاضون في حصة معيّنة اليوم (من جدول المدرسة)، بلا الغائبين
+function freeTeachers(tt, day, p, away) {
+  return Object.keys(tt.teachers).filter((n) => !away.includes(n) && !tt.teachers[n].some((x) => x.d === day && p >= x.p && p < x.p + x.n)).sort((a, b) => a.localeCompare(b, 'ar'));
+}
+function Dept() {
+  if (C.role !== 'head' || !C.session) return Home();
+  const head = appbar({ title: tr('القسم'), backBtn: false });
+  if (!S.meta.schoolCode) {
+    return T`${head}<div class="wrap"><div class="empty card">${ART_USERS}<h2>أدخل رمز المدرسة</h2><p>بعدها تظهر لك كل الشعب ودرجاتها، وتقدر تفتح أي شعبة وتعدّلها.</p><button type="button" class="btn primary lg" data-act="school-code">${icon('lock')} رمز المدرسة</button></div></div>`;
+  }
+  const tab = DEPT_TABS.some(([k]) => k === S.ui.deptTab) ? S.ui.deptTab : 'now';
+  const secs = deptSections();
+  const withData = secs.filter((x) => x.has);
+  const online = (C.presence || []).filter((x) => !(C.session && x.u === C.session.u));
+  const onlineU = new Set(online.map((x) => x.u));
+  const away = awayToday();
+  const tabs = T`<div class="seg dept-tabs" role="tablist">${DEPT_TABS.map(([k, t]) => T`<button type="button" role="tab" data-act="dept-tab" data-v="${k}" aria-pressed="${tab === k}">${tr(t)}${k === 'now' && online.length ? T` <b class="num dept-dotn">${ar(online.length)}</b>` : ''}</button>`).join('')}</div>`;
+  const sum = T`<div class="dept-sum">
+      <div><b class="num">${ar(online.length)}</b><span>متصل الآن</span></div>
+      <div><b class="num">${ar(withData.length)}</b><span>شعبة فيها بيانات</span></div>
+      <div><b class="num">${ar(withData.length ? Math.round(withData.reduce((a, x) => a + x.pr, 0) / withData.length) : 0)}%</b><span>متوسط الرصد</span></div>
+    </div>`;
+  let body = '';
+  if (tab === 'now') {
+    const onl = online.length ? online.sort((a, b) => (b.at || b.t) - (a.at || a.t)).map((x) => {
+      const doing = x.cls ? T`${x.kind ? tr(KIND_TEXT[x.kind] || '') : tr('فاتح الصف')} — <b>${esc(x.cls)}</b>${x.w ? T` · الأسبوع ${ar(x.w)}` : ''}` : tr(SCREEN_TEXT[x.screen] || 'في التطبيق');
+      return T`<div class="list-item dept-on"><span class="dot-on"></span><span class="grow"><strong>${esc(x.name)}</strong><small>${doing}${x.at ? T` · آخر نشاط ${agoText(x.at)}` : ''}</small></span>${x.role === 'head' ? T`<span class="badge">رئيس القسم</span>` : ''}</div>`;
+    }).join('') : T`<p class="hint" style="padding:8px 4px">لا يوجد معلم متصل الآن.</p>`;
+    // التوفر والبدلاء (من جدول المدرسة)
+    const tt = S.meta.timetable;
+    const day = new Date().getDay();
+    let avail = '';
+    if (tt) {
+      const names = Object.keys(tt.teachers).sort((a, b) => a.localeCompare(b, 'ar'));
+      const rows = names.map((n) => {
+        const isAway = away.includes(n);
+        const today = tt.teachers[n].filter((x) => x.d === day);
+        const subs = isAway && today.length ? T`<div class="dept-subs">${today.map((x) => {
+          const free = freeTeachers(tt, day, x.p, away).filter((m) => m !== n);
+          const lab = x.g ? sectionLabel(x.g, x.s) : tr(x.t);
+          return T`<div class="dept-sub"><span class="num">${x.n > 1 ? T`الحصتان ${ar(x.p)}–${ar(x.p + 1)}` : T`الحصة ${ar(x.p)}`}</span><strong>${esc(lab)}</strong><small>فاضي: ${free.length ? free.map(esc).join('، ') : tr('لا أحد')}</small></div>`;
+        }).join('')}</div>` : isAway ? T`<p class="hint" style="margin:6px 0 0">لا حصص له اليوم.</p>` : '';
+        return T`<div class="dept-av-row ${isAway ? 'away' : ''}"><div class="row" style="gap:8px;align-items:center"><span class="grow"><strong>${esc(n)}</strong>${isAway ? T` <span class="badge warn">غير متوفر</span>` : ''}<small>${(() => { const k = today.filter((x) => x.g).length; return !k ? tr('لا حصص اليوم') : k === 1 ? tr('حصة واحدة اليوم') : k === 2 ? tr('حصتان اليوم') : T`${ar(k)} حصص اليوم`; })()}</small></span>
+          <button type="button" class="btn sm ${isAway ? 'primary' : ''}" data-act="dept-away" data-n="${esc(n)}" data-v="${isAway ? '0' : '1'}">${isAway ? tr('متوفر') : tr('غير متوفر')}</button></div>${subs}</div>`;
+      }).join('');
+      avail = T`<div class="section-title">توفر المعلمين اليوم</div><div class="card dept-avail">${rows}</div><p class="hint">اضغط «غير متوفر» عند المعلم الغائب، وتظهر حصصه اليوم ومن هو فاضي يقدر ياخذ مكانه.</p>`;
+    }
+    body = T`<div class="section-title">المتصلون الآن</div><div class="list">${onl}</div>${avail}`;
+  } else if (tab === 'teachers') {
+    const byT = new Map();
+    for (const x of withData) { const t = x.who || tr('بدون معلم'); if (!byT.has(t)) byT.set(t, { list: [], u: x.ou }); byT.get(t).list.push(x); }
+    const cards = [...byT.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ar')).map(([t, o]) => {
+      const avgP = Math.round(o.list.reduce((a, x) => a + x.pr, 0) / o.list.length);
+      const isOn = o.u && onlineU.has(o.u);
+      const isAway = away.includes(t);
+      return T`<div class="dept-t card"><div class="row" style="gap:8px;align-items:center"><span class="dept-av">${icon('user')}${isOn ? '<i class="dot-on"></i>' : ''}</span><span class="grow"><strong>${esc(t)}</strong>${isAway ? T` <span class="badge warn">غير متوفر</span>` : ''}<small>${ar(o.list.length)} شعبة · رصد ${ar(avgP)}%${isOn ? T` · <span class="on-txt">متصل</span>` : ''}</small></span></div>
+        <div class="dept-chips">${o.list.map((x) => T`<button type="button" class="dept-chip" data-act="dept-open" data-k="${x.k}"><span>${esc(x.label)}</span><b class="num">${ar(x.pr)}%</b></button>`).join('')}</div></div>`;
+    }).join('');
+    body = cards ? T`<div class="dept-teachers">${cards}</div>` : T`<p class="hint">لا توجد بيانات بعد.</p>`;
+  } else if (tab === 'sections') {
+    body = [...new Set(secs.map((x) => x.g))].map((g) => T`<div class="section-title">الصف ${gradeName(g)}</div>
+    <div class="dept-grid">${secs.filter((x) => x.g === g).map((x) => T`<button type="button" class="card dept-sec ${x.has ? (x.pr < 20 ? 'low' : '') : 'empty'}" data-act="dept-open" data-k="${x.k}">
+      <strong>${esc(x.label)}</strong><small>${x.who ? esc(x.who) : (x.has ? tr('بدون معلم') : tr('لا توجد بيانات بعد'))}</small>
+      <span class="dept-bar"><i style="width:${x.pr}%"></i></span><span class="dept-meta num">${students(x.n)} · ${ar(x.pr)}%</span></button>`).join('')}</div>`).join('') || T`<p class="hint">لا توجد شعب بعد.</p>`;
+  } else {
+    const item = (act, ic, t, sub) => `<button type="button" class="list-item" data-act="${act}">${icon(ic)}<span class="grow"><strong>${t}</strong><small>${sub}</small></span>${icon('fwd')}</button>`;
+    body = T`<div class="list">
+      ${item('dept-report', 'sheet', tr('تقرير القسم'), tr('كل الشعب: المعلم، نسبة الرصد، المتوسطات، دون النصف، الغياب — PDF'))}
+      ${item('dept-sec-report', 'users', tr('تقرير شعبة'), tr('أي شعبة: كشف الدرجات (الشامل أو كل فترة)، الحضور والغياب، أو تقرير طالب'))}
+      ${item('dept-sec-excel', 'download', tr('كشف Excel الرسمي لشعبة'), tr('ملف xlsx لأي شعبة'))}
+    </div>`;
+  }
+  return T`${head}
+  <div class="wrap wide stack dept">
+    ${sum}
+    ${tabs}
+    ${C.share && C.share.state === 'offline' ? T`<p class="hint">${icon('cloudOff')} بدون إنترنت — تظهر آخر بيانات وصلت.</p>` : ''}
+    ${body}
+    <p class="hint">${icon('shield')} بيانات الشعب مشفّرة برمز المدرسة — الخادم لا يقرؤها. أي تعديل منك يصل لمعلم الشعبة فورًا.</p>
+  </div>`;
+}
+// اختيار شعبة (رئيس القسم) ثم نوع التقرير
+function deptPickSection(title) {
+  return new Promise((resolve) => {
+    let res = null;
+    const secs = deptSections().filter((x) => x.n);
+    const s = openSheet(T`<h2>${esc(title)}</h2><div class="list" style="max-height:60vh;overflow:auto">${secs.map((x) => T`<button type="button" class="list-item" data-pk="${x.k}"><span class="grow"><strong>${esc(x.label)}</strong><small>${x.who ? esc(x.who) + ' · ' : ''}${students(x.n)} · ${ar(x.pr)}%</small></span>${icon('fwd')}</button>`).join('')}</div>`, { label: title, onClose: () => resolve(res) });
+    s.sheet.addEventListener('click', (e) => { const b = e.target.closest('[data-pk]'); if (!b) return; res = secs.find((x) => x.k === b.dataset.pk) || null; s.close(); });
+  });
+}
+const virtualClass = (x) => ({ id: x.k, label: x.label, names: x.names.slice(), data: x.data ? localStore.sanitizeClassData(x.data) : emptyClassData() });
+async function deptSectionReport() {
+  const x = await deptPickSection(tr('تقرير أي شعبة؟'));
+  if (!x) return;
+  const c = virtualClass(x);
+  const opt = (v, t, sub) => `<button type="button" class="list-item" data-rk="${v}"><span class="grow"><strong>${t}</strong><small>${sub}</small></span>${icon('fwd')}</button>`;
+  const sh = openSheet(T`<h2>${icon('sheet')} ${esc(c.label)}</h2><div class="list">
+    ${opt('all', tr('كشف الدرجات الشامل'), tr('مجموع كل أسبوع والفترتان والنهائي'))}
+    ${opt('p1', tr('الفترة الأولى بالتفصيل'), tr('الأسابيع ١–٥ بالبنود'))}
+    ${opt('p2', tr('الفترة الثانية بالتفصيل'), tr('الأسابيع ٦–١٠ بالبنود'))}
+    ${opt('final', tr('رصد الدرجات النهائية'), tr('الفترتان والبنائي والمشاريع والاختبار'))}
+    ${opt('attendance', tr('كشف الحضور والغياب'), tr('غياب كل طالب في كل أسبوع'))}
+    ${opt('student', tr('تقرير طالب'), tr('طالب واحد مع ملاحظاته'))}
+  </div>`, { label: tr('نوع التقرير') });
+  sh.sheet.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-rk]');
+    if (!b) return;
+    sh.close();
+    const k = b.dataset.rk;
+    if (k === 'attendance') printReport('attendance', c);
+    else if (k === 'student') { const i = await pickStudent(c, tr('تقرير أي طالب؟')); if (i != null) printReport('student', c, i); }
+    else printReport('grades', c, null, k);
+  });
+}
+async function deptReport() {
+  let R;
+  try { R = await import('./reports.js'); } catch { toast(tr('تعذّر تجهيز التقرير'), { err: true }); return; }
+  const sections = deptSections().filter((x) => x.has).map((x) => ({ label: x.label, names: x.names, data: x.data, teacher: x.who, pr: x.pr }));
+  await printHTML(R, R.deptReportHTML({ sections, settings: S.settings }), tr('تقرير_القسم'));
+}
+
+// فتح شعبة من القسم: إن لم تكن عند رئيس القسم تُضاف لصفوفه (ببياناتها) ثم تُفتح
+async function deptOpen(k) {
+  const own = shareOwn().get(k);
+  if (own) { go('class', { id: own.id }); return; }
+  const [g, x] = k.slice(4).split('-');
+  const sh = S.share && S.share[k];
+  const r = S.meta.schoolRoster;
+  const names = sh ? sh.names : (r && r.grades[g] && r.grades[g][x]) || [];
+  const id = uid();
+  S.classes.push({ id, label: sectionLabel(g, x), names: names.slice(0, MAX_STUDENTS) });
+  S.grades[id] = sh ? localStore.sanitizeClassData(sh.data) : emptyClassData();
+  await store.saveGrades(id, S.grades[id]);
+  await saveClassesNow();
+  go('class', { id });
 }
 
 // اختيار صف من نافذة سفلية بنفس هوية التطبيق (بدل القائمة المنسدلة)
@@ -2268,6 +2602,7 @@ function Settings() {
     ${CLOUD_ON ? (C.session ? T`<div class="section-title">الحساب والمزامنة</div>
     <div class="list">
       <div class="list-item">${icon('user')}<span class="grow"><strong dir="ltr" style="text-align:start">${esc(C.session.u)}</strong><small data-cloud-state>${tr(CLOUD_TEXT[C.state] || '')}</small></span>${icon('lock')}</div>
+      <button type="button" class="list-item" data-act="school-code">${icon('lock')}<span class="grow"><strong>رمز المدرسة</strong><small>${S.meta.schoolCode ? tr('مفعّل ✓ — بيانات شعبك محفوظة للشعبة نفسها') : tr('غير مفعّل — اطلبه من مسؤول التطبيق')}</small></span>${C.role === 'head' ? T`<span class="badge">رئيس القسم</span>` : ''}${icon('fwd')}</button>
       <button type="button" class="list-item" data-act="cloud-account">${icon('edit')}<span class="grow"><strong>تغيير اسم المستخدم أو كلمة السر</strong></span>${icon('fwd')}</button>
       <button type="button" class="list-item" data-act="cloud-sync">${icon('refresh')}<span class="grow"><strong>مزامنة الآن</strong><small>${C.session.eph ? tr('جلسة مؤقتة: لا يُحفظ شيء على هذا الجهاز') : tr('درجاتك على هذا الجهاز + نسخة مشفّرة في حسابك')}</small></span></button>
       <button type="button" class="list-item" data-act="cloud-logout">${icon('logout')}<span class="grow"><strong>خروج من الحساب</strong></span></button>
@@ -2486,12 +2821,27 @@ function pickGradesReport(c) {
     printReport('grades', c, null, b.dataset.part);
   });
 }
+async function printHTML(R, html, title) {
+  let css = document.getElementById('report-css');
+  if (!css) { css = document.createElement('style'); css.id = 'report-css'; document.head.appendChild(css); }
+  css.textContent = R.REPORT_CSS;
+  let root = document.getElementById('print-root');
+  if (!root) { root = document.createElement('div'); root.id = 'print-root'; document.body.appendChild(root); }
+  root.innerHTML = html;
+  const oldTitle = document.title;
+  document.title = String(title).replace(/[\\/:*?"<>|]+/g, '_');
+  try {
+    const how = await platform.print(document.title);
+    if (how === 'unsupported') toast(tr('الطباعة غير متاحة على هذا الجهاز. جرّب من الكمبيوتر أو صدّر Excel.'), { err: true, ms: 6000 });
+  } catch { toast(tr('تعذّرت الطباعة على هذا الجهاز'), { err: true }); }
+  setTimeout(() => { document.title = oldTitle; }, 1500);
+}
 async function printReport(kind, c, idx, part = 'all') {
   if (!c) return;
   if (S.dirty.size) await flushSave();
   let R;
   try { R = await import('./reports.js'); } catch { toast(tr('تعذّر تجهيز التقرير'), { err: true }); return; }
-  const args = { classLabel: c.label, names: c.names, data: dataOf(c.id), settings: S.settings, idx };
+  const args = { classLabel: c.label, names: c.names, data: c.data || dataOf(c.id), settings: S.settings, idx };
   const html = kind === 'attendance' ? R.attendanceReportHTML(args) : kind === 'student' ? R.studentReportHTML(args) : R.gradesReportHTML({ ...args, part });
   let css = document.getElementById('report-css');
   if (!css) { css = document.createElement('style'); css.id = 'report-css'; document.head.appendChild(css); }
@@ -2603,14 +2953,13 @@ async function doWipe() {
 // =====================================================================
 // تصدير الإكسل ومشاركة البطاقة
 // =====================================================================
-async function exportXlsx(id) {
-  const c = cls(id);
-  if (!c) return;
+async function exportXlsx(id) { const c = cls(id); if (c) await exportXlsxFor(c); }
+async function exportXlsxFor(c) {
   if (S.dirty.size) await flushSave();
   const close = toast(tr('جارٍ تجهيز الكشف…'), { ms: 0 });
   try {
     const { buildWorkbook, exportFileName } = await import('./xlsx-export.js');
-    const blob = await buildWorkbook({ classLabel: c.label, names: c.names, data: dataOf(c.id), settings: S.settings });
+    const blob = await buildWorkbook({ classLabel: c.label, names: c.names, data: c.data || dataOf(c.id), settings: S.settings });
     close();
     const r = await platform.saveFile(exportFileName(c.label), blob, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     if (r !== 'cancelled') toast(tr('جاهز ✓ كشف الإكسل'));
@@ -3260,6 +3609,9 @@ document.addEventListener('click', async (e) => {
   const act = el.dataset.act;
   const r = route();
   const p = r.p;
+  // آخر نشاط (لرئيس القسم في «المتصلون الآن»): رصد غياب / درجات / نجوم / ملاحظات
+  const KIND = { absent: 'absent', full: 'grades', chip: 'grades', other: 'grades', star: 'star', 'note-add': 'notes', 'bulk-fill': 'grades' };
+  if (KIND[act] && (r.name === 'class' || r.name === 'student') && cls(p.id)) { C.lastKind = { kind: KIND[act], cls: cls(p.id).label, at: Date.now() }; setTimeout(() => sendPresence(), 0); }
   switch (act) {
     case 'nav': if (route().name !== el.dataset.to || S.stack.length > 1) go(el.dataset.to); break;
     case 'back': back(); break;
@@ -3318,6 +3670,14 @@ document.addEventListener('click', async (e) => {
     case 'cloud-logout': cloudLogout(); break;
     case 'cloud-sync': if (C.sync) { C.sync.pull(); C.sync.flushSoon(10); toast(tr('جارٍ المزامنة…')); } break;
     case 'side-toggle': S.ui.sideHidden = !S.ui.sideHidden; setDeskPref('gfu-side', S.ui.sideHidden); render(); break;
+    case 'school-code': if (C.session) openSchoolCodeSheet(); break;
+    case 'dept-open': await deptOpen(el.dataset.k); break;
+    case 'dept-tab': S.ui.deptTab = el.dataset.v; render(); break;
+    case 'dept-away': await setAway(el.dataset.n, el.dataset.v === '1'); break;
+    case 'dept-report': await deptReport(); break;
+    case 'dept-sec-report': await deptSectionReport(); break;
+    case 'dept-sec-excel': { const x = await deptPickSection(tr('كشف أي شعبة؟')); if (x) await exportXlsxFor(virtualClass(x)); break; }
+    case 'no-account': S.meta.noAccount = true; await store.setMeta('noAccount', true).catch(() => {}); S.stack = [{ name: 'home', p: {} }]; render(); break;
     case 'host-full': hostCmd('full'); break;
     case 'host-disconnect': hostCmd('disconnect'); break;
     case 'rail-toggle': setDeskPref('gfu-rail', !deskPref('gfu-rail')); renderNav(); break;
@@ -3976,6 +4336,6 @@ async function boot() {
 }
 
 // واجهة صغيرة للاختبارات الآلية فقط (لا تحوي بيانات)
-window.__app = { S, L, go, flushSave, render };
+window.__app = { S, L, C, go, flushSave, render };
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

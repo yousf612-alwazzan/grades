@@ -251,6 +251,36 @@ ${footerBlock(date)}
 </div>`;
 }
 
+/** تقرير القسم (رئيس القسم): كل الشعب — المعلم، الطلاب، الرصد، المتوسطات، دون النصف، الغياب. */
+export function deptReportHTML({ sections = [], settings = {}, date } = {}) {
+  const rows = sections.map((x, i) => {
+    const n = n0(x.names);
+    const d = x.data || { weeks: {}, fin: {}, t: 0 };
+    const sums = []; for (let k = 0; k < n; k++) sums.push(studentSummary(d, k));
+    const att = attendanceSummary(d, n);
+    let weeks = 0; for (let w = 1; w <= WEEKS; w++) if (weekStarted(d, w, n)) weeks++;
+    const p1 = avg(sums.map((s) => s.p1)); const p2 = avg(sums.map((s) => s.p2)); const tot = avg(sums.map((s) => s.total));
+    const low = sums.filter((s) => typeof s.p1 === 'number' && s.p1 < WEEK_MAX / 2).length;
+    const abs = att.reduce((a, s) => a + s.count, 0);
+    return `<tr><td class="num m">${ar(i + 1)}</td><td class="name">${esc(x.label)}</td><td class="name">${x.teacher ? esc(x.teacher) : DASH}</td><td class="num">${ar(n)}</td><td class="num">${ar(weeks)}</td><td class="num${x.pr < 30 ? ' low' : ''}">${ar(x.pr)}%</td>${numCell(p1, '', WEEK_MAX)}${numCell(p2, '', WEEK_MAX)}${numCell(tot, 'tot', TOTAL_MAX)}<td class="num${low ? ' low' : ''}">${ar(low)}</td><td class="num">${ar(abs)}</td></tr>`;
+  });
+  if (!rows.length) rows.push(T`<tr><td class="empty" colspan="99">لا توجد شعب بعد</td></tr>`);
+  const all = sections.filter((x) => x.pr > 0);
+  const strip = summaryStrip([
+    [tr('عدد الشعب'), ar(sections.length)],
+    [tr('المعلمون'), ar(new Set(sections.map((x) => x.teacher).filter(Boolean)).size)],
+    [tr('متوسط الرصد'), T`${ar(all.length ? Math.round(all.reduce((a, x) => a + x.pr, 0) / all.length) : 0)}%`],
+    [tr('شعب رصدها أقل من ٣٠٪'), ar(sections.filter((x) => x.pr < 30).length), 'warn'],
+  ]);
+  return T`<div class="report report-dept" dir="rtl" lang="ar">
+${headerBlock({ title: tr('تقرير القسم'), subtitle: tr('متابعة الرصد في كل الشعب'), classLabel: '', settings })}
+${strip}
+<table class="r-table"><thead><tr><th class="col-m">م</th><th>الشعبة</th><th>المعلم</th><th>الطلاب</th><th>الأسابيع المرصودة</th><th>نسبة الرصد</th><th>متوسط الفترة الأولى ${of(WEEK_MAX)}</th><th>متوسط الفترة الثانية ${of(WEEK_MAX)}</th><th>متوسط المجموع ${of(TOTAL_MAX)}</th><th>دون النصف (الفترة الأولى)</th><th>مرات الغياب</th></tr></thead><tbody>${rows.join('')}</tbody></table>
+<p class="r-legend"><span class="lg-low">ملوّن</span> = يحتاج متابعة (رصد أقل من ٣٠٪ أو طلاب دون النصف)</p>
+${footerBlock(date)}
+</div>`;
+}
+
 // اسم ملف/عنوان مقترح لمهمة الطباعة (يظهر اسمًا لملف PDF)
 export function reportTitle(kind, classLabel = '') {
   const t = { p1: tr('كشف_الفترة_الأولى'), p2: tr('كشف_الفترة_الثانية'), final: tr('كشف_الرصد_النهائي'), all: tr('كشف_الدرجات'), attendance: tr('كشف_الحضور_والغياب'), student: tr('تقرير_طالب') }[kind] || tr('كشف');

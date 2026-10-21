@@ -27,5 +27,12 @@ export function sanitizeRoster(raw) {
 export const gradeName = (g) => GRADE_NAMES[g] || String(g);
 /** اسم الصف كما يُحفظ: «الثامن / 10» (نفس شكل خطط المنهج). */
 export const sectionLabel = (g, s) => `${gradeName(g)} / ${s}`;
+/** «الثامن / 4» ← «8-4» (معرّف الشعبة في المخزن المشترك)، أو null إن لم يكن اسم شعبة من المدرسة. */
+export function sectionOf(label) {
+  const m = /^\s*(\S+)\s*\/\s*(\d{1,2})\s*$/.exec(String(label || ''));
+  if (!m) return null;
+  const g = Object.keys(GRADE_NAMES).find((k) => GRADE_NAMES[k] === m[1]);
+  return g ? `${g}-${Number(m[2])}` : null;
+}
 export const sortedSections = (secs) => Object.keys(secs || {}).sort((a, b) => Number(a) - Number(b));
 export const sortedGrades = (roster) => Object.keys((roster && roster.grades) || {}).sort((a, b) => Number(a) - Number(b));
